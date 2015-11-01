@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: compress.c 137996 2014-06-04 01:58:17Z twu $";
+static char rcsid[] = "$Id: compress.c 168395 2015-06-26 17:13:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -31,10 +31,14 @@ static char rcsid[] = "$Id: compress.c 137996 2014-06-04 01:58:17Z twu $";
 #include "mem.h"		/* For Compress_new */
 #include "assert.h"
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+/* Skip */
+#else
 #include <emmintrin.h>
 #endif
-#ifdef HAVE_SSSE3
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSSE3)
+/* Skip */
+#else
 #include <tmmintrin.h>
 #endif
 #ifdef HAVE_SSE4_1
@@ -78,10 +82,10 @@ static char rcsid[] = "$Id: compress.c 137996 2014-06-04 01:58:17Z twu $";
 #endif
 
 
-#ifdef HAVE_SSE2
-#define STEP_SIZE 128
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
 #define STEP_SIZE 32
+#else
+#define STEP_SIZE 128
 #endif
 
 
@@ -100,17 +104,17 @@ struct T {
 void
 Compress_free (T *old) {
   if (*old) {
-#ifdef HAVE_SSE2
-    _mm_free((*old)->shift_array[0]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     FREE((*old)->shift_array[0]);
+#else
+    _mm_free((*old)->shift_array[0]);
 #endif
     FREE((*old)->shift_array);
 #if 0
-#ifdef HAVE_SSE2
-    _mm_free((*old)->blocks);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     FREE((*old)->blocks);
+#else
+    _mm_free((*old)->blocks);
 #endif
 #endif
     FREE(*old);
@@ -171,7 +175,26 @@ write_chars (Genomecomp_T high, Genomecomp_T low, Genomecomp_T flags) {
 }
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+void
+Compress_print_blocks (Genomecomp_T *blocks, int nshift, int pos5, int pos3) {
+  int ptr, endptr;
+
+  endptr = (nshift + pos3)/32U*3;   /* /STEP_SIZE*COMPRESS_BLOCKSIZE */
+  ptr = (nshift + pos5)/32U*3;
+
+  while (ptr <= endptr) {
+    printf("high: %08X  low: %08X  flags: %08X\t",
+	   blocks[ptr],blocks[ptr+1],blocks[ptr+2]);
+    write_chars(blocks[ptr],blocks[ptr+1],blocks[ptr+2]);
+    printf("\n");
+    ptr += COMPRESS_BLOCKSIZE;
+  }
+  printf("\n");
+  return;
+}
+
+#else
 void
 Compress_print_blocks (Genomecomp_T *blocks, int nshift, int pos5, int pos3) {
   int ptr, endptr;
@@ -279,25 +302,6 @@ Compress_print_one_block (Genomecomp_T *blocks) {
   return;
 }
 
-#else
-
-/* Not implemented */
-void
-Compress_print_blocks (Genomecomp_T *blocks, int nshift, int pos5, int pos3) {
-  int ptr = 0;
-  int nblocks = 0;
-
-  while (ptr < nblocks*COMPRESS_BLOCKSIZE) {
-    printf("high: %08X  low: %08X  flags: %08X\t",
-	   blocks[ptr],blocks[ptr+1],blocks[ptr+2]);
-    write_chars(blocks[ptr],blocks[ptr+1],blocks[ptr+2]);
-    printf("\n");
-    ptr += COMPRESS_BLOCKSIZE;
-  }
-  printf("\n");
-  return;
-}
-
 #endif
 
 
@@ -316,14 +320,14 @@ Compress_new_fwd (char *gbuffer, Chrpos_T length) {
   int c, i;
   int in_counter = 0;
 
-#ifdef HAVE_SSE2
-  new->nblocks = (length+127)/128U;
-  new->shift_array = (Genomecomp_T **) MALLOC(STEP_SIZE * sizeof(Genomecomp_T *));
-  new->shift_array[0] = (Genomecomp_T *) _mm_malloc(STEP_SIZE*(new->nblocks+1)*COMPRESS_BLOCKSIZE * sizeof(Genomecomp_T),16);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   new->nblocks = (length+31)/32U;
   new->shift_array = (Genomecomp_T **) MALLOC(STEP_SIZE * sizeof(Genomecomp_T *));
   new->shift_array[0] = (Genomecomp_T *) MALLOC(STEP_SIZE*(new->nblocks+1)*COMPRESS_BLOCKSIZE * sizeof(Genomecomp_T));
+#else
+  new->nblocks = (length+127)/128U;
+  new->shift_array = (Genomecomp_T **) MALLOC(STEP_SIZE * sizeof(Genomecomp_T *));
+  new->shift_array[0] = (Genomecomp_T *) _mm_malloc(STEP_SIZE*(new->nblocks+1)*COMPRESS_BLOCKSIZE * sizeof(Genomecomp_T),16);
 #endif
 #ifdef DEBUG14
   new->querylength = length;
@@ -342,7 +346,39 @@ Compress_new_fwd (char *gbuffer, Chrpos_T length) {
   position = 0U;
   while (position < length) {
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    high = low = flags = 0U;
+    in_counter = 0;
+    while (position < length && in_counter < 32) {
+      c = gbuffer[position++];
+      high >>= 1;
+      low >>= 1;
+      flags >>= 1;
+
+      /* Assume that gbuffer is upper case */
+      switch /*(uppercaseCode[c])*/ (c) {
+      case 'A': /* high |= LEFT_CLEAR; */ /* low |= LEFT_CLEAR; */ /* flags |= LEFT_CLEAR; */ break;
+      case 'C': /* high |= LEFT_CLEAR; */    low |= LEFT_SET;      /* flags |= LEFT_CLEAR; */ break;
+      case 'G':    high |= LEFT_SET;      /* low |= LEFT_CLEAR; */ /* flags |= LEFT_CLEAR; */ break;
+      case 'T':    high |= LEFT_SET;         low |= LEFT_SET;      /* flags |= LEFT_CLEAR; */ break;
+      default:  /* high |= LEFT_CLEAR; */ /* low |= LEFT_CLEAR; */    flags |= LEFT_SET;
+      }
+      in_counter++;
+    }
+      
+    while (in_counter < 32) {
+      high >>= 1;
+      low >>= 1;
+      flags >>= 1;
+      in_counter++;
+    }
+
+    /* Use old storage method */
+    new->blocks[ptr] = high;
+    new->blocks[ptr+1] = low;
+    new->blocks[ptr+2] = flags;
+
+#else
     for (i = 0; i < 4; i++) {
       /* Word i */
       high = low = flags = 0U;
@@ -375,53 +411,21 @@ Compress_new_fwd (char *gbuffer, Chrpos_T length) {
       new->blocks[ptr + i + 4] = low;
       new->blocks[ptr + i + 8] = flags;
     }
-
-#else
-    high = low = flags = 0U;
-    in_counter = 0;
-    while (position < length && in_counter < 32) {
-      c = gbuffer[position++];
-      high >>= 1;
-      low >>= 1;
-      flags >>= 1;
-
-      /* Assume that gbuffer is upper case */
-      switch /*(uppercaseCode[c])*/ (c) {
-      case 'A': /* high |= LEFT_CLEAR; */ /* low |= LEFT_CLEAR; */ /* flags |= LEFT_CLEAR; */ break;
-      case 'C': /* high |= LEFT_CLEAR; */    low |= LEFT_SET;      /* flags |= LEFT_CLEAR; */ break;
-      case 'G':    high |= LEFT_SET;      /* low |= LEFT_CLEAR; */ /* flags |= LEFT_CLEAR; */ break;
-      case 'T':    high |= LEFT_SET;         low |= LEFT_SET;      /* flags |= LEFT_CLEAR; */ break;
-      default:  /* high |= LEFT_CLEAR; */ /* low |= LEFT_CLEAR; */    flags |= LEFT_SET;
-      }
-      in_counter++;
-    }
-      
-    while (in_counter < 32) {
-      high >>= 1;
-      low >>= 1;
-      flags >>= 1;
-      in_counter++;
-    }
-
-    /* Use old storage method */
-    new->blocks[ptr] = high;
-    new->blocks[ptr+1] = low;
-    new->blocks[ptr+2] = flags;
 #endif
 
     ptr += COMPRESS_BLOCKSIZE;
   }
 
-#ifdef HAVE_SSE2
-  /* Compress_shift will access these values */
-  new->blocks[ptr] = new->blocks[ptr+1] = new->blocks[ptr+2] = new->blocks[ptr+3] = 0U;
-  new->blocks[ptr+4] = new->blocks[ptr+5] = new->blocks[ptr+6] = new->blocks[ptr+7] = 0U;
-  new->blocks[ptr+8] = new->blocks[ptr+9] = new->blocks[ptr+10] = new->blocks[ptr+11] = 0U;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   /* Compress_shift will access these values */
   new->blocks[ptr] = 0U;
   new->blocks[ptr+1] = 0U;
   new->blocks[ptr+2] = 0U;
+#else
+  /* Compress_shift will access these values */
+  new->blocks[ptr] = new->blocks[ptr+1] = new->blocks[ptr+2] = new->blocks[ptr+3] = 0U;
+  new->blocks[ptr+4] = new->blocks[ptr+5] = new->blocks[ptr+6] = new->blocks[ptr+7] = 0U;
+  new->blocks[ptr+8] = new->blocks[ptr+9] = new->blocks[ptr+10] = new->blocks[ptr+11] = 0U;
 #endif
 
   debug0(printf("Compress_new_fwd\n"));
@@ -446,14 +450,14 @@ Compress_new_rev (char *gbuffer, Chrpos_T length) {
   int c, i;
   int in_counter = 0;
 
-#ifdef HAVE_SSE2
-  new->nblocks = (length+127)/128U;
-  new->shift_array = (Genomecomp_T **) MALLOC(STEP_SIZE * sizeof(Genomecomp_T *));
-  new->shift_array[0] = (Genomecomp_T *) _mm_malloc(STEP_SIZE*(new->nblocks+1)*COMPRESS_BLOCKSIZE * sizeof(Genomecomp_T),16);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   new->nblocks = (length+31)/32U;
   new->shift_array = (Genomecomp_T **) MALLOC(STEP_SIZE * sizeof(Genomecomp_T *));
   new->shift_array[0] = (Genomecomp_T *) MALLOC(STEP_SIZE*(new->nblocks+1)*COMPRESS_BLOCKSIZE * sizeof(Genomecomp_T));
+#else
+  new->nblocks = (length+127)/128U;
+  new->shift_array = (Genomecomp_T **) MALLOC(STEP_SIZE * sizeof(Genomecomp_T *));
+  new->shift_array[0] = (Genomecomp_T *) _mm_malloc(STEP_SIZE*(new->nblocks+1)*COMPRESS_BLOCKSIZE * sizeof(Genomecomp_T),16);
 #endif
 #ifdef DEBUG14
   new->querylength = length;
@@ -472,7 +476,38 @@ Compress_new_rev (char *gbuffer, Chrpos_T length) {
   position = length;
   while (position > 0) {
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    high = low = flags = 0U;
+    in_counter = 0;
+    while (position > 0 && in_counter < 32) {
+      c = gbuffer[--position];
+      high >>= 1;
+      low >>= 1;
+      flags >>= 1;
+
+      /* Assume that gbuffer is upper case */
+      switch /*(uppercaseCode[c])*/ (c) {
+      case 'T': /* high |= LEFT_CLEAR; */ /* low |= LEFT_CLEAR; */ /* flags |= LEFT_CLEAR; */ break;
+      case 'G': /* high |= LEFT_CLEAR; */    low |= LEFT_SET;      /* flags |= LEFT_CLEAR; */ break;
+      case 'C':    high |= LEFT_SET;      /* low |= LEFT_CLEAR; */ /* flags |= LEFT_CLEAR; */ break;
+      case 'A':    high |= LEFT_SET;         low |= LEFT_SET;      /* flags |= LEFT_CLEAR; */ break;
+      default:  /* high |= LEFT_CLEAR; */ /* low |= LEFT_CLEAR; */    flags |= LEFT_SET;
+      }
+      in_counter++;
+    }
+
+    while (in_counter < 32) {
+      high >>= 1;
+      low >>= 1;
+      flags >>= 1;
+      in_counter++;
+    }
+
+    new->blocks[ptr] = high;
+    new->blocks[ptr+1] = low;
+    new->blocks[ptr+2] = flags;
+
+#else
     for (i = 0; i < 4; i++) {
       /* Word i */
       high = low = flags = 0U;
@@ -505,52 +540,21 @@ Compress_new_rev (char *gbuffer, Chrpos_T length) {
       new->blocks[ptr + i + 4] = low;
       new->blocks[ptr + i + 8] = flags;
     }
-
-#else
-    high = low = flags = 0U;
-    in_counter = 0;
-    while (position > 0 && in_counter < 32) {
-      c = gbuffer[--position];
-      high >>= 1;
-      low >>= 1;
-      flags >>= 1;
-
-      /* Assume that gbuffer is upper case */
-      switch /*(uppercaseCode[c])*/ (c) {
-      case 'T': /* high |= LEFT_CLEAR; */ /* low |= LEFT_CLEAR; */ /* flags |= LEFT_CLEAR; */ break;
-      case 'G': /* high |= LEFT_CLEAR; */    low |= LEFT_SET;      /* flags |= LEFT_CLEAR; */ break;
-      case 'C':    high |= LEFT_SET;      /* low |= LEFT_CLEAR; */ /* flags |= LEFT_CLEAR; */ break;
-      case 'A':    high |= LEFT_SET;         low |= LEFT_SET;      /* flags |= LEFT_CLEAR; */ break;
-      default:  /* high |= LEFT_CLEAR; */ /* low |= LEFT_CLEAR; */    flags |= LEFT_SET;
-      }
-      in_counter++;
-    }
-
-    while (in_counter < 32) {
-      high >>= 1;
-      low >>= 1;
-      flags >>= 1;
-      in_counter++;
-    }
-
-    new->blocks[ptr] = high;
-    new->blocks[ptr+1] = low;
-    new->blocks[ptr+2] = flags;
 #endif
     
     ptr += COMPRESS_BLOCKSIZE;
   }
 
-#ifdef HAVE_SSE2
-  /* Compress_shift will access these values */
-  new->blocks[ptr] = new->blocks[ptr+1] = new->blocks[ptr+2] = new->blocks[ptr+3] = 0U;
-  new->blocks[ptr+4] = new->blocks[ptr+5] = new->blocks[ptr+6] = new->blocks[ptr+7] = 0U;
-  new->blocks[ptr+8] = new->blocks[ptr+9] = new->blocks[ptr+10] = new->blocks[ptr+11] = 0U;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   /* Compress_shift will access these values */
   new->blocks[ptr] = 0U;
   new->blocks[ptr+1] = 0U;
   new->blocks[ptr+2] = 0U;
+#else
+  /* Compress_shift will access these values */
+  new->blocks[ptr] = new->blocks[ptr+1] = new->blocks[ptr+2] = new->blocks[ptr+3] = 0U;
+  new->blocks[ptr+4] = new->blocks[ptr+5] = new->blocks[ptr+6] = new->blocks[ptr+7] = 0U;
+  new->blocks[ptr+8] = new->blocks[ptr+9] = new->blocks[ptr+10] = new->blocks[ptr+11] = 0U;
 #endif
 
   debug0(printf("Compress_new_rev\n"));
@@ -1170,7 +1174,7 @@ shift_sse2 (T this, int nshift) {
 
 
 
-#ifndef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
 Genomecomp_T *
 Compress_shift (T this, int nshift) {
   Genomecomp_T *shifted;
@@ -1295,7 +1299,7 @@ Compress_shift (T this, int nshift) {
 }
 
 #else
-/* HAVE_SSE2 but not SSE3 */
+/* HAVE_SSE2 but not SSSE3 */
 Genomecomp_T *
 Compress_shift (T this, int nshift) {
   Genomecomp_T *shifted;
@@ -1606,7 +1610,8 @@ Compress32_shift (T this, int nshift) {
   Genomecomp_T *shifted;
   int rightshift;
   int ptr;
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   __m128i out, current, next;
 #endif
 #ifdef DEBUG9
@@ -1642,7 +1647,7 @@ Compress32_shift (T this, int nshift) {
       shifted[1] = this->blocks[1] << nshift;
       shifted[0] = this->blocks[0] << nshift;
 
-#elif defined(HAVE_SSE2)
+#elif defined(HAVE_SSE2) && !defined(WORDS_BIGENDIAN)
       next = _mm_load_si128((__m128i *) &(this->blocks[ptr]));
       while (ptr > 0) {
 	current = next;
@@ -1710,7 +1715,25 @@ Compress_get_16mer_left (UINT4 *high, UINT4 *low, UINT4 *flags, T this, int pos3
   int columni, blocki;
   Genomecomp_T *ptr, curr_high, curr_low, curr_flags, prev_high, prev_low, prev_flags;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+  /* query is stored as 3 x 32-bit words */
+  blocki = pos3/32U*3;
+
+  ptr = &(this->blocks[blocki]);
+  curr_high = ptr[0];
+  curr_low = ptr[1];
+  curr_flags = ptr[2];
+
+  if (blocki == 0) {
+    prev_high = prev_low = prev_flags = 0U;
+  } else {
+    ptr -= 3;
+    prev_high = ptr[0];
+    prev_low = ptr[1];
+    prev_flags = ptr[2];
+  }
+
+#else
   /* query is stored as 3 x 128-bit words */
   columni = (pos3 % 128) / 32;
   blocki = pos3/128U*12 + columni;
@@ -1732,23 +1755,6 @@ Compress_get_16mer_left (UINT4 *high, UINT4 *low, UINT4 *flags, T this, int pos3
     prev_high = ptr[0];
     prev_low = ptr[4];
     prev_flags = ptr[8];
-  }
-#else
-  /* query is stored as 3 x 32-bit words */
-  blocki = pos3/32U*3;
-
-  ptr = &(this->blocks[blocki]);
-  curr_high = ptr[0];
-  curr_low = ptr[1];
-  curr_flags = ptr[2];
-
-  if (blocki == 0) {
-    prev_high = prev_low = prev_flags = 0U;
-  } else {
-    ptr -= 3;
-    prev_high = ptr[0];
-    prev_low = ptr[1];
-    prev_flags = ptr[2];
   }
 #endif
 
@@ -1784,7 +1790,21 @@ Compress_get_16mer_right (UINT4 *high, UINT4 *low, UINT4 *flags, T this, int pos
   int columni, blocki;
   Genomecomp_T *ptr, curr_high, curr_low, curr_flags, next_high, next_low, next_flags;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+  /* query is stored as 3 x 32-bit words */
+  blocki = pos5/32U*3;
+
+  ptr = &(this->blocks[blocki]);
+  curr_high = ptr[0];
+  curr_low = ptr[1];
+  curr_flags = ptr[2];
+
+  ptr += 3;
+  next_high = ptr[0];
+  next_low = ptr[1];
+  next_flags = ptr[2];
+
+#else
   /* query is stored as 3 x 128-bit words */
   columni = (pos5 % 128) / 32;
   blocki = pos5/128U*12 + columni;
@@ -1805,19 +1825,6 @@ Compress_get_16mer_right (UINT4 *high, UINT4 *low, UINT4 *flags, T this, int pos
     next_low = ptr[4];
     next_flags = ptr[8];
   }
-#else
-  /* query is stored as 3 x 32-bit words */
-  blocki = pos5/32U*3;
-
-  ptr = &(this->blocks[blocki]);
-  curr_high = ptr[0];
-  curr_low = ptr[1];
-  curr_flags = ptr[2];
-
-  ptr += 3;
-  next_high = ptr[0];
-  next_low = ptr[1];
-  next_flags = ptr[2];
 #endif
 
   debug2(printf("high:  %08X %08X\n",curr_high,next_high));

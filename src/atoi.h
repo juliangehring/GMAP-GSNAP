@@ -1,3 +1,4 @@
+/* $Id: atoi.h 157222 2015-01-22 18:40:00Z twu $ */
 #ifndef ATOI_INCLUDED
 #define ATOI_INCLUDED
 

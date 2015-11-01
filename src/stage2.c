@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 156846 2015-01-16 01:53:19Z twu $";
+static char rcsid[] = "$Id: stage2.c 166741 2015-06-02 01:24:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -116,10 +116,15 @@ static int suboptimal_score_end;
 static int suboptimal_score_start;
 static Mode_T mode;
 static bool snps_p;
+static int sufflookback;
+static int nsufflookback;
+static int maxintronlen;
+
 
 void
 Stage2_setup (bool splicingp_in, bool cross_species_p,
 	      int suboptimal_score_start_in, int suboptimal_score_end_in,
+	      int sufflookback_in, int nsufflookback_in, int maxintronlen_in,
 	      Mode_T mode_in, bool snps_p_in) {
   splicingp = splicingp_in;
   if (splicingp == true) {
@@ -134,6 +139,11 @@ Stage2_setup (bool splicingp_in, bool cross_species_p,
   }
   suboptimal_score_start = suboptimal_score_start_in;
   suboptimal_score_end = suboptimal_score_end_in;
+
+  sufflookback = sufflookback_in;
+  nsufflookback = nsufflookback_in;
+  maxintronlen = maxintronlen_in;
+
   mode = mode_in;
   snps_p = snps_p_in;
   return;
@@ -775,7 +785,7 @@ score_querypos_lookback_one (
 			     struct Link_T **links, Chrpos_T **mappings,
 			     int **active, int *firstactive,
 			     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-			     int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+			     int indexsize, Intlist_T processed,
 			     bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
 			     bool use_canonical_p, int non_canonical_penalty) {
   Link_T prevlink;
@@ -1150,7 +1160,7 @@ score_querypos_lookback_mult (
 			      struct Link_T **links, Chrpos_T **mappings,
 			      int **active, int *firstactive,
 			      Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-			      int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+			      int indexsize, Intlist_T processed,
 			      bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
 			      bool use_canonical_p, int non_canonical_penalty) {
   Link_T prevlink, currlink;
@@ -1646,7 +1656,7 @@ score_querypos_lookforward_one (
 				struct Link_T **links, Chrpos_T **mappings,
 				int **active, int *firstactive,
 				Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-				int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+				int indexsize, Intlist_T processed,
 				bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
 				bool use_canonical_p, int non_canonical_penalty) {
   Link_T prevlink;
@@ -2013,7 +2023,7 @@ score_querypos_lookforward_mult (
 				 struct Link_T **links, Chrpos_T **mappings,
 				 int **active, int *firstactive,
 				 Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-				 int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+				 int indexsize, Intlist_T processed,
 				 bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
 				 bool use_canonical_p, int non_canonical_penalty) {
   Link_T prevlink, currlink;
@@ -2507,8 +2517,10 @@ revise_active_lookback (int **active, int *firstactive, int *nactive,
 
   debug6(printf("Revising querypos %d from low_hit %d to high_hit %d.  Scores:\n",querypos,low_hit,high_hit));
   if ((hit = low_hit) >= high_hit) {
+    debug6(printf("1.  Initializing firstactive for querypos %d to be -1\n",querypos));
     firstactive[querypos] = -1;
     nactive[querypos] = 0;
+
   } else {
     debug6(printf("At hit %d, fwd_score is %d",hit,links[querypos][hit].fwd_score));
     best_score = links[querypos][hit].fwd_score;
@@ -2584,6 +2596,7 @@ revise_active_lookforward (int **active, int *firstactive, int *nactive,
 
   debug6(printf("Revising querypos %d from high_hit %d to low_hit %d.  Scores:\n",querypos,high_hit,low_hit));
   if ((hit = high_hit - 1) < low_hit) {
+    debug6(printf("2.  Initializing firstactive for querypos %d to be -1\n",querypos));
     firstactive[querypos] = -1;
     nactive[querypos] = 0;
   } else {
@@ -3158,7 +3171,7 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 
 			       Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 
-			       int indexsize, int sufflookback, int nsufflookback, int maxintronlen,
+			       int indexsize,
 #ifdef DEBUG9
 			       char *queryseq_ptr,
 #endif
@@ -3218,10 +3231,12 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 
   /* Initialize */
   for (querypos = 0; querypos < querystart; querypos++) {
+    debug6(printf("3.  Initializing firstactive for querypos %d to be -1\n",querypos));
     firstactive[querypos] = -1;
     nactive[querypos] = 0;
   }
   while (querypos <= queryend && npositions[querypos] <= 0) {
+    debug6(printf("4.  Initializing firstactive for querypos %d to be -1\n",querypos));
     debug9(printf("Skipping querypos %d which has no positions\n",querypos));
     firstactive[querypos] = -1;
     nactive[querypos] = 0;
@@ -3359,7 +3374,7 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 	  position = mappings[querypos][low_hit];
 
 	  debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
-	  debug9(printf("Finding link looking back at querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
+	  debug9(printf("Finding link looking back from querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
 			querypos,low_hit,position,active[querypos][low_hit],oligo,processed ? Intlist_head(processed) : -1));
 	  
 	  score_querypos_lookback_one(
@@ -3368,7 +3383,7 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 #endif
 				      currlink,querypos,querystart,queryend,position,
 				      links,mappings,active,firstactive,chroffset,chrhigh,plusp,
-				      indexsize,processed,sufflookback,nsufflookback,maxintronlen,
+				      indexsize,processed,
 				      anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
 				      non_canonical_penalty);
 
@@ -3380,7 +3395,7 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 
 	} else {
 	  debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
-	  debug9(printf("Finding links looking back at querypos %d,%d..%d at (%u..%u) (%s).  prev_querypos was %d\n",
+	  debug9(printf("Finding links looking back from querypos %d,%d..%d at (%u..%u) (%s).  prev_querypos was %d\n",
 			querypos,low_hit,high_hit-1,mappings[querypos][low_hit],mappings[querypos][high_hit-1],
 			oligo,processed ? Intlist_head(processed) : -1));
 
@@ -3391,7 +3406,7 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 				       low_hit,high_hit,querypos,querystart,queryend,
 				       /*positions*/&(mappings[querypos][low_hit]),
 				       links,mappings,active,firstactive,chroffset,chrhigh,plusp,
-				       indexsize,processed,sufflookback,nsufflookback,maxintronlen,
+				       indexsize,processed,
 				       anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
 				       non_canonical_penalty);
 
@@ -3518,6 +3533,7 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
       querypos = next_querypos;
     }
   }
+  debug9(printf("End of loop lookback\n"));
 
   Intlist_free(&processed);
 
@@ -3736,6 +3752,7 @@ traceback_one_snps (int querypos, int hit, struct Link_T **links, Chrpos_T **map
 		    links[querypos][hit].fwd_tracei,links[querypos][hit].fwd_intronnfwd,links[querypos][hit].fwd_intronnrev,
 		    links[querypos][hit].fwd_intronnunk));
       debug0(printf("\n"));
+
 #ifdef SEPARATE_FWD_REV
     } else {
       debug0(printf("Pushing %d,%d (%s) at %u, score = %d, consec = %d",
@@ -3777,7 +3794,7 @@ align_compute_lookback (Chrpos_T **mappings, int *npositions, int totalpositions
 			int *firstactive, int *nactive, Cellpool_T cellpool,
 			char *queryseq_ptr, char *queryuc_ptr, int querylength, int querystart, int queryend,
 			Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-			int indexsize, int sufflookback, int nsufflookback, int maxintronlen, Pairpool_T pairpool,
+			int indexsize, Pairpool_T pairpool,
 			bool anchoredp, int anchor_querypos, Chrpos_T anchor_position,
 			bool localp, bool skip_repetitive_p, bool use_canonical_p, int non_canonical_penalty,
 			bool favor_right_p, int max_nalignments, bool debug_graphic_p) {
@@ -3809,7 +3826,7 @@ align_compute_lookback (Chrpos_T **mappings, int *npositions, int totalpositions
 			       
 					chroffset,chrhigh,plusp,
 
-					indexsize,sufflookback,nsufflookback,maxintronlen,
+					indexsize,
 #ifdef DEBUG9
 					queryseq_ptr,
 #endif
@@ -3922,7 +3939,7 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 				  int *firstactive, int *nactive, Cellpool_T cellpool,
 				  int querystart, int queryend, int querylength,
 				  Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-				  int indexsize, int sufflookback, int nsufflookback, int maxintronlen,
+				  int indexsize,
 #ifdef DEBUG9
 				  char *queryseq_ptr,
 #endif
@@ -3983,10 +4000,12 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 
   /* Initialize */
   for (querypos = querylength - 1; querypos > queryend; querypos--) {
+    debug6(printf("5.  Initializing firstactive for querypos %d to be -1\n",querypos));
     firstactive[querypos] = -1;
     nactive[querypos] = 0;
   }
   while (querypos >= querystart && npositions[querypos] <= 0) {
+    debug6(printf("6.  Initializing firstactive for querypos %d to be -1\n",querypos));
     debug9(printf("Skipping querypos %d which has no positions\n",querypos));
     firstactive[querypos] = -1;
     nactive[querypos] = 0;
@@ -4124,7 +4143,7 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 	  position = mappings[querypos][low_hit];
 
 	  debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
-	  debug9(printf("Finding link looking forward at querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
+	  debug9(printf("Finding link looking forward from querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
 			querypos,low_hit,position,active[querypos][low_hit],oligo,processed ? Intlist_head(processed) : -1));
 	  score_querypos_lookforward_one(
 #ifdef DEBUG9
@@ -4133,7 +4152,7 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 					 currlink,querypos,querystart,queryend,position,
 					 links,mappings,active,firstactive,
 					 chroffset,chrhigh,plusp,
-					 indexsize,processed,sufflookback,nsufflookback,maxintronlen,
+					 indexsize,processed,
 					 anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
 					 non_canonical_penalty);
 
@@ -4145,7 +4164,7 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 
 	} else {
 	  debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
-	  debug9(printf("Finding links looking forward at querypos %d,%d..%d at (%u..%u) (%s).  prev_querypos was %d\n",
+	  debug9(printf("Finding links looking forward from querypos %d,%d..%d at (%u..%u) (%s).  prev_querypos was %d\n",
 			querypos,high_hit-1,low_hit,mappings[querypos][high_hit-1],mappings[querypos][low_hit],
 			oligo,processed ? Intlist_head(processed) : -1));
 	
@@ -4156,7 +4175,7 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 					  low_hit,high_hit,querypos,querystart,queryend,
 					  /*positions*/&(mappings[querypos][low_hit]),
 					  links,mappings,active,firstactive,chroffset,chrhigh,plusp,
-					  indexsize,processed,sufflookback,nsufflookback,maxintronlen,
+					  indexsize,processed,
 					  anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
 					  non_canonical_penalty);
 
@@ -4283,6 +4302,8 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
       querypos = next_querypos;
     }
   }
+  debug9(printf("End of loop lookforward\n"));
+
 
   Intlist_free(&processed);
 
@@ -4332,7 +4353,7 @@ align_compute_lookforward (Chrpos_T **mappings, int *npositions, int totalpositi
 			   char *queryseq_ptr, char *queryuc_ptr, int querylength, int querystart, int queryend,
 
 			   Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-			   int indexsize, int sufflookback, int nsufflookback, int maxintronlen, Pairpool_T pairpool,
+			   int indexsize, Pairpool_T pairpool,
 			   bool anchoredp, int anchor_querypos, Chrpos_T anchor_position,
 			   bool localp, bool skip_repetitive_p, bool use_canonical_p, int non_canonical_penalty,
 			   bool favor_right_p, int max_nalignments, bool debug_graphic_p) {
@@ -4363,7 +4384,7 @@ align_compute_lookforward (Chrpos_T **mappings, int *npositions, int totalpositi
 					   
 					   chroffset,chrhigh,plusp,
 
-					   indexsize,sufflookback,nsufflookback,maxintronlen,
+					   indexsize,
 #ifdef DEBUG9
 					   queryseq_ptr,
 #endif
@@ -5060,7 +5081,7 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 	     Chrpos_T chrstart, Chrpos_T chrend,
 	     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 	     int genestrand, Stage2_alloc_T stage2_alloc, Oligoindex_array_T oligoindices,
-	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp) {
+	     Diagpool_T diagpool, bool debug_graphic_p) {
   int ncovered;
   int source;
   int indexsize;
@@ -5132,12 +5153,14 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
     if (plusp == true) {
       Oligoindex_hr_tally(oligoindex,/*mappingstart*/chroffset+chrstart,
 			  /*mappingend*/chroffset+chrend,/*plusp*/true,
-			  queryuc_ptr,querylength,/*chrpos*/chrstart,genestrand);
+			  queryuc_ptr,/*querystart*/0,/*queryend*/querylength,
+			  /*chrpos*/chrstart,genestrand);
     } else {
       /* Need to add 1 to mappingend to cover same range as plusp */
       Oligoindex_hr_tally(oligoindex,/*mappingstart*/chroffset+chrstart,
 			  /*mappingend*/chroffset+chrend+1,/*plusp*/false,
-			  queryuc_ptr,querylength,/*chrpos*/(chrhigh-chroffset)-chrend,genestrand);
+			  queryuc_ptr,/*querystart*/0,/*queryend*/querylength,
+			  /*chrpos*/(chrhigh-chroffset)-chrend,genestrand);
     }
 
 #ifdef EXTRACT_GENOMICSEG
@@ -5150,7 +5173,8 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 
     diagonals = Oligoindex_get_mappings(diagonals,coveredp,mappings,npositions,&totalpositions,
 					&oned_matrix_p,&maxnconsecutive,oligoindices,oligoindex,queryuc_ptr,
-					querylength,chrstart,chrend,chroffset,chrhigh,plusp,diagpool);
+					/*querystart*/0,/*queryend*/querylength,querylength,
+					chrstart,chrend,chroffset,chrhigh,plusp,diagpool);
     pct_coverage = Diag_update_coverage(coveredp,&ncovered,diagonals,querylength);
     debug(printf("Stage2_scan: source = %d, ncovered = %d, pct_coverage = %f\n",source,ncovered,pct_coverage));
 
@@ -5195,8 +5219,8 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 #endif
 		Oligoindex_array_T oligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
-		int sufflookback, int nsufflookback, int maxintronlen, bool localp, bool skip_repetitive_p,
-		bool favor_right_p, int max_nalignments, bool debug_graphic_p, bool diagnosticp,
+		bool localp, bool skip_repetitive_p,
+		bool favor_right_p, int max_nalignments, bool debug_graphic_p,
 		Stopwatch_T stopwatch, bool diag_debug) {
   List_T all_stage2results = NULL, all_paths, all_ends, all_starts, end_paths, start_paths, path, pairs, p, q;
   List_T middle;
@@ -5216,7 +5240,8 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
   /* double diag_runtime; */
   List_T diagonals;
   int anchor_querypos, querystart, queryend;
-  Chrpos_T anchor_position;
+  Univcoord_T mappingstart, mappingend;
+  Chrpos_T anchor_position, chrpos, mappinglength;
 
 #ifndef USE_DIAGPOOL
   List_T p;
@@ -5284,6 +5309,50 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 #endif
   Cellpool_reset(cellpool);
   diagonals = (List_T) NULL;
+
+
+#ifdef GSNAP
+  mappingstart = chroffset + chrstart;
+  if (plusp == true) {
+    mappingend = chroffset + chrend;
+    chrpos = chrstart;
+  } else {
+    mappingend = chroffset + chrend + 1;
+    chrpos = (chrhigh - chroffset) - chrend;
+  }
+  mappinglength = (Chrpos_T) (mappingend - mappingstart);
+
+  if (mappinglength > 100000) {
+    /* 9-mers */
+    source = 0;
+  } else if (mappinglength > 10000) {
+    /* 8-mers */
+    source = 1;
+  } else {
+    /* 7-mers */
+    source = 2;
+  }
+
+  oligoindex = Oligoindex_array_elt(oligoindices,source);
+  indexsize = Oligoindex_indexsize(oligoindex); /* Different sources can have different indexsizes */
+  /* printf("indexsize = %d\n",indexsize); */
+
+
+#ifdef PMAP
+  Oligoindex_pmap_tally(oligoindex,mappingstart,mappingend,plusp,
+			queryuc_ptr,querylength,chrpos);
+#else
+  Oligoindex_hr_tally(oligoindex,mappingstart,mappingend,plusp,
+		      queryuc_ptr,/*querystart*/0,/*queryend*/querylength,
+		      chrpos,genestrand);
+#endif
+
+  diagonals = Oligoindex_get_mappings(diagonals,coveredp,mappings,npositions,&totalpositions,
+				      &oned_matrix_p,&maxnconsecutive,oligoindices,oligoindex,queryuc_ptr,
+				      /*querystart*/0,/*queryend*/querylength,querylength,
+				      chrstart,chrend,chroffset,chrhigh,plusp,diagpool);
+#else
+
   while (source < Oligoindex_array_length(oligoindices) && pct_coverage < SUFF_PCTCOVERAGE_OLIGOINDEX) {
     oligoindex = Oligoindex_array_elt(oligoindices,source);
     indexsize = Oligoindex_indexsize(oligoindex); /* Different sources can have different indexsizes */
@@ -5322,11 +5391,13 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
     if (plusp == true) {
       Oligoindex_hr_tally(oligoindex,/*mappingstart*/chroffset+chrstart,
 			  /*mappingend*/chroffset+chrend,/*plusp*/true,
-			  queryuc_ptr,querylength,/*chrpos*/chrstart,genestrand);
+			  queryuc_ptr,/*querystart*/0,/*queryend*/querylength,
+			  /*chrpos*/chrstart,genestrand);
     } else {
       Oligoindex_hr_tally(oligoindex,/*mappingstart*/chroffset+chrstart,
 			  /*mappingend*/chroffset+chrend+1,/*plusp*/false,
-			  queryuc_ptr,querylength,/*chrpos*/(chrhigh-chroffset)-chrend,genestrand);
+			  queryuc_ptr,/*querystart*/0,/*queryend*/querylength,
+			  /*chrpos*/(chrhigh-chroffset)-chrend,genestrand);
     }
 
 #ifdef EXTRACT_GENOMICSEG
@@ -5340,13 +5411,17 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 
     diagonals = Oligoindex_get_mappings(diagonals,coveredp,mappings,npositions,&totalpositions,
 					&oned_matrix_p,&maxnconsecutive,oligoindices,oligoindex,queryuc_ptr,
-					querylength,chrstart,chrend,chroffset,chrhigh,plusp,diagpool);
+					/*querystart*/0,/*queryend*/querylength,querylength,
+					chrstart,chrend,chroffset,chrhigh,plusp,diagpool);
     pct_coverage = Diag_update_coverage(coveredp,&ncovered,diagonals,querylength);
     debug(printf("Stage2_compute: source = %d, ndiagonals = %d, ncovered = %d, pct_coverage = %f\n",
 		 source,List_length(diagonals),ncovered,pct_coverage));
 
     source++;
   }
+
+#endif
+
   *stage2_source = source;
   *stage2_indexsize = indexsize;
 #ifdef PMAP
@@ -5367,11 +5442,13 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
     debug(printf("Quitting because totalpositions is zero\n"));
     middle = (List_T) NULL;
 
+#ifndef GSNAP
   } else if (querylength > 150 && pct_coverage < proceed_pctcoverage && ncovered < SUFF_NCOVERED) {
     /* Filter only on long queries */
     debug(printf("Quitting because querylength %d > 150, and pct_coverage is only %f < %f, and ncovered is only %d < %d, maxnconsecutive = %d\n",
 		 querylength,pct_coverage,proceed_pctcoverage,ncovered,SUFF_NCOVERED,maxnconsecutive));
     middle = (List_T) NULL;
+#endif
 
   } else {
     debug(printf("Proceeding because maxnconsecutive is %d and pct_coverage is %f > %f or ncovered = %d > %d\n",
@@ -5399,7 +5476,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 				       queryseq_ptr,queryuc_ptr,querylength,
 				       /*querystart*/diag_querystart,/*queryend*/diag_queryend,
 				       chroffset,chrhigh,plusp,
-				       indexsize,sufflookback,nsufflookback,maxintronlen,pairpool,
+				       indexsize,pairpool,
 				       /*anchoredp*/false,/*anchor_querypos*/0,/*anchor_position*/0,
 				       localp,skip_repetitive_p,use_canonical_middle_p,NON_CANONICAL_PENALTY_MIDDLE,
 				       favor_right_p,max_nalignments,debug_graphic_p);
@@ -5444,7 +5521,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 					 oned_matrix_p,minactive,maxactive,firstactive,nactive,cellpool,
 					 queryseq_ptr,queryuc_ptr,querylength,querystart,queryend,
 					 chroffset,chrhigh,plusp,
-					 indexsize,sufflookback,nsufflookback,maxintronlen,pairpool,
+					 indexsize,pairpool,
 					 /*anchoredp*/true,anchor_querypos,anchor_position,
 					 localp,skip_repetitive_p,use_canonical_ends_p,NON_CANONICAL_PENALTY_ENDS,
 					 favor_right_p,max_nalignments,debug_graphic_p);
@@ -5523,7 +5600,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 					      oned_matrix_p,minactive,maxactive,firstactive,nactive,cellpool,
 					      queryseq_ptr,queryuc_ptr,querylength,querystart,queryend,
 					      chroffset,chrhigh,plusp,
-					      indexsize,sufflookback,nsufflookback,maxintronlen,pairpool,
+					      indexsize,pairpool,
 					      /*anchoredp*/true,anchor_querypos,anchor_position,
 					      localp,skip_repetitive_p,use_canonical_ends_p,NON_CANONICAL_PENALTY_ENDS,
 					      favor_right_p,max_nalignments,debug_graphic_p);
@@ -5649,9 +5726,9 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 		    Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
 		    Oligoindex_array_T oligoindices, double proceed_pctcoverage,
 		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
-		    int sufflookback, int nsufflookback,  int maxintronlen, bool localp,
+		    bool localp,
 		    bool skip_repetitive_p, bool use_shifted_canonical_p,
-		    bool favor_right_p, bool debug_graphic_p, bool diagnosticp) {
+		    bool favor_right_p, bool debug_graphic_p) {
   List_T pairs, all_paths;
   List_T middle, path;
   int indexsize, indexsize_nt;
@@ -5709,18 +5786,21 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
     if (plusp == true) {
       Oligoindex_hr_tally(oligoindex,/*mappingstart*/chroffset+chrstart,
 			  /*mappingend*/chroffset+chrend,/*plusp*/true,
-			  queryuc_ptr,querylength,/*chrpos*/chrstart,genestrand);
+			  queryuc_ptr,/*querystart*/0,/*queryend*/querylength,
+			  /*chrpos*/chrstart,genestrand);
     } else {
       Oligoindex_hr_tally(oligoindex,/*mappingstart*/chroffset+chrstart,
 			  /*mappingend*/chroffset+chrend+1,/*plusp*/false,
-			  queryuc_ptr,querylength,/*chrpos*/(chrhigh-chroffset)-chrend,genestrand);
+			  queryuc_ptr,/*querystart*/0,/*queryend*/querylength,
+			  /*chrpos*/(chrhigh-chroffset)-chrend,genestrand);
     }
 
 #endif
 
     diagonals = Oligoindex_get_mappings(diagonals,coveredp,mappings,npositions,&totalpositions,
 					&oned_matrix_p,&maxnconsecutive,oligoindices,oligoindex,queryuc_ptr,
-					querylength,chrstart,chrend,chroffset,chrhigh,plusp,diagpool);
+					/*querstart*/0,/*queryend*/querylength,querylength,
+					chrstart,chrend,chroffset,chrhigh,plusp,diagpool);
     pct_coverage = Diag_update_coverage(coveredp,&ncovered,diagonals,querylength);
     debug(printf("Stage2_compute: source = %d, ncovered = %d, pct_coverage = %f\n",source,ncovered,pct_coverage));
 
@@ -5751,7 +5831,7 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 					    queryseq_ptr,queryuc_ptr,querylength,
 					    /*querystart*/0,/*queryend*/querylength-1,
 					    chroffset,chrhigh,plusp,
-					    indexsize,sufflookback,nsufflookback,maxintronlen,pairpool,
+					    indexsize,pairpool,
 					    /*anchoredp*/false,/*anchor_querypos*/0,/*anchor_position*/0,
 					    localp,skip_repetitive_p,use_canonical_middle_p,NON_CANONICAL_PENALTY_MIDDLE,
 					    favor_right_p,/*max_nalignments*/1,debug_graphic_p)) == NULL) {

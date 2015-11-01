@@ -1,9 +1,12 @@
-/* $Id: translation.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: translation.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef TRANSLATION_INCLUDED
 #define TRANSLATION_INCLUDED
+
 #include <stdio.h>
 #include "bool.h"
 #include "pair.h"
+#include "filestring.h"
+
 
 #define T Translation_T
 typedef struct T *T;
@@ -30,7 +33,7 @@ Translation_via_reference (int *relaastart, int *relaaend,
 			   struct Pair_T *refpairs, int nrefpairs, bool refwatsonp, bool fixshiftp);
 
 extern void
-Translation_print_comparison (FILE *fp, struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
+Translation_print_comparison (Filestring_T fp, struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
 			      int cdna_direction, int relaastart, int relaaend, int maxmutations);
 
 #undef T

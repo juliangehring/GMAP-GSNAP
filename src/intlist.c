@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intlist.c 145990 2014-08-25 21:47:32Z twu $";
+static char rcsid[] = "$Id: intlist.c 166641 2015-05-29 21:13:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -136,6 +136,48 @@ Intlist_max (T list) {
   }
 
   return m;
+}
+
+int
+Intlist_min (T list) {
+  int m;
+
+  if (list == NULL) {
+    return 0;
+
+  } else {
+    m = list->first;
+    list = list->rest;
+    while (list) {
+      if (list->first < m) {
+	m = list->first;
+      }
+      list = list->rest;
+    }
+
+    return m;
+  }
+}
+
+bool
+Intlist_vary (T list) {
+  int m;
+
+  if (list == NULL) {
+    return false;
+
+  } else {
+    m = list->first;
+    list = list->rest;
+    while (list) {
+      if (list->first != m) {
+	return true;
+      }
+      list = list->rest;
+    }
+
+    return false;
+  }
 }
 
 bool

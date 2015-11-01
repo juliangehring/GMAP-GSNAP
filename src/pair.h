@@ -1,4 +1,4 @@
-/* $Id: pair.h 161598 2015-03-21 02:37:54Z twu $ */
+/* $Id: pair.h 174482 2015-09-22 00:58:39Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -17,6 +17,8 @@ typedef struct Pair_T *Pair_T;
 #include "chimera.h"
 #include "substring.h"		/* For Endtype_T */
 #include "sense.h"
+#include "filestring.h"
+
 
 #ifdef GSNAP
 #include "resulthr.h"		/* For Resulttype_T.  Don't call for GMAP, because result.h conflicts */
@@ -24,16 +26,13 @@ typedef struct Pair_T *Pair_T;
 
 #define MATCHESPERGAP 3
 
-typedef enum {CIGAR_ACTION_IGNORE, CIGAR_ACTION_WARNING, CIGAR_ACTION_ABORT} Cigar_action_T;
-
-
 #define T Pair_T
 
 extern void
 Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in,
 	    bool gff3_separators_p_in, bool sam_insert_0M_p_in, bool force_xs_direction_p_in,
-	    bool md_lowercase_variant_p_in, bool snps_p_in, Univcoord_T genomelength_in,
-	    Cigar_action_T cigar_action_in);
+	    bool md_lowercase_variant_p_in, bool snps_p_in, bool print_nsnpdiffs_p_in,
+	    Univcoord_T genomelength_in);
 extern int
 Pair_querypos (T this);
 extern Chrpos_T
@@ -81,20 +80,18 @@ Pair_free_out (T *old);
 extern int
 Pair_translation_length (struct T *pairs, int npairs);
 extern void
-Pair_print_continuous (FILE *fp, struct T *pairs, int npairs, bool watsonp,
-		       bool diagnosticp, bool genomefirstp, int invertmode,
-		       bool nointronlenp);
+Pair_print_continuous (Filestring_T fp, struct T *pairs, int npairs, bool watsonp,
+		       bool genomefirstp, int invertmode, bool nointronlenp);
 
 extern void
-Pair_print_continuous_byexon (FILE *fp, struct T *pairs, int npairs, bool watsonp, bool diagnosticp, int invertmode);
+Pair_print_continuous_byexon (Filestring_T fp, struct T *pairs, int npairs, bool watsonp, int invertmode);
 extern void
-Pair_print_alignment (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
+Pair_print_alignment (Filestring_T fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 		      Univcoord_T chroffset, Univ_IIT_T chromosome_iit, bool watsonp,
-		      bool diagnosticp, int invertmode, bool nointronlenp,
-		      int wraplength);
+		      int invertmode, bool nointronlenp, int wraplength);
 
 extern void
-Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
+Pair_print_pathsummary (Filestring_T fp, int pathnum, T start, T end, Chrnum_T chrnum,
 			Univcoord_T chroffset, Univ_IIT_T chromosome_iit, bool referencealignp, 
 			IIT_T altstrain_iit, char *strain, Univ_IIT_T contig_iit, char *dbversion,
 			int querylength_given, int skiplength, int trim_start, int trim_end,
@@ -102,13 +99,15 @@ Pair_print_pathsummary (FILE *fp, int pathnum, T start, T end, Chrnum_T chrnum,
 			int qopens, int qindels, int topens, int tindels, int goodness,
 			bool watsonp, int cdna_direction,
 			int translation_start, int translation_end, int translation_length,
-			int relaastart, int relaaend, bool maponlyp,
-			bool diagnosticp, int stage2_source, int stage2_indexsize);
+			int relaastart, int relaaend, int stage2_source, int stage2_indexsize);
 
 extern void
-Pair_print_coordinates (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
+Pair_print_coordinates (Filestring_T fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 			Univcoord_T chroffset, Univ_IIT_T chromosome_iit,
 			bool watsonp, int invertmode);
+
+extern int
+Pair_cmp (const void *a, const void *b);
 
 extern void
 Pair_dump_one (T this, bool zerobasedp);
@@ -116,6 +115,8 @@ extern void
 Pair_dump_list (List_T pairs, bool zerobasedp);
 extern void
 Pair_dump_array (struct T *pairs, int npairs, bool zerobasedp);
+extern void
+Pair_dump_array_stderr (struct T *pairs, int npairs, bool zerobasedp);
 extern Chrpos_T
 Pair_genomicpos (struct T *pairs, int npairs, int querypos, bool headp);
 extern int
@@ -128,14 +129,19 @@ extern bool
 Pair_check_array (struct T *pairs, int npairs);
 extern List_T
 Pair_convert_array_to_pairs (List_T pairs, struct T *pairarray, int npairs, bool plusp, int querylength,
-			     int clipdir, int hardclip_low, int hardclip_high, bool first_read_p, int queryseq_offset);
+			     int hardclip_low, int hardclip_high, int queryseq_offset);
 
 extern void
-Pair_print_exonsummary (FILE *fp, struct T *pairs, int npairs, Chrnum_T chrnum,
+Pair_print_exonsummary (Filestring_T fp, struct T *pairs, int npairs, Chrnum_T chrnum,
 			Univcoord_T chroffset, Genome_T genome, Univ_IIT_T chromosome_iit,
 			bool watsonp, int cdna_direction, bool genomefirstp, int invertmode);
 extern void
-Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *accession, 
+Pair_tokens_free (List_T *tokens);
+extern List_T
+Pair_tokens_copy (List_T old);
+
+extern void
+Pair_print_gff3 (Filestring_T fp, struct T *pairs, int npairs, int pathnum, char *accession, 
 		 T start, T end, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		 int translation_end, 
 		 int querylength_given, int skiplength, int matches, int mismatches, 
@@ -144,19 +150,20 @@ Pair_print_gff3 (FILE *fp, struct T *pairs, int npairs, int pathnum, char *acces
 
 #ifdef GSNAP
 extern void
-Pair_print_m8 (FILE *fp, struct T *pairs_querydir, int npairs, bool invertedp,
+Pair_print_m8 (Filestring_T fp, struct T *pairs_querydir, int npairs, bool invertedp,
 	       Chrnum_T chrnum, Shortread_T queryseq, Shortread_T headerseq,
 	       char *acc_suffix, Univ_IIT_T chromosome_iit);
 #endif
 
 extern void
-Pair_print_gsnap (FILE *fp, struct T *pairs, int npairs, int nsegments, bool invertedp,
+Pair_print_gsnap (Filestring_T fp, struct T *pairs, int npairs, int nsegments, bool invertedp,
 		  Endtype_T start_endtype, Endtype_T end_endtype,
 		  Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
 		  int querylength, bool watsonp, int cdna_direction, int score,
 		  int insertlength, int pairscore, int mapq_score,
 		  Univ_IIT_T chromosome_iit, IIT_T splicesites_iit,
-		  int *splicesites_divint_crosstable, int donor_typeint, int acceptor_typeint);
+		  int *splicesites_divint_crosstable, int donor_typeint, int acceptor_typeint,
+		  bool pairedp, GMAP_source_T gmap_source);
 
 extern void
 Pair_fix_cdna_direction_array (struct T *pairs_querydir, int npairs, int cdna_direction);
@@ -169,6 +176,8 @@ Pair_guess_cdna_direction (int *sensedir, List_T pairs, bool invertedp,
 extern int
 Pair_gsnap_nsegments (int *total_nmismatches, int *total_nindels, int *nintrons,
 		      int *nindelbreaks, struct T *pairs, int npairs);
+extern int
+Pair_tokens_cigarlength (List_T tokens);
 
 
 extern int
@@ -185,13 +194,16 @@ Pair_check_cigar (struct T *pairs, int npairs, int querylength_given,
 
 extern List_T
 Pair_clean_cigar (List_T tokens, bool watsonp);
+extern List_T
+Pair_compute_cigar (bool *intronp, int *hardclip_start, int *hardclip_end, struct T *pairs, int npairs, int querylength_given,
+		    bool watsonp, int sensedir, int chimera_part);
 
 extern void
-Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
+Pair_print_sam (Filestring_T fp, char *abbrev, struct T *pairs, int npairs, List_T cigar_tokens, bool intronp,
 		char *acc1, char *acc2, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		char *queryseq_ptr, char *quality_string,
 		int clipdir, int hardclip_low, int hardclip_high, int querylength_given,
-		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
+		bool watsonp, int sensedir, int chimera_part, Chimera_T chimera,
 		int quality_shift, bool first_read_p, int pathnum, int npaths,
 		int absmq_score, int first_absmq, int second_absmq, Chrpos_T chrpos, Chrpos_T chrlength,
 #ifdef GSNAP
@@ -199,21 +211,21 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
 		int pair_mapq_score, int end_mapq_score,
 		Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum,
 		Chrpos_T mate_chrpos, Chrpos_T mate_chrlength,
-		int mate_cdna_direction, int pairedlength,
+		int mate_sensedir, int pairedlength,
 #else
 		int mapq_score, bool sam_paired_p,
 #endif
-		char *sam_read_group_id, bool invertp, bool circularp, bool merged_overlap_p);
+		char *sam_read_group_id, bool invertp, bool circularp, bool merged_overlap_p, bool sarrayp);
 
 extern void
-Pair_print_sam_nomapping (FILE *fp, char *abbrev, char *acc1, char *acc2, char *queryseq_ptr,
+Pair_print_sam_nomapping (Filestring_T fp, char *abbrev, char *acc1, char *acc2, char *queryseq_ptr,
 			  char *quality_string, int querylength, int quality_shift,
 			  bool first_read_p, bool sam_paired_p, char *sam_read_group_id);
 
 extern Uintlist_T
 Pair_exonbounds (struct T *pairs, int npairs, Univcoord_T chroffset);
 extern void
-Pair_print_pslformat_nt (FILE *fp, struct T *pairs, int npairs, T start, T end,
+Pair_print_pslformat_nt (Filestring_T fp, struct T *pairs, int npairs, T start, T end,
 			 Sequence_T queryseq, Chrnum_T chrnum,
 			 Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 			 int matches, int unknowns, int mismatches, 
@@ -221,26 +233,26 @@ Pair_print_pslformat_nt (FILE *fp, struct T *pairs, int npairs, T start, T end,
 
 
 extern void
-Pair_print_pslformat_pro (FILE *fp, struct T *pairs, int npairs, T start, T end,
+Pair_print_pslformat_pro (Filestring_T fp, struct T *pairs, int npairs, T start, T end,
 			  Sequence_T queryseq, Chrnum_T chrnum,
 			  Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 			  bool watsonp, int cdna_direction);
 
 extern void
-Pair_print_exons (FILE *fp, struct T *pairs, int npairs, int wraplength, int ngap, bool cdnap);
+Pair_print_exons (Filestring_T fp, struct T *pairs, int npairs, int wraplength, int ngap, bool cdnap);
 
 extern void
-Pair_print_protein_genomic (FILE *fp, struct T *ptr, int npairs, int wraplength, bool forwardp);
+Pair_print_protein_genomic (Filestring_T fp, struct T *ptr, int npairs, int wraplength, bool forwardp);
 #ifdef PMAP
 extern void
-Pair_print_nucleotide_cdna (FILE *fp, struct T *ptr, int npairs, int wraplength);
+Pair_print_nucleotide_cdna (Filestring_T fp, struct T *ptr, int npairs, int wraplength);
 #else
 extern void
-Pair_print_protein_cdna (FILE *fp, struct T *ptr, int npairs, int wraplength, bool forwardp);
+Pair_print_protein_cdna (Filestring_T fp, struct T *ptr, int npairs, int wraplength, bool forwardp);
 #endif
 
 extern void
-Pair_print_compressed (FILE *fp, int pathnum, int npaths, T start, T end, Sequence_T queryseq, char *dbversion, 
+Pair_print_compressed (Filestring_T fp, int pathnum, int npaths, T start, T end, Sequence_T queryseq, char *dbversion, 
 		       Sequence_T usersegment, int nexons, double fracidentity,
 		       struct T *pairs, int npairs, Chrnum_T chrnum,
 		       Univcoord_T chroffset, Univ_IIT_T chromosome_iit, int querylength_given,
@@ -249,16 +261,16 @@ Pair_print_compressed (FILE *fp, int pathnum, int npaths, T start, T end, Sequen
 		       int chimera_cdna_direction, char *strain, bool watsonp, int cdna_direction);
 
 extern void
-Pair_print_iit_map (FILE *fp, Sequence_T queryseq, char *accession,
+Pair_print_iit_map (Filestring_T fp, Sequence_T queryseq, char *accession,
 		    T start, T end, Chrnum_T chrnum, Univ_IIT_T chromosome_iit);
 extern void
-Pair_print_iit_exon_map (FILE *fp, struct T *pairs, int npairs, Sequence_T queryseq, char *accession,
+Pair_print_iit_exon_map (Filestring_T fp, struct T *pairs, int npairs, Sequence_T queryseq, char *accession,
 			 T start, T end, Chrnum_T chrnum, Univ_IIT_T chromosome_iit);
 extern void
-Pair_print_splicesites (FILE *fp, struct T *pairs, int npairs, char *accession,
+Pair_print_splicesites (Filestring_T fp, struct T *pairs, int npairs, char *accession,
 			int nexons, Chrnum_T chrnum, Univ_IIT_T chromosome_iit, bool watsonp);
 extern void
-Pair_print_introns (FILE *fp, struct T *pairs, int npairs, char *accession,
+Pair_print_introns (Filestring_T fp, struct T *pairs, int npairs, char *accession,
 		    int nexons, Chrnum_T chrnum, Univ_IIT_T chromosome_iit);
 
 extern int
@@ -295,6 +307,9 @@ Pair_fracidentity_bounded (int *matches, int *unknowns, int *mismatches,
 			   int cdna_direction, int minpos, int maxpos);
 extern void
 Pair_matchscores (int *matchscores, struct T *ptr, int npairs, int querylength);
+extern int
+Pair_maxnegscore (List_T pairs);
+
 
 extern void
 Pair_pathscores (bool *gapp, int *pathscores, struct T *ptr, int npairs, 

@@ -1,6 +1,7 @@
-/* $Id: stage1.h 128855 2014-02-28 21:50:24Z twu $ */
+/* $Id: stage1.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef STAGE1_INCLUDED
 #define STAGE1_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "indexdb.h"

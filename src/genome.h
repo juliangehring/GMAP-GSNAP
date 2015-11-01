@@ -1,4 +1,4 @@
-/* $Id: genome.h 145990 2014-08-25 21:47:32Z twu $ */
+/* $Id: genome.h 168395 2015-06-26 17:13:13Z twu $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
 
@@ -10,7 +10,6 @@
 #include "iit-read-univ.h"
 #include "chrnum.h"
 #include "mode.h"
-
 
 #define OUTOFBOUNDS '*'
 
@@ -25,9 +24,12 @@ extern Genomecomp_T *
 Genome_blocks (T this);
 extern Univcoord_T
 Genome_totallength (T this);
+extern void
+Genome_shmem_remove (char *genomesubdir, char *fileroot, char *snps_root, Genometype_T genometype,
+		     bool genome_lc_p);
 extern T
 Genome_new (char *genomesubdir, char *fileroot, char *snps_root,
-	    Genometype_T genometype, bool genome_lc_p, Access_mode_T access);
+	    Genometype_T genometype, bool genome_lc_p, Access_mode_T access, bool sharedp);
 
 extern void
 Genome_setup (T genome_in, T genomealt_in, Mode_T mode_in, int circular_typeint_in);
@@ -37,11 +39,14 @@ Genome_user_setup (Genomecomp_T *genome_blocks_in);
 extern void
 Genome_uncompress_mmap (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
 			Univcoord_T endpos);
+extern void
+Genome_uncompress_memory (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
+			  Univcoord_T endpos);
 extern bool
 Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, Chrpos_T length, char *gbuffer1,
 		    Univ_IIT_T chromosome_iit);
 extern void
-Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer1);
+Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, char *gbuffer1);
 extern void
 Genome_fill_buffer_convert_fwd (Univcoord_T left, Chrpos_T length, char *gbuffer1);
 extern void

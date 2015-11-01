@@ -1,7 +1,6 @@
-/* $Id: iit-read.h 157232 2015-01-22 18:55:31Z twu $ */
+/* $Id: iit-read.h 157225 2015-01-22 18:47:23Z twu $ */
 #ifndef IIT_READ_INCLUDED
 #define IIT_READ_INCLUDED
-
 #ifdef HAVE_CONFIG_H
 #include <config.h>		/* For HAVE_64_BIT */
 #endif
@@ -13,6 +12,7 @@
 #include "interval.h"
 #include "types.h"
 #include "iitdef.h"
+#include "filestring.h"
 
 
 typedef enum {READ_ALL, READ_ONE, READ_NONE} Divread_T;
@@ -20,6 +20,7 @@ typedef enum {READ_ALL, READ_ONE, READ_NONE} Divread_T;
    rather than by coordinate */
 
 typedef enum {NO_KNOWN_GENE, KNOWN_GENE, KNOWN_GENE_MULTIEXON} Overlap_T;
+
 
 #define T IIT_T
 
@@ -213,7 +214,7 @@ extern List_T
 IIT_typelist (T this);
 
 extern void
-IIT_print_header (FILE *fp, T this, int *matches, int nmatches, bool map_bothstrands_p,
+IIT_print_header (Filestring_T fp, T this, int *matches, int nmatches, bool map_bothstrands_p,
 		  char *chr, bool reversep, bool relativep, Chrpos_T left, bool print_comment_p);
 
 extern Overlap_T

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mem.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: mem.c 155282 2014-12-12 19:42:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -69,7 +69,7 @@ struct sizelist {
   struct sizelist *rest;
 };
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
 static pthread_mutex_t memusage_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_key_t key_memusage_std_stack; /* Standard pool: Memory that is used by a thread within a query */
 static pthread_key_t key_memusage_std_sizelist;
@@ -85,6 +85,7 @@ static struct sizelist *memusage_std_sizelist = NULL;
 static long int memusage_std_stack_max = 0;
 static long int memusage_std_heap = 0;
 static long int memusage_std_heap_max = 0;
+static long int memusage_keep = 0;
 #endif
 
 static long int memusage_in = 0; /* Input pool: Memory from inbuffer to threads */
@@ -92,7 +93,7 @@ static long int memusage_out = 0; /* Output pool: Memory from threads to outbuff
 
 void
 Mem_usage_init () {
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_key_create(&key_memusage_std_stack,NULL);
   pthread_key_create(&key_memusage_std_sizelist,NULL);
   pthread_key_create(&key_memusage_std_stack_max,NULL);
@@ -100,6 +101,7 @@ Mem_usage_init () {
   pthread_key_create(&key_memusage_std_heap_max,NULL);
   pthread_key_create(&key_memusage_keep,NULL);
   pthread_key_create(&key_threadname,NULL);
+
   pthread_setspecific(key_memusage_std_stack,(void *) 0);
   pthread_setspecific(key_memusage_std_stack_max,(void *) 0);
   pthread_setspecific(key_memusage_std_heap,(void *) 0);
@@ -110,6 +112,7 @@ Mem_usage_init () {
   memusage_std_stack_max = 0;
   memusage_std_heap = 0;
   memusage_std_heap_max = 0;
+  memusage_keep = 0;
 #endif
 
   memusage_in = 0;
@@ -119,20 +122,25 @@ Mem_usage_init () {
 
 
 void
-Mem_usage_set_threadname (const char *threadname) {
-#ifdef HAVE_PTHREAD
-  pthread_setspecific(key_threadname,(void *) threadname);
+Mem_usage_set_threadname (char *threadname_in) {
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
+  pthread_setspecific(key_threadname,(void *) threadname_in);
+#else
+  threadname = threadname_in;
 #endif
   return;
 }
 
 void
 Mem_usage_reset_heap_baseline (long int x) {
-#ifdef HAVE_PTHREAD
-  char *threadname;
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   long int memusage_std_heap;
 
+#ifdef DEBUG_HEAP
+  char *threadname;
   threadname = (char *) pthread_getspecific(key_threadname);
+#endif
+
   memusage_std_heap = (long int) pthread_getspecific(key_memusage_std_heap);
   debug_heap(printf("%ld %s: Reset memusage_std_heap to %ld\n",memusage_std_heap,threadname,x));
   pthread_setspecific(key_memusage_std_heap,(void *) x);
@@ -144,11 +152,9 @@ Mem_usage_reset_heap_baseline (long int x) {
 
 void
 Mem_usage_reset_stack_max () {
-#ifdef HAVE_PTHREAD
-  char *threadname;
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   long int memusage_std_stack_max;
 
-  threadname = (char *) pthread_getspecific(key_threadname);
   memusage_std_stack_max = (long int) pthread_getspecific(key_memusage_std_stack_max);
   pthread_setspecific(key_memusage_std_stack_max,(void *) 0);
 #else
@@ -158,11 +164,9 @@ Mem_usage_reset_stack_max () {
 
 void
 Mem_usage_reset_heap_max () {
-#ifdef HAVE_PTHREAD
-  char *threadname;
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   long int memusage_std_heap_max;
 
-  threadname = (char *) pthread_getspecific(key_threadname);
   memusage_std_heap_max = (long int) pthread_getspecific(key_memusage_std_heap_max);
   pthread_setspecific(key_memusage_std_heap_max,(void *) 0);
 #else
@@ -175,17 +179,20 @@ void
 Mem_usage_std_stack_add (long int x, const char *file, int line) {
   struct sizelist *new;
 
-#ifdef HAVE_PTHREAD
-  char *threadname;
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   long int memusage_std_stack, memusage_std_stack_max;
 
+#ifdef DEBUG_STACK
+  char *threadname;
   threadname = (char *) pthread_getspecific(key_threadname);
+#endif
+
   memusage_std_stack = (long int) pthread_getspecific(key_memusage_std_stack);
   memusage_std_stack += x;
   debug_stack(printf("%ld %s: ",memusage_std_stack,threadname));
   pthread_setspecific(key_memusage_std_stack,(void *) memusage_std_stack);
 
-  memusage_std_stack_max = pthread_getspecific(key_memusage_std_stack_max);
+  memusage_std_stack_max = (long int) pthread_getspecific(key_memusage_std_stack_max);
   if (memusage_std_stack > memusage_std_stack_max) {
     pthread_setspecific(key_memusage_std_stack_max,(void *) memusage_std_stack);
   }
@@ -202,7 +209,7 @@ Mem_usage_std_stack_add (long int x, const char *file, int line) {
   debug_stack(printf("%ld: ",memusage_std_stack));
 
   if (memusage_std_stack > memusage_std_stack_max) {
-    memusage_std_stack_max = memusage_std_stack);
+    memusage_std_stack_max = memusage_std_stack;
   }
 
   new = (struct sizelist *) malloc(sizeof(struct sizelist));
@@ -221,10 +228,14 @@ Mem_usage_std_stack_subtract (const char *file, int line) {
   long int x;
   struct sizelist *head;
 
-#ifdef HAVE_PTHREAD
-  char *threadname;
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   long int memusage_std_stack;
   struct sizelist *memusage_std_sizelist;
+
+#ifdef DEBUG_STACK
+  char *threadname;
+  threadname = (char *) pthread_getspecific(key_threadname);
+#endif
 
   memusage_std_sizelist = (struct sizelist *) pthread_getspecific(key_memusage_std_sizelist);
   x = memusage_std_sizelist->size;
@@ -232,7 +243,6 @@ Mem_usage_std_stack_subtract (const char *file, int line) {
   free(memusage_std_sizelist);
   pthread_setspecific(key_memusage_std_sizelist,(void *) head);
   
-  threadname = (char *) pthread_getspecific(key_threadname);
   memusage_std_stack = (long int) pthread_getspecific(key_memusage_std_stack);
   memusage_std_stack -= x;
   debug_stack(printf("%ld %s: ",memusage_std_stack,threadname));
@@ -258,11 +268,14 @@ Mem_usage_std_stack_subtract (const char *file, int line) {
 
 void
 Mem_usage_std_heap_add (long int x) {
-#ifdef HAVE_PTHREAD
-  char *threadname;
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   long int memusage_std_heap;
 
+#ifdef DEBUG_HEAP
+  char *threadname;
   threadname = (char *) pthread_getspecific(key_threadname);
+#endif
+
   memusage_std_heap = (long int) pthread_getspecific(key_memusage_std_heap);
   memusage_std_heap += x;
   debug_heap(printf("%ld %s: ",memusage_std_heap,threadname));
@@ -277,7 +290,7 @@ Mem_usage_std_heap_add (long int x) {
 
 long int
 Mem_usage_report_std_stack () {
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   return (long int) pthread_getspecific(key_memusage_std_stack);
 #else
   return memusage_std_stack;
@@ -286,7 +299,7 @@ Mem_usage_report_std_stack () {
 
 long int
 Mem_usage_report_std_heap () {
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   return (long int) pthread_getspecific(key_memusage_std_heap);
 #else
   return memusage_std_heap;
@@ -295,7 +308,7 @@ Mem_usage_report_std_heap () {
 
 long int
 Mem_usage_report_keep () {
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   return (long int) pthread_getspecific(key_memusage_keep);
 #else
   return memusage_keep;
@@ -304,7 +317,7 @@ Mem_usage_report_keep () {
 
 long int
 Mem_usage_report_std_stack_max () {
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   return (long int) pthread_getspecific(key_memusage_std_stack_max);
 #else
   return memusage_std_stack_max;
@@ -313,7 +326,7 @@ Mem_usage_report_std_stack_max () {
 
 long int
 Mem_usage_report_std_heap_max () {
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   return (long int) pthread_getspecific(key_memusage_std_heap_max);
 #else
   return memusage_std_heap_max;
@@ -371,7 +384,7 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
   long int memusage_std_heap, memusage_std_heap_max;
   char *threadname;
@@ -382,7 +395,7 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
   ptr = malloc(nbytes);
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   threadname = (char *) pthread_getspecific(key_threadname);
   memusage_std_heap = (long int) pthread_getspecific(key_memusage_std_heap);
   memusage_std_heap += nbytes;
@@ -437,7 +450,7 @@ Mem_alloc (size_t nbytes, const char *file, int line) {
   }
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -454,7 +467,7 @@ Mem_alloc_keep (size_t nbytes, const char *file, int line) {
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
   long int memusage_keep;
   char *threadname;
@@ -465,7 +478,7 @@ Mem_alloc_keep (size_t nbytes, const char *file, int line) {
   ptr = malloc(nbytes);
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   threadname = (char *) pthread_getspecific(key_threadname);
   memusage_keep = (long int) pthread_getspecific(key_memusage_keep);
   memusage_keep += nbytes;
@@ -512,7 +525,7 @@ Mem_alloc_keep (size_t nbytes, const char *file, int line) {
   }
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -527,7 +540,7 @@ Mem_alloc_in (size_t nbytes, const char *file, int line) {
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
 #endif
 #endif
@@ -576,7 +589,7 @@ Mem_alloc_in (size_t nbytes, const char *file, int line) {
   }
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -591,7 +604,7 @@ Mem_alloc_out (size_t nbytes, const char *file, int line) {
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
 #endif
 #endif
@@ -640,7 +653,7 @@ Mem_alloc_out (size_t nbytes, const char *file, int line) {
   }
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -663,7 +676,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
   long int memusage_std_heap, memusage_std_heap_max;
   char *threadname;
@@ -696,7 +709,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   threadname = (char *) pthread_getspecific(key_threadname);
   memusage_std_heap = (long int) pthread_getspecific(key_memusage_std_heap);
   memusage_std_heap += count*nbytes;
@@ -738,7 +751,7 @@ Mem_calloc (size_t count, size_t nbytes, const char *file, int line) {
   }
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -754,7 +767,7 @@ Mem_calloc_keep (size_t count, size_t nbytes, const char *file, int line) {
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
   long int memusage_keep;
   char *threadname;
@@ -787,7 +800,7 @@ Mem_calloc_keep (size_t count, size_t nbytes, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   threadname = (char *) pthread_getspecific(key_threadname);
   memusage_keep = (long int) pthread_getspecific(key_memusage_keep);
   memusage_keep += count*nbytes;
@@ -821,7 +834,7 @@ Mem_calloc_keep (size_t count, size_t nbytes, const char *file, int line) {
   }
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -837,7 +850,7 @@ Mem_calloc_in (size_t count, size_t nbytes, const char *file, int line) {
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
 #endif
 #endif
@@ -895,7 +908,7 @@ Mem_calloc_in (size_t count, size_t nbytes, const char *file, int line) {
   }
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -910,7 +923,7 @@ Mem_calloc_out (size_t count, size_t nbytes, const char *file, int line) {
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
 #endif
 #endif
@@ -968,7 +981,7 @@ Mem_calloc_out (size_t count, size_t nbytes, const char *file, int line) {
   }
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -983,7 +996,7 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
   static struct descriptor *bp;
   unsigned h;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
   long int memusage_std_heap;
   char *threadname;
@@ -1003,7 +1016,7 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
   ptr = calloc(count, nbytes);
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   threadname = (char *) pthread_getspecific(key_threadname);
   memusage_std_heap = (long int) pthread_getspecific(key_memusage_std_heap);
   memusage_std_heap += count*nbytes;
@@ -1020,7 +1033,7 @@ Mem_calloc_no_exception (size_t count, size_t nbytes, const char *file, int line
 #endif
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -1034,7 +1047,7 @@ Mem_free (void *ptr, const char *file, int line) {
   struct descriptor *bp;
   size_t nbytes;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
   long int memusage_std_heap;
   char *threadname;
@@ -1053,7 +1066,7 @@ Mem_free (void *ptr, const char *file, int line) {
       Except_raise(&Mem_Failed, file, line);
     } else {
       nbytes = bp->size;
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
       threadname = (char *) pthread_getspecific(key_threadname);
       memusage_std_heap = (long int) pthread_getspecific(key_memusage_std_heap);
       memusage_std_heap -= nbytes;
@@ -1084,7 +1097,7 @@ Mem_free (void *ptr, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -1099,7 +1112,7 @@ Mem_free_keep (void *ptr, const char *file, int line) {
   struct descriptor *bp;
   size_t nbytes;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
   long int memusage_keep;
   char *threadname;
@@ -1118,7 +1131,7 @@ Mem_free_keep (void *ptr, const char *file, int line) {
       Except_raise(&Mem_Failed, file, line);
     } else {
       nbytes = bp->size;
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
       threadname = (char *) pthread_getspecific(key_threadname);
       memusage_keep = (long int) pthread_getspecific(key_memusage_keep);
       memusage_keep -= nbytes;
@@ -1149,7 +1162,7 @@ Mem_free_keep (void *ptr, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -1164,7 +1177,7 @@ Mem_free_in (void *ptr, const char *file, int line) {
   struct descriptor *bp;
   size_t nbytes;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
 #endif
 #endif
@@ -1205,7 +1218,7 @@ Mem_free_in (void *ptr, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif
@@ -1219,7 +1232,7 @@ Mem_free_out (void *ptr, const char *file, int line) {
   struct descriptor *bp;
   size_t nbytes;
 
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_lock(&memusage_mutex);
 #endif
 #endif
@@ -1260,7 +1273,7 @@ Mem_free_out (void *ptr, const char *file, int line) {
 #endif
 
 #ifdef MEMUSAGE
-#ifdef HAVE_PTHREAD
+#if !defined(USE_MPI) && defined(HAVE_PTHREAD)
   pthread_mutex_unlock(&memusage_mutex);
 #endif
 #endif

@@ -1,6 +1,7 @@
-/* $Id: genome-write.h 132144 2014-04-02 16:02:28Z twu $ */
+/* $Id: genome-write.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef GENOME_WRITE_INCLUDED
 #define GENOME_WRITE_INCLUDED
+
 #include <stdio.h>
 #include "bool.h"
 #include "iit-read-univ.h"

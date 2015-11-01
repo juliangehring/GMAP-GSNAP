@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome-write.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: genome-write.c 168395 2015-06-26 17:13:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -28,7 +28,7 @@ static char rcsid[] = "$Id: genome-write.c 153955 2014-11-24 17:54:45Z twu $";
 #include "compress-write.h"
 #include "iit-write.h"
 #include "complement.h"
-#include "genome.h"		/* For Genome_uncompress_mmap */
+#include "genome.h"		/* For Genome_uncompress_memory */
 
 #define CONTROLM 13		/* From PC */
 
@@ -606,7 +606,7 @@ fill_circular_chromosomes (UINT4 *genomecomp, Univ_IIT_T chromosome_iit, int cir
 
       segment = (char *) CALLOC(seglength+1U,sizeof(char));
       /* Add 1U because procedures below are expecting exclusive coordinates */
-      Genome_uncompress_mmap(segment,genomecomp,orig_startpos,orig_endpos+1U);
+      Genome_uncompress_memory(segment,genomecomp,orig_startpos,orig_endpos+1U); /* not Genome_uncompress_mmap, which does bigendian conversion */
       Compress_update_memory(/*nbadchars*/0,genomecomp,segment,alias_startpos,alias_endpos+1U);
       FREE(segment);
     }

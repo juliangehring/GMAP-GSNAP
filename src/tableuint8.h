@@ -1,6 +1,7 @@
-/* $Id: tableuint8.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: tableuint8.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef TABLEUINT8_INCLUDED
 #define TABLEUINT8_INCLUDED
+
 #include "types.h"
 
 #define T Tableuint8_T

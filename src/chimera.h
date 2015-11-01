@@ -1,4 +1,4 @@
-/* $Id: chimera.h 156812 2015-01-15 20:55:07Z twu $ */
+/* $Id: chimera.h 173168 2015-09-01 18:20:01Z twu $ */
 #ifndef CHIMERA_INCLUDED
 #define CHIMERA_INCLUDED
 
@@ -9,6 +9,7 @@ typedef struct Chimera_T *Chimera_T;
 #include "genome.h"
 #include "stage3.h"
 #include "iit-read-univ.h"
+#include "filestring.h"
 
 
 #define T Chimera_T
@@ -24,7 +25,7 @@ Chimera_equivpos (T this);
 extern int
 Chimera_cdna_direction (T this);
 extern void
-Chimera_print_sam_tag (FILE *fp, T this, Univ_IIT_T chromosome_iit);
+Chimera_print_sam_tag (Filestring_T fp, T this, Univ_IIT_T chromosome_iit);
 extern double
 Chimera_donor_prob (T this);
 extern double
@@ -39,7 +40,7 @@ Chimera_new (Stage3_T from, Stage3_T to, int chimerapos, int chimeraequivpos,
 extern void
 Chimera_free (T *old);
 extern void
-Chimera_print (FILE *fp, T this);
+Chimera_print (Filestring_T fp, T this);
 
 extern int
 Chimera_alignment_break (int *newstart, int *newend, Stage3_T stage3, int queryntlength, double fthreshold);
@@ -53,7 +54,8 @@ Chimera_bestpath (int *five_score, int *three_score, int *chimerapos, int *chime
 		  int queryntlength, int chimera_slop, bool localp);
 extern int
 Chimera_find_breakpoint (int *chimeraequivpos, char *donor1, char *donor2, char *acceptor2, char *acceptor1,
-			 Stage3_T left_part, Stage3_T right_part, int queryntlength, Genome_T genome);
+			 Stage3_T left_part, Stage3_T right_part, int queryntlength, Genome_T genome,
+			 Chrpos_T left_chrlength, Chrpos_T right_chrlength);
 
 #if 0
 extern void

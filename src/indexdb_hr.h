@@ -1,6 +1,7 @@
-/* $Id: indexdb_hr.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: indexdb_hr.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef INDEXDB_HR_INCLUDED
 #define INDEXDB_HR_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "reader.h"

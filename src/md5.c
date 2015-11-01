@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: md5.c 40271 2011-05-28 02:29:18Z twu $";
+static char rcsid[] = "$Id: md5.c 155282 2014-12-12 19:42:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -275,11 +275,11 @@ MD5_compute (unsigned char *input, int input_len) {
 
 
 void
-MD5_print (FILE *fp, unsigned char *digest) {
+MD5_print (Filestring_T fp, unsigned char *digest) {
   int i;
 
   for (i = 0; i < 16; i++) {
-    fprintf(fp,"%02x", digest[i]);
+    FPRINTF(fp,"%02x", digest[i]);
   }
   return;
 }

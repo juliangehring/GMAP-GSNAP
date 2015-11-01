@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read.c 164704 2015-05-01 20:24:48Z twu $";
+static char rcsid[] = "$Id: iit-read.c 164702 2015-05-01 20:22:25Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1413,7 +1413,10 @@ IIT_free (T *old) {
 	FREE((*old)->valueorder);
       }
 
-    } else if ((*old)->access == ALLOCATED) {
+    } else if ((*old)->access == ALLOCATED_PRIVATE) {
+      /* Nothing to close.  IIT must have been created by IIT_new. */
+
+    } else if ((*old)->access == ALLOCATED_SHARED) {
       /* Nothing to close.  IIT must have been created by IIT_new. */
 
     } else {
@@ -5919,7 +5922,7 @@ IIT_typelist (T this) {
 
 /* Assume 0-based index */
 static void
-print_header (FILE *fp, T this, int recno, char *chr, bool map_bothstrands_p,
+print_header (Filestring_T fp, T this, int recno, char *chr, bool map_bothstrands_p,
 	      bool relativep, Chrpos_T left, bool print_comment_p) {
   char *string, *restofheader, *p;
   Interval_T interval;
@@ -5930,36 +5933,36 @@ print_header (FILE *fp, T this, int recno, char *chr, bool map_bothstrands_p,
 
   string = IIT_label(this,recno+1,&allocp);
 
-  fprintf(fp,"\t%s",this->name);
+  FPRINTF(fp,"\t%s",this->name);
 
   interval = &(this->intervals[0][recno]);
   if (relativep == true) {
     if (Interval_sign(interval) >= 0) {
-      fprintf(fp,"\t%u..%u",Interval_low(interval)-left,Interval_high(interval)-left);
+      FPRINTF(fp,"\t%u..%u",Interval_low(interval)-left,Interval_high(interval)-left);
     } else {
-      fprintf(fp,"\t%u..%u",Interval_high(interval)-left,Interval_low(interval)-left);
+      FPRINTF(fp,"\t%u..%u",Interval_high(interval)-left,Interval_low(interval)-left);
     }
   } else {
     if (Interval_sign(interval) >= 0) {
-      fprintf(fp,"\t%s:%u..%u",chr,Interval_low(interval),Interval_high(interval));
+      FPRINTF(fp,"\t%s:%u..%u",chr,Interval_low(interval),Interval_high(interval));
     } else {
-      fprintf(fp,"\t%s:%u..%u",chr,Interval_high(interval),Interval_low(interval));
+      FPRINTF(fp,"\t%s:%u..%u",chr,Interval_high(interval),Interval_low(interval));
     }
   }
 
 #if 0
   if (map_bothstrands_p == true) {
     if ((typeint = Interval_type(interval)) <= 0) {
-      fprintf(fp,"\t\t%s",string);
+      FPRINTF(fp,"\t\t%s",string);
     } else {
-      fprintf(fp,"\t%s\t%s",IIT_typestring(this,typeint),string);
+      FPRINTF(fp,"\t%s\t%s",IIT_typestring(this,typeint),string);
     }
   } else {
 #endif
-    fprintf(fp,"\t");
+    FPRINTF(fp,"\t");
     p = string;
     while (*p != '\0' && *p != '\n') {
-      putc(*p,fp);
+      PUTC(*p,fp);
       p++;
     }
 
@@ -5973,9 +5976,9 @@ print_header (FILE *fp, T this, int recno, char *chr, bool map_bothstrands_p,
 
   if (print_comment_p == true) {
     p = IIT_annotation(&restofheader,this,recno+1,&allocp);
-    fprintf(fp,"\t");
+    FPRINTF(fp,"\t");
     while (*p != '\0' && *p != '\n') {
-      putc(*p,fp);
+      PUTC(*p,fp);
       p++;
     }
 
@@ -5984,14 +5987,14 @@ print_header (FILE *fp, T this, int recno, char *chr, bool map_bothstrands_p,
     }
   }
 
-  fprintf(fp,"\n");
+  FPRINTF(fp,"\n");
 
   return;
 }
 
 
 void
-IIT_print_header (FILE *fp, T this, int *matches, int nmatches, bool map_bothstrands_p,
+IIT_print_header (Filestring_T fp, T this, int *matches, int nmatches, bool map_bothstrands_p,
 		  char *chr, bool reversep, bool relativep, Chrpos_T left,
 		  bool print_comment_p) {
   int recno, i;

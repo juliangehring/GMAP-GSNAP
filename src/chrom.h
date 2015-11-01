@@ -1,6 +1,7 @@
-/* $Id: chrom.h 138522 2014-06-09 17:08:44Z twu $ */
+/* $Id: chrom.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef CHROM_INCLUDED
 #define CHROM_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "types.h"

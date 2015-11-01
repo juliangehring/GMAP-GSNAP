@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: translation.c 130296 2014-03-17 17:16:05Z twu $";
+static char rcsid[] = "$Id: translation.c 155282 2014-12-12 19:42:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2094,7 +2094,7 @@ fill_aa_rev (int *strlen_g, int *strlen_c, int *netchars, char *aa_genomicseg, c
 
 
 static void
-print_mutation (FILE *fp, bool *printp, int aapos, int strlen_g, int strlen_c, int refquerypos,
+print_mutation (Filestring_T fp, bool *printp, int aapos, int strlen_g, int strlen_c, int refquerypos,
 		char *aa_genomicseg, char *aa_queryseq, char *nt_genomicseg, char *nt_queryseq) {
   bool print_refquerypos_p = true;
 #if 0
@@ -2102,24 +2102,24 @@ print_mutation (FILE *fp, bool *printp, int aapos, int strlen_g, int strlen_c, i
 #endif
 
   if (strlen_g > strlen_c) {
-    if (*printp == true) fprintf(fp,", "); else *printp = true;
+    if (*printp == true) FPRINTF(fp,", "); else *printp = true;
     if (aa_genomicseg[0] == aa_queryseq[0]) {
-      fprintf(fp,"del%s%d%s ",&(aa_genomicseg[1]),aapos+1,&(aa_queryseq[1]));
+      FPRINTF(fp,"del%s%d%s ",&(aa_genomicseg[1]),aapos+1,&(aa_queryseq[1]));
       refquerypos += 3;
     } else {
-      fprintf(fp,"del%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
+      FPRINTF(fp,"del%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
     }
   } else if (strlen_g < strlen_c) {
-    if (*printp == true) fprintf(fp,", "); else *printp = true;
+    if (*printp == true) FPRINTF(fp,", "); else *printp = true;
     if (strlen_c - strlen_g > 4) {
-      fprintf(fp,"ins%d+%daa ",aapos,strlen_c-strlen_g);
+      FPRINTF(fp,"ins%d+%daa ",aapos,strlen_c-strlen_g);
 #if 0
       print_nt_p = false;
 #endif
     } else if (aa_genomicseg[0] == aa_queryseq[0]) {
-      fprintf(fp,"ins%s%d%s ",&(aa_genomicseg[1]),aapos,&(aa_queryseq[1]));
+      FPRINTF(fp,"ins%s%d%s ",&(aa_genomicseg[1]),aapos,&(aa_queryseq[1]));
     } else {
-      fprintf(fp,"ins%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
+      FPRINTF(fp,"ins%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
     }
   } else if (aa_genomicseg[0] == 'X' || aa_queryseq[0] == 'X') {
 #if 0
@@ -2127,19 +2127,19 @@ print_mutation (FILE *fp, bool *printp, int aapos, int strlen_g, int strlen_c, i
 #endif
     print_refquerypos_p = false;
   } else {
-    if (*printp == true) fprintf(fp,", "); else *printp = true;
-    fprintf(fp,"%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
+    if (*printp == true) FPRINTF(fp,", "); else *printp = true;
+    FPRINTF(fp,"%s%d%s ",aa_genomicseg,aapos,aa_queryseq);
   }
 #if 0
   if (print_nt_p == true) {
-    fprintf(fp,"(%s>%s) ",nt_genomicseg,nt_queryseq);
+    FPRINTF(fp,"(%s>%s) ",nt_genomicseg,nt_queryseq);
   }
 #endif
   if (print_refquerypos_p == true) {
 #ifdef PMAP
-    fprintf(fp,"[%d]",refquerypos+2);
+    FPRINTF(fp,"[%d]",refquerypos+2);
 #else    
-    fprintf(fp,"[%d]",refquerypos);
+    FPRINTF(fp,"[%d]",refquerypos);
 #endif
   }
   
@@ -2147,25 +2147,25 @@ print_mutation (FILE *fp, bool *printp, int aapos, int strlen_g, int strlen_c, i
 }
 
 static void
-print_large_deletion (FILE *fp, bool *printp, int lastaapos, int nextaapos, int refquerypos) {
+print_large_deletion (Filestring_T fp, bool *printp, int lastaapos, int nextaapos, int refquerypos) {
 
-  if (*printp == true) fprintf(fp,", "); else *printp = true;
-  fprintf(fp,"del%d-%daa ",lastaapos+1,nextaapos-lastaapos-1);
-  fprintf(fp,"[%d]",refquerypos+3);
+  if (*printp == true) FPRINTF(fp,", "); else *printp = true;
+  FPRINTF(fp,"del%d-%daa ",lastaapos+1,nextaapos-lastaapos-1);
+  FPRINTF(fp,"[%d]",refquerypos+3);
   
   return;
 }
 
 
 void
-Translation_print_comparison (FILE *fp, struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
+Translation_print_comparison (Filestring_T fp, struct Pair_T *pairs, int npairs, struct Pair_T *refpairs, int nrefpairs,
 			      int cdna_direction, int relaastart, int relaaend, int maxmutations) {
   int i, j;
   int aapos, strlen_g, strlen_c, netchars;
   bool printp = false;
   char nt_genomicseg[MAXMUT], aa_genomicseg[MAXMUT], nt_queryseq[MAXMUT], aa_queryseq[MAXMUT];
 
-  fprintf(fp,"    Amino acid changes: ");
+  FPRINTF(fp,"    Amino acid changes: ");
 
   if (relaastart < relaaend) {
     if ((aapos = pairs[i=0].aapos) == 0) {
@@ -2214,7 +2214,7 @@ Translation_print_comparison (FILE *fp, struct Pair_T *pairs, int npairs, struct
     }
   }
 
-  fprintf(fp,"\n");
+  FPRINTF(fp,"\n");
 
   return;
 }

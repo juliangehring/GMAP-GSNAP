@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 156817 2015-01-15 21:55:11Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 175547 2015-09-28 21:31:01Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -18,12 +18,20 @@ static char rcsid[] = "$Id: oligoindex_hr.c 156817 2015-01-15 21:55:11Z twu $";
 #include "orderstat.h"
 #include "cmet.h"
 
+#ifdef DEBUG14
+/* Need to change Makefile.am to include oligoindex_old.c and oligoindex_old.h */
+#include "oligoindex_old.h"
+#endif
+
 #ifndef USE_DIAGPOOL
 #include "diag.h"
 #endif
 
 #ifdef HAVE_SSE2
 #include <emmintrin.h>
+#endif
+#ifdef HAVE_SSSE3
+#include <tmmintrin.h>
 #endif
 #ifdef HAVE_SSE4_1
 #include <smmintrin.h>
@@ -33,6 +41,16 @@ static char rcsid[] = "$Id: oligoindex_hr.c 156817 2015-01-15 21:55:11Z twu $";
 #ifdef HAVE_SSE2
 #define USE_SIMD_FOR_COUNTS 1
 #endif
+
+#if !defined(HAVE_SSE2)
+#define INDIVIDUAL_SHIFTS 1
+#elif !defined(HAVE_SSE4_1)
+#define SIMD_MASK_THEN_STORE
+#define EXTRACT(x,i) x[i]
+#else
+#define EXTRACT(x,i) _mm_extract_epi32(x,i)
+#endif
+
 
 #define THETADIFF1 20.0
 #define THETADIFF2 20.0
@@ -64,7 +82,8 @@ struct T {
   int diag_lookback;
   int suffnconsecutive;
 
-  bool query_evaluated_p;
+  /* bool query_evaluated_p; */
+
   Oligospace_T oligospace;
 #ifdef HAVE_SSE2
   __m128i *inquery_allocated;
@@ -76,11 +95,11 @@ struct T {
   Count_T *counts;
 #ifdef PMAP
   int *relevant_counts;
-  bool *overabundant;
 #endif
   Chrpos_T **positions;
+  Chrpos_T *positions_space;
   Chrpos_T **pointers;
-
+  Chrpos_T **pointers_allocated;
 };
 
 struct Oligoindex_array_T {
@@ -136,6 +155,56 @@ struct Oligoindex_array_T {
 #endif
 
 
+#if defined(DEBUG)
+#ifdef HAVE_SSE2
+/* For debugging of SIMD procedures*/
+static void
+print_vector (__m128i x, char *label) {
+  __m128i a[1];
+  unsigned int *s = a;
+
+  _mm_store_si128(a,x);
+  _mm_mfence();
+  printf("%s: %u\n",label,s[0]);
+  printf("%s: %u\n",label,s[1]);
+  printf("%s: %u\n",label,s[2]);
+  printf("%s: %u\n",label,s[3]);
+  return;
+}
+
+/* For debugging of SIMD procedures*/
+static void
+print_counts (__m128i x, char *label) {
+  __m128i a[1];
+  Count_T *s = a;
+
+  _mm_store_si128(a,x);
+  _mm_mfence();
+  printf("%s:",label);
+  printf(" %hd",s[0]);
+  printf(" %hd",s[1]);
+  printf(" %hd",s[2]);
+  printf(" %hd",s[3]);
+  printf(" %hd",s[4]);
+  printf(" %hd",s[5]);
+  printf(" %hd",s[6]);
+  printf(" %hd",s[7]);
+  printf(" %hd",s[8]);
+  printf(" %hd",s[9]);
+  printf(" %hd",s[10]);
+  printf(" %hd",s[11]);
+  printf(" %hd",s[12]);
+  printf(" %hd",s[13]);
+  printf(" %hd",s[14]);
+  printf(" %hd",s[15]);
+  printf("\n");
+  return;
+}
+#endif
+#endif
+
+
+#if !defined(HAVE_SSE2) || !defined(HAVE_SSE4_1) || defined(CHECK_ASSERTIONS)
 static const Genomecomp_T reverse_nt[] = 
 {0x0000,0x4000,0x8000,0xC000,0x1000,0x5000,0x9000,0xD000,
  0x2000,0x6000,0xA000,0xE000,0x3000,0x7000,0xB000,0xF000,
@@ -8330,6 +8399,7 @@ static const Genomecomp_T reverse_nt[] =
  0x0FFF,0x4FFF,0x8FFF,0xCFFF,0x1FFF,0x5FFF,0x9FFF,0xDFFF,
  0x2FFF,0x6FFF,0xAFFF,0xEFFF,0x3FFF,0x7FFF,0xBFFF,0xFFFF,
 };
+#endif
 
 
 
@@ -8360,14 +8430,12 @@ static const Genomecomp_T reverse_nt[] =
 
 #if defined(GSNAP)
 
-/* Have fewer to enable speedup.  Note: Including 7-mers causes an 8x
-   increase in run-time for score_querypos, and including 6-mers causes a
-   30x increase. */
-#define NOLIGOINDICES_MAJOR 1
-static int indexsizes_major[NOLIGOINDICES_MAJOR] = {8};
-static Shortoligomer_T masks_major[NOLIGOINDICES_MAJOR] = {STRAIGHT_MASK_8};
-static int diag_lookbacks_major[NOLIGOINDICES_MAJOR] = {120};
-static int suffnconsecutives_major[NOLIGOINDICES_MAJOR] = {20};
+#define NOLIGOINDICES_MAJOR 3
+static int indexsizes_major[NOLIGOINDICES_MAJOR] = {9, 8, 7};
+static Shortoligomer_T masks_major[NOLIGOINDICES_MAJOR] = {STRAIGHT_MASK_9, STRAIGHT_MASK_8, STRAIGHT_MASK_7};
+static int diag_lookbacks_major[NOLIGOINDICES_MAJOR] = {120, 60, 30};
+static int suffnconsecutives_major[NOLIGOINDICES_MAJOR] = {10, 10, 10};
+/* previously was 20, 15, 10, but with limit of 256 hits, need to be equal */
 
 #define NOLIGOINDICES_MINOR 3
 static int indexsizes_minor[NOLIGOINDICES_MINOR] = {8, 7, 6};
@@ -8379,8 +8447,8 @@ static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {10, 10, 10};
 #else
 
 #define NOLIGOINDICES_MAJOR 3
-static int indexsizes_major[NOLIGOINDICES_MAJOR] = {8, 7, 6};
-static Shortoligomer_T masks_major[NOLIGOINDICES_MAJOR] = {STRAIGHT_MASK_8, STRAIGHT_MASK_7, STRAIGHT_MASK_6};
+static int indexsizes_major[NOLIGOINDICES_MAJOR] = {9, 8, 7};
+static Shortoligomer_T masks_major[NOLIGOINDICES_MAJOR] = {STRAIGHT_MASK_9, STRAIGHT_MASK_8, STRAIGHT_MASK_7};
 static int diag_lookbacks_major[NOLIGOINDICES_MAJOR] = {120, 60, 30};
 static int suffnconsecutives_major[NOLIGOINDICES_MAJOR] = {10, 10, 10};
 /* previously was 20, 15, 10, but with limit of 256 hits, need to be equal */
@@ -8395,7 +8463,7 @@ static int suffnconsecutives_minor[NOLIGOINDICES_MINOR] = {10, 10, 10};
 #endif
 
 
-
+#define MASK9 0x0003FFFF
 #define MASK8 0x0000FFFF
 #define MASK7 0x00003FFF
 #define MASK6 0x00000FFF
@@ -8406,6 +8474,7 @@ static Mode_T mode;
 
 
 #ifdef USE_SIMD_FOR_COUNTS
+static __m128i mask9;
 static __m128i mask8;
 static __m128i mask7;
 static __m128i mask6;
@@ -8418,11 +8487,17 @@ Oligoindex_hr_setup (Genomecomp_T *ref_blocks_in, Mode_T mode_in) {
   ref_blocks = ref_blocks_in;
   mode = mode_in;
 #ifdef USE_SIMD_FOR_COUNTS
+  mask9 = _mm_set1_epi32(262143U);
   mask8 = _mm_set1_epi32(65535U);
   mask7 = _mm_set1_epi32(16383U);
   mask6 = _mm_set1_epi32(4095U);
   mask5 = _mm_set1_epi32(1023U);
 #endif
+
+#ifdef DEBUG14
+  Oligoindex_old_setup(ref_blocks_in,mode_in);
+#endif
+
   return;
 }
 
@@ -8466,7 +8541,7 @@ Oligoindex_new (int indexsize, int diag_lookback, int suffnconsecutive
   new->diag_lookback = diag_lookback;
   new->suffnconsecutive = suffnconsecutive;
 
-  new->query_evaluated_p = false;
+  /* new->query_evaluated_p = false; */
 #ifdef HAVE_SSE2
   new->inquery_allocated = (__m128i *) _mm_malloc(new->oligospace * sizeof(Count_T),16);
   new->counts_allocated = (__m128i *) _mm_malloc(new->oligospace * sizeof(Count_T),16);
@@ -8480,7 +8555,7 @@ Oligoindex_new (int indexsize, int diag_lookback, int suffnconsecutive
 #endif
 
 #ifdef HAVE_SSE2
-  memset((void *) new->inquery,/*false*/0x00,new->oligospace*sizeof(Count_T));
+  memset((void *) new->inquery,INQUERY_FALSE,new->oligospace*sizeof(Count_T));
 #else
   memset((void *) new->inquery,false,new->oligospace*sizeof(bool));
 #endif
@@ -8489,10 +8564,11 @@ Oligoindex_new (int indexsize, int diag_lookback, int suffnconsecutive
 
 #ifdef PMAP
   new->relevant_counts = (int *) CALLOC(new->oligospace,sizeof(int));
-  new->overabundant = (bool *) CALLOC(new->oligospace,sizeof(bool));
 #endif
-  new->positions = (Chrpos_T **) CALLOC(new->oligospace+1,sizeof(Chrpos_T *));
-  new->pointers = (Chrpos_T **) CALLOC(new->oligospace,sizeof(Chrpos_T *));
+  new->pointers_allocated = (Chrpos_T **) MALLOC((new->oligospace+1) * sizeof(Chrpos_T *));
+  new->pointers = &(new->pointers_allocated[1]);
+  new->positions_space = (Chrpos_T *) NULL;
+  new->positions = (Chrpos_T **) MALLOC(new->oligospace * sizeof(Chrpos_T *));
 
   return new;
 }
@@ -8644,7 +8720,7 @@ Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T end
 /*                      87654321 */
 #define LOW_TWO_BITS  0x00000003
 
-#if defined(DEBUG) || defined(DEBUG9)
+#if defined(DEBUG) || defined(DEBUG9) || defined(DEBUG14)
 static char *
 shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
   char *nt;
@@ -8669,19 +8745,25 @@ shortoligo_nt (Shortoligomer_T oligo, int oligosize) {
 }
 #endif
 
-#ifdef DEBUG9
+#ifdef DEBUG
 static void
-dump_positions (Chrpos_T **positions, Count_T *counts, int oligospace, int indexsize) {
+dump_allocations (Chrpos_T **positions, Count_T *counts, int oligospace, int indexsize,
+		  Chrpos_T *positions_space) {
   int i;
   char *nt;
+  Chrpos_T *lastptr = positions_space;
 
-  printf("Entered dump_positions with oligospace %d\n",oligospace);
+  printf("Entered dump_allocations with oligospace %d\n",oligospace);
 
   for (i = 0; i < oligospace; i++) {
     nt = shortoligo_nt(i,indexsize);
-    if (counts[i] >= 1) {
-      printf("Oligo_hr %s => %d entries: %u...%u\n",
-	     nt,counts[i],positions[i][0],positions[i][counts[i]-1]);
+    if (counts[i] == 0) {
+      printf("Oligo_hr %s (%llu) => %u entries\n",
+	     nt,(unsigned long long) i,counts[i]);
+    } else {
+      printf("Oligo_hr %s (%llu) => %u entries: allocation %p (%d entries)\n",
+	     nt,(unsigned long long) i,counts[i],positions[i],positions[i] - lastptr);
+      lastptr = positions[i];
     }
     FREE(nt);
   }
@@ -8690,21 +8772,59 @@ dump_positions (Chrpos_T **positions, Count_T *counts, int oligospace, int index
 }
 #endif
 
+#if defined(DEBUG) || defined(DEBUG9)
+static void
+dump_positions (Chrpos_T **positions, Count_T *counts, Count_T *inquery, int oligospace, int indexsize) {
+  int i;
+  char *nt;
+
+  printf("Entered dump_positions new with oligospace %d\n",oligospace);
+
+  for (i = 0; i < oligospace; i++) {
+    if (inquery[i] == INQUERY_TRUE) {
+      nt = shortoligo_nt(i,indexsize);
+      if (counts[i] == 0) {
+	printf("Oligo_hr %s => 0 entries\n",nt);
+      } else {
+	printf("Oligo_hr %s => %d entries: %u...%u\n",
+	       nt,counts[i],positions[i][0],positions[i][counts[i]-1]);
+      }
+      FREE(nt);
+    }
+  }
+
+  return;
+}
+#endif
+
+
 /************************************************************************
  *   Counting and storage procedures.  We count the number of
  *   occurrences of each oligomer in the genomic region, modulo 256
  *   (because Count_T is an unsigned char).  The allocate_positions
- *   procedure then assigns pointers (which advance) and positions
+ *   procedure then assigns pointers_end (which start at the end of
+ *   each positions block and go backward) and positions
  *   (which stay fixed) based on those counts, except that oligomers
- *   not in the query sequence have their counts set to 0, and no
+ *   not in the query sequence have their counts set to 0, and have no
  *   space allocated.  However, during storage, if a pointer hits the
- *   next position, that must mean that the count cycled past 255.  We
- *   set that count to be 0, so that oligomer is not used by
+ *   beginning of the position block, that must mean that the count cycled
+ *   past 255.  We set that count to be 0, so that oligomer is not used by
  *   Oligomer_get_mappings.  A count greater that 255 is overabundant
- *   and not useful in stage 2.  We would normally check whether
- *   pointers[masked] == positions[masked+1], but by providing
- *   &(positions[1]), we can check pointers[masked] ==
- *   positions[masked] instead.
+ *   and not useful in stage 2.
+ ************************************************************************/
+
+/************************************************************************
+ *   Use SIMD to process 64 k-mers at a time:
+ *      extract_*mers_{fwd|rev}_simd
+ *      count_fwdrev_simd
+ *      store_fwdrev_simd
+ *
+ *   Use a special procedure to compute an odd block of 32 k-mers
+ *      count_*mers_{fwd|rev}
+ *      This procedure can use SIMD if we compute backwards
+ *
+ *   Use a slow procedure to compute the start and end blocks
+ *      count_*mers_{fwd|rev}_partial
  ************************************************************************/
 
 
@@ -8713,44 +8833,163 @@ dump_positions (Chrpos_T **positions, Count_T *counts, int oligospace, int index
  ************************************************************************/
 
 static void
+count_9mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
+			 int startdiscard, int enddiscard) {
+  Genomecomp_T masked;
+  int pos;
+
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 24) {
+    masked = nexthigh_rev >> (78 - 2*pos);
+    masked |= low_rev << (2*pos - 46);
+    masked &= MASK9;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (46 - 2*pos);
+    masked &= MASK9;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 8) {
+    masked = low_rev >> (46 - 2*pos);
+    masked |= high_rev << (2*pos - 14);
+    masked &= MASK9;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (14 - 2*pos);
+    masked &= MASK9;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  return;
+}
+
+static int
+store_9mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
+			 int startdiscard, int enddiscard) {
+  Genomecomp_T masked;
+  int pos;
+
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 24) {
+    masked = nexthigh_rev >> (78 - 2*pos);
+    masked |= low_rev << (2*pos - 46);
+    masked &= MASK9;
+    debug(printf("%d %04X\n",pos,masked));
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (46 - 2*pos);
+    masked &= MASK9;
+    debug(printf("%d %04X\n",pos,masked));
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+    
+  while (pos >= startdiscard && pos >= 8) {
+    masked = low_rev >> (46 - 2*pos);
+    masked |= high_rev << (2*pos - 14);
+    masked &= MASK9;
+    debug(printf("%d %04X\n",pos,masked));
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (14 - 2*pos);
+    masked &= MASK9;
+    debug(printf("%d %04X\n",pos,masked));
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+
+  return chrpos;
+}
+
+
+
+static void
 count_8mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev,
 			 int startdiscard, int enddiscard) {
   Genomecomp_T masked;
   int pos;
 
-  pos = startdiscard;
-  while (pos <= enddiscard && pos <= 8) {
-    masked = high_rev >> (16 - 2*pos);
-    masked &= MASK8;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 15) {
-    masked = low_rev >> (48 - 2*pos);
-    masked |= high_rev << (2*pos - 16);
-    masked &= MASK8;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 24) {
-    masked = low_rev >> (48 - 2*pos);
-    masked &= MASK8;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-    
-  while (pos <= enddiscard && pos <= 31) {
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 25) {
     masked = nexthigh_rev >> (80 - 2*pos);
     masked |= low_rev << (2*pos - 48);
     masked &= MASK8;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (48 - 2*pos);
+    masked &= MASK8;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 9) {
+    masked = low_rev >> (48 - 2*pos);
+    masked |= high_rev << (2*pos - 16);
+    masked &= MASK8;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (16 - 2*pos);
+    masked &= MASK8;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
   }
 
   return;
@@ -8763,67 +9002,67 @@ store_8mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
   Genomecomp_T masked;
   int pos;
 
-  pos = startdiscard;
-  while (pos <= enddiscard && pos <= 8) {
-    masked = high_rev >> (16 - 2*pos);
-    masked &= MASK8;
-    debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 15) {
-    masked = low_rev >> (48 - 2*pos);
-    masked |= high_rev << (2*pos - 16);
-    masked &= MASK8;
-    debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 24) {
-    masked = low_rev >> (48 - 2*pos);
-    masked &= MASK8;
-    debug(printf("%d %04X\n",pos,masked));
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-    
-  while (pos <= enddiscard && pos <= 31) {
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 25) {
     masked = nexthigh_rev >> (80 - 2*pos);
     masked |= low_rev << (2*pos - 48);
     masked &= MASK8;
-    debug(printf("%d %04X\n",pos,masked));
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	debug(printf("Storing masked %u at %u (partial)\n",masked,chrpos));
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos++;
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (48 - 2*pos);
+    masked &= MASK8;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	debug(printf("Storing masked %u at %u (partial)\n",masked,chrpos));
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+    
+  while (pos >= startdiscard && pos >= 9) {
+    masked = low_rev >> (48 - 2*pos);
+    masked |= high_rev << (2*pos - 16);
+    masked &= MASK8;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	debug(printf("Storing masked %u at %u (partial)\n",masked,chrpos));
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (16 - 2*pos);
+    masked &= MASK8;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	debug(printf("Storing masked %u at %u (partial)\n",masked,chrpos));
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
   }
 
   return chrpos;
@@ -8836,41 +9075,41 @@ count_7mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T lo
   Genomecomp_T masked;
   int pos;
 
-  pos = startdiscard;
-  while (pos <= enddiscard && pos <= 9) {
-    masked = high_rev >> (18 - 2*pos);
-    masked &= MASK7;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 15) {
-    masked = low_rev >> (50 - 2*pos);
-    masked |= high_rev << (2*pos - 18);
-    masked &= MASK7;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 25) {
-    masked = low_rev >> (50 - 2*pos);
-    masked &= MASK7;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-    
-  while (pos <= enddiscard && pos <= 31) {
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 26) {
     masked = nexthigh_rev >> (82 - 2*pos);
     masked |= low_rev << (2*pos - 50);
     masked &= MASK7;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
+    pos--;
   }
 
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (50 - 2*pos);
+    masked &= MASK7;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 10) {
+    masked = low_rev >> (50 - 2*pos);
+    masked |= high_rev << (2*pos - 18);
+    masked &= MASK7;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (18 - 2*pos);
+    masked &= MASK7;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+    
   return;
 }
 
@@ -8881,63 +9120,63 @@ store_7mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
   Genomecomp_T masked;
   int pos;
 
-  pos = startdiscard;
-  while (pos <= enddiscard && pos <= 9) {
-    masked = high_rev >> (18 - 2*pos);
-    masked &= MASK7;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 15) {
-    masked = low_rev >> (50 - 2*pos);
-    masked |= high_rev << (2*pos - 18);
-    masked &= MASK7;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 25) {
-    masked = low_rev >> (50 - 2*pos);
-    masked &= MASK7;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-    
-  while (pos <= enddiscard && pos <= 31) {
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 26) {
     masked = nexthigh_rev >> (82 - 2*pos);
     masked |= low_rev << (2*pos - 50);
     masked &= MASK7;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos++;
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (50 - 2*pos);
+    masked &= MASK7;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+    
+  while (pos >= startdiscard && pos >= 10) {
+    masked = low_rev >> (50 - 2*pos);
+    masked |= high_rev << (2*pos - 18);
+    masked &= MASK7;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (18 - 2*pos);
+    masked &= MASK7;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
   }
 
   return chrpos;
@@ -8950,39 +9189,39 @@ count_6mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T lo
   Genomecomp_T masked;
   int pos;
 
-  pos = startdiscard;
-  while (pos <= enddiscard && pos <= 10) {
-    masked = high_rev >> (20 - 2*pos);
-    masked &= MASK6;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 15) {
-    masked = low_rev >> (52 - 2*pos);
-    masked |= high_rev << (2*pos - 20);
-    masked &= MASK6;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 26) {
-    masked = low_rev >> (52 - 2*pos);
-    masked &= MASK6;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-    
-  while (pos <= enddiscard && pos <= 31) {
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 27) {
     masked = nexthigh_rev >> (84 - 2*pos);
     masked |= low_rev << (2*pos - 52);
     masked &= MASK6;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (52 - 2*pos);
+    masked &= MASK6;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+    
+  while (pos >= startdiscard && pos >= 11) {
+    masked = low_rev >> (52 - 2*pos);
+    masked |= high_rev << (2*pos - 20);
+    masked &= MASK6;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (20 - 2*pos);
+    masked &= MASK6;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
   }
 
   return;
@@ -8996,63 +9235,63 @@ store_6mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
   Genomecomp_T masked;
   int pos;
 
-  pos = startdiscard;
-  while (pos <= enddiscard && pos <= 10) {
-    masked = high_rev >> (20 - 2*pos);
-    masked &= MASK6;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 15) {
-    masked = low_rev >> (52 - 2*pos);
-    masked |= high_rev << (2*pos - 20);
-    masked &= MASK6;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 26) {
-    masked = low_rev >> (52 - 2*pos);
-    masked &= MASK6;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-    
-  while (pos <= enddiscard && pos <= 31) {
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 27) {
     masked = nexthigh_rev >> (84 - 2*pos);
     masked |= low_rev << (2*pos - 52);
     masked &= MASK6;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos++;
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (52 - 2*pos);
+    masked &= MASK6;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+    
+  while (pos >= startdiscard && pos >= 11) {
+    masked = low_rev >> (52 - 2*pos);
+    masked |= high_rev << (2*pos - 20);
+    masked &= MASK6;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (20 - 2*pos);
+    masked &= MASK6;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
   }
 
   return chrpos;
@@ -9065,39 +9304,39 @@ count_5mers_fwd_partial (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T lo
   Genomecomp_T masked;
   int pos;
 
-  pos = startdiscard;
-  while (pos <= enddiscard && pos <= 11) {
-    masked = high_rev >> (22 - 2*pos);
-    masked &= MASK5;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 15) {
-    masked = low_rev >> (54 - 2*pos);
-    masked |= high_rev << (2*pos - 22);
-    masked &= MASK5;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 27) {
-    masked = low_rev >> (54 - 2*pos);
-    masked &= MASK5;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
-  }
-    
-  while (pos <= enddiscard && pos <= 31) {
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 28) {
     masked = nexthigh_rev >> (86 - 2*pos);
     masked |= low_rev << (2*pos - 54);
     masked &= MASK5;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos++;
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (54 - 2*pos);
+    masked &= MASK5;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+    
+  while (pos >= startdiscard && pos >= 12) {
+    masked = low_rev >> (54 - 2*pos);
+    masked |= high_rev << (2*pos - 22);
+    masked &= MASK5;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (22 - 2*pos);
+    masked &= MASK5;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos--;
   }
 
   return;
@@ -9111,216 +9350,86 @@ store_5mers_fwd_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
   Genomecomp_T masked;
   int pos;
 
-  pos = startdiscard;
-  while (pos <= enddiscard && pos <= 11) {
-    masked = high_rev >> (22 - 2*pos);
-    masked &= MASK5;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 15) {
-    masked = low_rev >> (54 - 2*pos);
-    masked |= high_rev << (2*pos - 22);
-    masked &= MASK5;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-
-  while (pos <= enddiscard && pos <= 27) {
-    masked = low_rev >> (54 - 2*pos);
-    masked &= MASK5;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos++;
-  }
-    
-  while (pos <= enddiscard && pos <= 31) {
+  pos = enddiscard;
+  while (pos >= startdiscard && pos >= 28) {
     masked = nexthigh_rev >> (86 - 2*pos);
     masked |= low_rev << (2*pos - 54);
     masked &= MASK5;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos++;
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard && pos >= 16) {
+    masked = low_rev >> (54 - 2*pos);
+    masked &= MASK5;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+    
+  while (pos >= startdiscard && pos >= 12) {
+    masked = low_rev >> (54 - 2*pos);
+    masked |= high_rev << (2*pos - 22);
+    masked &= MASK5;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
+  }
+
+  while (pos >= startdiscard) {
+    masked = high_rev >> (22 - 2*pos);
+    masked &= MASK5;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos--;
   }
 
   return chrpos;
 }
 
 
-static void
-count_8mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
-  Genomecomp_T masked, oligo;
+#if 0
+/* Note; for AVX2 and AVX512 */
+/* Variable bit shift right logical (VPSRLVD/Q) */
+_varcount is  16, 14, 12, 10, 8, 6, 4 2 in eight 32-bit quantities in __m256i
+_high_rev is broadcast in eight 32-bit quantities in __m256i
 
-  masked = high_rev >> 16;		/* 0, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("0 %04X => %d\n",masked,counts[masked]));
-  
-  masked = (high_rev >> 14) & MASK8;	/* 1 */
-  counts[masked] += 1;
-  debug(printf("1 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 12) & MASK8;	/* 2 */
-  counts[masked] += 1;
-  debug(printf("2 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 10) & MASK8;	/* 3 */
-  counts[masked] += 1;
-  debug(printf("3 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 8) & MASK8;	/* 4 */
-  counts[masked] += 1;
-  debug(printf("4 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 6) & MASK8;	/* 5 */
-  counts[masked] += 1;
-  debug(printf("5 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 4) & MASK8;	/* 6 */
-  counts[masked] += 1;
-  debug(printf("6 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 2) & MASK8;	/* 7 */
-  counts[masked] += 1;
-  debug(printf("7 %04X => %d\n",masked,counts[masked]));
-
-  masked = high_rev & MASK8;		/* 8 */
-  counts[masked] += 1;
-  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+  _mm256_slrv_epi32(_high_rev,_varcount);
+  Then need to mask
+  (Gather in AVX2)
+  (Scatter in AVX-512)
+#endif
 
 
-  oligo = low_rev >> 18;		/* For 9..15 */
-  oligo |= high_rev << 14;
-
-  masked = (oligo >> 12) & MASK8; /* 9 */
-  counts[masked] += 1;
-  debug(printf("9 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 10) & MASK8; /* 10 */
-  counts[masked] += 1;
-  debug(printf("10 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 8) & MASK8; /* 11 */
-  counts[masked] += 1;
-  debug(printf("11 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK8; /* 12 */
-  counts[masked] += 1;
-  debug(printf("12 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK8; /* 13 */
-  counts[masked] += 1;
-  debug(printf("13 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK8; /* 14 */
-  counts[masked] += 1;
-  debug(printf("14 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK8; /* 15 */
-  counts[masked] += 1;
-  debug(printf("15 %04X => %d\n",masked,counts[masked]));
-
-  masked = low_rev >> 16;		/* 16, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("16 %04X => %d\n",masked,counts[masked]));
-  
-  masked = (low_rev >> 14) & MASK8; /* 17 */
-  counts[masked] += 1;
-  debug(printf("17 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 12) & MASK8; /* 18 */
-  counts[masked] += 1;
-  debug(printf("18 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 10) & MASK8; /* 19 */
-  counts[masked] += 1;
-  debug(printf("19 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 8) & MASK8;	/* 20 */
-  counts[masked] += 1;
-  debug(printf("20 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 6) & MASK8;	/* 21 */
-  counts[masked] += 1;
-  debug(printf("21 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 4) & MASK8;	/* 22 */
-  counts[masked] += 1;
-  debug(printf("22 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 2) & MASK8;	/* 23 */
-  counts[masked] += 1;
-  debug(printf("23 %04X => %d\n",masked,counts[masked]));
-
-  masked = low_rev & MASK8;	/* 24 */
-  counts[masked] += 1;
-  debug(printf("24 %04X => %d\n",masked,counts[masked]));
-
-
-  oligo = nexthigh_rev >> 18;	/* For 25..31 */
-  oligo |= low_rev << 14;
-
-  masked = (oligo >> 12) & MASK8; /* 25 */
-  counts[masked] += 1;
-  debug(printf("25 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 10) & MASK8; /* 26 */
-  counts[masked] += 1;
-  debug(printf("26 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 8) & MASK8; /* 27 */
-  counts[masked] += 1;
-  debug(printf("27 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK8; /* 28 */
-  counts[masked] += 1;
-  debug(printf("28 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK8; /* 29 */
-  counts[masked] += 1;
-  debug(printf("29 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK8; /* 30 */
-  counts[masked] += 1;
-  debug(printf("30 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK8; /* 31 */
-  counts[masked] += 1;
-  debug(printf("31 %04X => %d\n",masked,counts[masked]));
-
-  return;
-}
-
-
-
-#ifdef USE_SIMD_FOR_COUNTS
-/* Fwd and rev procedures differ only in the order of indices */
+#if 0
+  /* Replaced by individual count_*mer_{fwd|rev}_simd procedures */
+  /* array is filled by extract_*mers_{fwd|rev}_simd */
+  /* Fwd and rev procedures differ only in the order of indices */
 static void
 count_fwdrev_simd (Count_T *counts, UINT4 *array) {
   UINT4 *ptr;
@@ -9331,16 +9440,16 @@ count_fwdrev_simd (Count_T *counts, UINT4 *array) {
   debug(printf("Fwd:  0 %04X, 16 %04X, 32 %04X, 48 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
   debug(printf("Rev: 63 %04X, 47 %04X, 31 %04X, 15 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
   counts[*ptr++] += 1;	/* 0 */ /* 63 */
-  counts[*ptr++] += 1;	/* 16 */ /* 47 */
-  counts[*ptr++] += 1;	/* 32 */ /* 31 */
-  counts[*ptr++] += 1;	/* 48 */ /* 15 */
+  counts[*ptr++] += 1;  /* 16 */ /* 47 */
+  counts[*ptr++] += 1; 	/* 32 */ /* 31 */
+  counts[*ptr++] += 1; 	/* 48 */ /* 15 */
 
   debug(printf("Fwd:  1 %04X, 17 %04X, 33 %04X, 49 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
   debug(printf("Rev: 62 %04X, 46 %04X, 30 %04X, 14 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
-  counts[*ptr++] += 1;	/* 1 */ /* 62 */
-  counts[*ptr++] += 1;	/* 17 */ /* 46 */
-  counts[*ptr++] += 1;	/* 33 */ /* 30 */
-  counts[*ptr++] += 1;	/* 49 */ /* 14 */
+  counts[*ptr++] += 1; 	/* 1 */ /* 62 */
+  counts[*ptr++] += 1; 	/* 17 */ /* 46 */
+  counts[*ptr++] += 1; 	/* 33 */ /* 30 */
+  counts[*ptr++] += 1; 	/* 49 */ /* 14 */
 
   debug(printf("Fwd:  2 %04X, 18 %04X, 34 %04X, 50 %04X || ",ptr[0],ptr[1],ptr[2],ptr[3]));
   debug(printf("Rev: 61 %04X, 45 %04X, 29 %04X, 13 %04X\n",ptr[0],ptr[1],ptr[2],ptr[3]));
@@ -9454,593 +9563,2177 @@ store_fwdrev_simd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, C
 		   UINT4 *array) {
   Genomecomp_T masked;
 
-  /* Row 0 */
-  masked = array[0];
+  /* Row 4 */
+  masked = array[63];
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos;
-    }
-  }
-
-  masked = array[4];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 1;
-    }
-  }
-
-  masked = array[8];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 2;
-    }
-  }
-
-  masked = array[12];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 3;
-    }
-  }
-
-  masked = array[16];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 4;
-    }
-  }
-
-  masked = array[20];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 5;
-    }
-  }
-
-  masked = array[24];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 6;
-    }
-  }
-
-  masked = array[28];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 7;
-    }
-  }
-
-  masked = array[32];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 8;
-    }
-  }
-
-  masked = array[36];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 9;
-    }
-  }
-
-  masked = array[40];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 10;
-    }
-  }
-
-  masked = array[44];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 11;
-    }
-  }
-
-  masked = array[48];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 12;
-    }
-  }
-
-  masked = array[52];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 13;
-    }
-  }
-
-  masked = array[56];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 14;
-    }
-  }
-
-  masked = array[60];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 15;
-    }
-  }
-
-  /* Row 1 */
-  masked = array[1];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 16;
-    }
-  }
-
-  masked = array[5];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 17;
-    }
-  }
-
-  masked = array[9];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 18;
-    }
-  }
-
-  masked = array[13];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 19;
-    }
-  }
-
-  masked = array[17];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 20;
-    }
-  }
-
-  masked = array[21];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 21;
-    }
-  }
-
-  masked = array[25];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 22;
-    }
-  }
-
-  masked = array[29];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 23;
-    }
-  }
-
-  masked = array[33];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 24;
-    }
-  }
-
-  masked = array[37];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 25;
-    }
-  }
-
-  masked = array[41];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 26;
-    }
-  }
-
-  masked = array[45];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 27;
-    }
-  }
-
-  masked = array[49];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 28;
-    }
-  }
-
-  masked = array[53];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 29;
-    }
-  }
-
-  masked = array[57];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 30;
-    }
-  }
-
-  masked = array[61];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 31;
-    }
-  }
-
-
-  /* Row 2 */
-  masked = array[2];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 32;
-    }
-  }
-
-  masked = array[6];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 33;
-    }
-  }
-
-  masked = array[10];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 34;
-    }
-  }
-
-  masked = array[14];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 35;
-    }
-  }
-
-  masked = array[18];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 36;
-    }
-  }
-
-  masked = array[22];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 37;
-    }
-  }
-
-  masked = array[26];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 38;
-    }
-  }
-
-  masked = array[30];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 39;
-    }
-  }
-
-  masked = array[34];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 40;
-    }
-  }
-
-  masked = array[38];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 41;
-    }
-  }
-
-  masked = array[42];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 42;
-    }
-  }
-
-  masked = array[46];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 43;
-    }
-  }
-
-  masked = array[50];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 44;
-    }
-  }
-
-  masked = array[54];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 45;
-    }
-  }
-
-  masked = array[58];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 46;
-    }
-  }
-
-  masked = array[62];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 47;
-    }
-  }
-
-
-  /* Row 3 */
-  masked = array[3];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 48;
-    }
-  }
-
-  masked = array[7];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 49;
-    }
-  }
-
-  masked = array[11];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 50;
-    }
-  }
-
-  masked = array[15];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 51;
-    }
-  }
-
-  masked = array[19];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 52;
-    }
-  }
-
-  masked = array[23];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 53;
-    }
-  }
-
-  masked = array[27];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 54;
-    }
-  }
-
-  masked = array[31];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 55;
-    }
-  }
-
-  masked = array[35];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 56;
-    }
-  }
-
-  masked = array[39];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 57;
-    }
-  }
-
-  masked = array[43];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 58;
-    }
-  }
-
-  masked = array[47];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 59;
-    }
-  }
-
-  masked = array[51];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 60;
-    }
-  }
-
-  masked = array[55];
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 61;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos));
+      *(--pointers[masked]) = chrpos;
     }
   }
 
   masked = array[59];
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 62;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 1));
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = array[63];
+  masked = array[55];
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 63;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 2));
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  return chrpos + 64;
+  masked = array[51];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 3));
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+  masked = array[47];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 4));
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = array[43];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 5));
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = array[39];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 6));
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = array[35];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 7));
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = array[31];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 8));
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = array[27];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 9));
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = array[23];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 10));
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = array[19];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 11));
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = array[15];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 12));
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = array[11];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 13));
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = array[7];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 14));
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = array[3];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 15));
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+
+  /* Row 3 */
+  masked = array[62];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 16));
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = array[58];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 17));
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = array[54];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 18));
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = array[50];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 19));
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = array[46];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 20));
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = array[42];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 21));
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = array[38];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 22));
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = array[34];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 23));
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = array[30];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 24));
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = array[26];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 25));
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = array[22];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 26));
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = array[18];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 27));
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = array[14];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 28));
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = array[10];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 29));
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = array[6];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 30));
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = array[2];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 31));
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+
+
+  /* Row 1 */
+  masked = array[61];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 32));
+      *(--pointers[masked]) = chrpos - 32;
+    }
+  }
+
+  masked = array[57];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 33));
+      *(--pointers[masked]) = chrpos - 33;
+    }
+  }
+
+  masked = array[53];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 34));
+      *(--pointers[masked]) = chrpos - 34;
+    }
+  }
+
+  masked = array[49];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 35));
+      *(--pointers[masked]) = chrpos - 35;
+    }
+  }
+
+  masked = array[45];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 36));
+      *(--pointers[masked]) = chrpos - 36;
+    }
+  }
+
+  masked = array[41];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 37));
+      *(--pointers[masked]) = chrpos - 37;
+    }
+  }
+
+  masked = array[37];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 38));
+      *(--pointers[masked]) = chrpos - 38;
+    }
+  }
+
+  masked = array[33];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 39));
+      *(--pointers[masked]) = chrpos - 39;
+    }
+  }
+
+  masked = array[29];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 40));
+      *(--pointers[masked]) = chrpos - 40;
+    }
+  }
+
+  masked = array[25];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 41));
+      *(--pointers[masked]) = chrpos - 41;
+    }
+  }
+
+  masked = array[21];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 42));
+      *(--pointers[masked]) = chrpos - 42;
+    }
+  }
+
+  masked = array[17];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 43));
+      *(--pointers[masked]) = chrpos - 43;
+    }
+  }
+
+  masked = array[13];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 44));
+      *(--pointers[masked]) = chrpos - 44;
+    }
+  }
+
+  masked = array[9];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 45));
+      *(--pointers[masked]) = chrpos - 45;
+    }
+  }
+
+  masked = array[5];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 46));
+      *(--pointers[masked]) = chrpos - 46;
+    }
+  }
+
+  masked = array[1];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 47));
+      *(--pointers[masked]) = chrpos - 47;
+    }
+  }
+
+
+  /* Row 0 */
+  masked = array[60];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 48));
+      *(--pointers[masked]) = chrpos - 48;
+    }
+  }
+
+  masked = array[56];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 49));
+      *(--pointers[masked]) = chrpos - 49;
+    }
+  }
+
+  masked = array[52];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 50));
+      *(--pointers[masked]) = chrpos - 50;
+    }
+  }
+
+  masked = array[48];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 51));
+      *(--pointers[masked]) = chrpos - 51;
+    }
+  }
+
+  masked = array[44];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 52));
+      *(--pointers[masked]) = chrpos - 52;
+    }
+  }
+
+  masked = array[40];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 53));
+      *(--pointers[masked]) = chrpos - 53;
+    }
+  }
+
+  masked = array[36];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 54));
+      *(--pointers[masked]) = chrpos - 54;
+    }
+  }
+
+  masked = array[32];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 55));
+      *(--pointers[masked]) = chrpos - 55;
+    }
+  }
+
+  masked = array[28];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 56));
+      *(--pointers[masked]) = chrpos - 56;
+    }
+  }
+
+  masked = array[24];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 57));
+      *(--pointers[masked]) = chrpos - 57;
+    }
+  }
+
+  masked = array[20];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 58));
+      *(--pointers[masked]) = chrpos - 58;
+    }
+  }
+
+  masked = array[16];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 59));
+      *(--pointers[masked]) = chrpos - 59;
+    }
+  }
+
+  masked = array[12];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 60));
+      *(--pointers[masked]) = chrpos - 60;
+    }
+  }
+
+  masked = array[8];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 61));
+      *(--pointers[masked]) = chrpos - 61;
+    }
+  }
+
+  masked = array[4];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 62));
+      *(--pointers[masked]) = chrpos - 62;
+    }
+  }
+
+  masked = array[0];
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 63));
+      *(--pointers[masked]) = chrpos - 63;
+    }
+  }
+
+  return chrpos - 64;
 }
 #endif
 
 
+
+static void
+count_9mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
+
+
+  oligo = nexthigh_rev >> 16;	/* For 31..24 */
+  oligo |= low_rev << 16;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK9; /* 31 */
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK9; /* 30 */
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK9; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK9; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK9; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK9; /* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 12) & MASK9; /* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 14) & MASK9; /* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK9;	/* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 2) & MASK9;	/* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 4) & MASK9;	/* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 6) & MASK9;	/* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 8) & MASK9; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 10) & MASK9; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 12) & MASK9; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rev >> 14;		/* 16, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rev >> 16;		/* For 15..8 */
+  oligo |= high_rev << 16;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK9; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK9; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK9; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK9; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK9; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK9; /* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 12) & MASK9; /* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 14) & MASK9; /* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK9;		/* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 2) & MASK9;	/* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 4) & MASK9;	/* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 6) & MASK9;	/* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 8) & MASK9;	/* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 10) & MASK9;	/* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 12) & MASK9;	/* 1 */
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rev >> 14;		/* 0, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+#endif
+
+  return;
+}
+
+
+/* Expecting current to have {high0_rev, low0_rev, high1_rev,
+   low1_rev}, and next to have {low0_rev, high1_rev, low1_rev, and
+   high2_rev} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_9mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,14)); /* No mask necessary */
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask9));
+  _mm_store_si128(out++, _mm_and_si128( current, mask9));
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,16), _mm_slli_epi32(current,16));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,14), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,12), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,10), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,8), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask9));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask9));
+
+  return;
+}
+
+static void
+count_9mers_fwd_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,14)); /* No mask necessary */
+  counts[array[0]] += 1;	/* 0 */
+  counts[array[1]] += 1;	/* 16 */
+  counts[array[2]] += 1; 	/* 32 */
+  counts[array[3]] += 1; 	/* 48 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask9));
+  counts[array[0]] += 1; 	/* 1 */
+  counts[array[1]] += 1; 	/* 17 */
+  counts[array[2]] += 1; 	/* 33 */
+  counts[array[3]] += 1; 	/* 49 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask9));
+  counts[array[0]] += 1;	/* 2 */
+  counts[array[1]] += 1;	/* 18 */
+  counts[array[2]] += 1;	/* 34 */
+  counts[array[3]] += 1;	/* 50 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask9));
+  counts[array[0]] += 1;	/* 3 */
+  counts[array[1]] += 1;	/* 19 */
+  counts[array[2]] += 1;	/* 35 */
+  counts[array[3]] += 1;	/* 51 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask9));
+  counts[array[0]] += 1;	/* 4 */
+  counts[array[1]] += 1;	/* 20 */
+  counts[array[2]] += 1;	/* 36 */
+  counts[array[3]] += 1;	/* 52 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask9));
+  counts[array[0]] += 1;	/* 5 */
+  counts[array[1]] += 1;	/* 21 */
+  counts[array[2]] += 1;	/* 37 */
+  counts[array[3]] += 1;	/* 53 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask9));
+  counts[array[0]] += 1;	/* 6 */
+  counts[array[1]] += 1;	/* 22 */
+  counts[array[2]] += 1;	/* 38 */
+  counts[array[3]] += 1;	/* 54 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask9));
+  counts[array[0]] += 1;	/* 7 */
+  counts[array[1]] += 1;	/* 23 */
+  counts[array[2]] += 1;	/* 39 */
+  counts[array[3]] += 1;	/* 55 */
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,16), _mm_slli_epi32(current,16));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,14), mask9));
+  counts[array[0]] += 1;	/* 8 */
+  counts[array[1]] += 1;	/* 24 */
+  counts[array[2]] += 1;	/* 40 */
+  counts[array[3]] += 1;	/* 56 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,12), mask9));
+  counts[array[0]] += 1;	/* 9 */
+  counts[array[1]] += 1;	/* 25 */
+  counts[array[2]] += 1;	/* 41 */
+  counts[array[3]] += 1;	/* 57 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,10), mask9));
+  counts[array[0]] += 1;	/* 10 */
+  counts[array[1]] += 1;	/* 26 */
+  counts[array[2]] += 1;	/* 42 */
+  counts[array[3]] += 1;	/* 58 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,8), mask9));
+  counts[array[0]] += 1;	/* 11 */
+  counts[array[1]] += 1;	/* 27 */
+  counts[array[2]] += 1;	/* 43 */
+  counts[array[3]] += 1;	/* 59 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask9));
+  counts[array[0]] += 1;	/* 12 */
+  counts[array[1]] += 1;	/* 28 */
+  counts[array[2]] += 1;	/* 44 */
+  counts[array[3]] += 1;	/* 60 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask9));
+  counts[array[0]] += 1;	/* 13 */
+  counts[array[1]] += 1;	/* 29 */
+  counts[array[2]] += 1;	/* 45 */
+  counts[array[3]] += 1;	/* 61 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask9));
+  counts[array[0]] += 1;	/* 14 */
+  counts[array[1]] += 1;	/* 30 */
+  counts[array[2]] += 1;	/* 46 */
+  counts[array[3]] += 1;	/* 62 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask9));
+  counts[array[0]] += 1;	/* 15 */
+  counts[array[1]] += 1;	/* 31 */
+  counts[array[2]] += 1;	/* 47 */
+  counts[array[3]] += 1;	/* 63 */
+
+  return;
+}
+#endif
+
+
+static int
+store_9mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
+
+
+  oligo = nexthigh_rev >> 16;	/* For 31..24 */
+  oligo |= low_rev << 16;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK9; /* 31 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK9; /* 30 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK9; /* 29 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK9; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK9; /* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK9; /* 26 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = (oligo >> 12) & MASK9; /* 25 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = (oligo >> 14) & MASK9; /* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK9;	/* 23 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = (low_rev >> 2) & MASK9;	/* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = (low_rev >> 4) & MASK9;	/* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = (low_rev >> 6) & MASK9;	/* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = (low_rev >> 8) & MASK9; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (low_rev >> 10) & MASK9; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (low_rev >> 12) & MASK9; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = low_rev >> 14;		/* 16, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+#endif
+
+
+  oligo = low_rev >> 16;		/* For 15..8 */
+  oligo |= high_rev << 16;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK9; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK9; /* 14 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK9; /* 13 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK9; /* 12 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK9; /* 11 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK9; /* 10 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = (oligo >> 12) & MASK9; /* 9 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = (oligo >> 14) & MASK9; /* 9 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK9;		/* 7 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = (high_rev >> 2) & MASK9;	/* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = (high_rev >> 4) & MASK9;	/* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = (high_rev >> 6) & MASK9;	/* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (high_rev >> 8) & MASK9;	/* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (high_rev >> 10) & MASK9;	/* 2 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (high_rev >> 12) & MASK9;	/* 1 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = high_rev >> 14;		/* 0, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
+}
+
+
+
+static void
+count_8mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
+  Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
+
+
+  oligo = nexthigh_rev >> 18;	/* For 31..25 */
+  oligo |= low_rev << 14;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK8; /* 31 */
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK8; /* 30 */
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK8; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK8; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK8; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK8; /* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 12) & MASK8; /* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK8;	/* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 2) & MASK8;	/* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 4) & MASK8;	/* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 6) & MASK8;	/* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 8) & MASK8;	/* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 10) & MASK8; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 12) & MASK8; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 14) & MASK8; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rev >> 16;		/* 16, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+  
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+
+  masked = low_rev >> 16;		/* 16, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rev >> 18;		/* For 15..9 */
+  oligo |= high_rev << 14;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK8; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK8; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK8; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK8; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK8; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK8; /* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 12) & MASK8; /* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK8;		/* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 2) & MASK8;	/* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 4) & MASK8;	/* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 6) & MASK8;	/* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+ 
+  masked = (high_rev >> 8) & MASK8;	/* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 10) & MASK8;	/* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 12) & MASK8;	/* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 14) & MASK8;	/* 1 */
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rev >> 16;		/* 0, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+  
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+
+  masked = high_rev >> 16;		/* 0, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+#endif
+
+  return;
+}
 
 /* Expecting current to have {high0_rev, low0_rev, high1_rev,
    low1_rev}, and next to have {low0_rev, high1_rev, low1_rev, and
@@ -10071,6 +11764,112 @@ extract_8mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
 
   return;
 }
+
+static void
+count_8mers_fwd_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,16)); /* No mask necessary */
+  counts[array[0]] += 1;	/* 0 */
+  counts[array[1]] += 1;	/* 16 */
+  counts[array[2]] += 1; 	/* 32 */
+  counts[array[3]] += 1; 	/* 48 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,14), mask8));
+  counts[array[0]] += 1; 	/* 1 */
+  counts[array[1]] += 1; 	/* 17 */
+  counts[array[2]] += 1; 	/* 33 */
+  counts[array[3]] += 1; 	/* 49 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask8));
+  counts[array[0]] += 1;	/* 2 */
+  counts[array[1]] += 1;	/* 18 */
+  counts[array[2]] += 1;	/* 34 */
+  counts[array[3]] += 1;	/* 50 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask8));
+  counts[array[0]] += 1;	/* 3 */
+  counts[array[1]] += 1;	/* 19 */
+  counts[array[2]] += 1;	/* 35 */
+  counts[array[3]] += 1;	/* 51 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask8));
+  counts[array[0]] += 1;	/* 4 */
+  counts[array[1]] += 1;	/* 20 */
+  counts[array[2]] += 1;	/* 36 */
+  counts[array[3]] += 1;	/* 52 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask8));
+  counts[array[0]] += 1;	/* 5 */
+  counts[array[1]] += 1;	/* 21 */
+  counts[array[2]] += 1;	/* 37 */
+  counts[array[3]] += 1;	/* 53 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask8));
+  counts[array[0]] += 1;	/* 6 */
+  counts[array[1]] += 1;	/* 22 */
+  counts[array[2]] += 1;	/* 38 */
+  counts[array[3]] += 1;	/* 54 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask8));
+  counts[array[0]] += 1;	/* 7 */
+  counts[array[1]] += 1;	/* 23 */
+  counts[array[2]] += 1;	/* 39 */
+  counts[array[3]] += 1;	/* 55 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask8));
+  counts[array[0]] += 1;	/* 8 */
+  counts[array[1]] += 1;	/* 24 */
+  counts[array[2]] += 1;	/* 40 */
+  counts[array[3]] += 1;	/* 56 */
+
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,18), _mm_slli_epi32(current,14));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,12), mask8));
+  counts[array[0]] += 1;	/* 9 */
+  counts[array[1]] += 1;	/* 25 */
+  counts[array[2]] += 1;	/* 41 */
+  counts[array[3]] += 1;	/* 57 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,10), mask8));
+  counts[array[0]] += 1;	/* 10 */
+  counts[array[1]] += 1;	/* 26 */
+  counts[array[2]] += 1;	/* 42 */
+  counts[array[3]] += 1;	/* 58 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,8), mask8));
+  counts[array[0]] += 1;	/* 11 */
+  counts[array[1]] += 1;	/* 27 */
+  counts[array[2]] += 1;	/* 43 */
+  counts[array[3]] += 1;	/* 59 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask8));
+  counts[array[0]] += 1;	/* 12 */
+  counts[array[1]] += 1;	/* 28 */
+  counts[array[2]] += 1;	/* 44 */
+  counts[array[3]] += 1;	/* 60 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask8));
+  counts[array[0]] += 1;	/* 13 */
+  counts[array[1]] += 1;	/* 29 */
+  counts[array[2]] += 1;	/* 45 */
+  counts[array[3]] += 1;	/* 61 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask8));
+  counts[array[0]] += 1;	/* 14 */
+  counts[array[1]] += 1;	/* 30 */
+  counts[array[2]] += 1;	/* 46 */
+  counts[array[3]] += 1;	/* 62 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask8));
+  counts[array[0]] += 1;	/* 15 */
+  counts[array[1]] += 1;	/* 31 */
+  counts[array[2]] += 1;	/* 47 */
+  counts[array[3]] += 1;	/* 63 */
+
+  return;
+}
 #endif
 
 
@@ -10078,305 +11877,738 @@ static int
 store_8mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  masked = high_rev >> 16;		/* 0, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos;
-    }
-  }
-  
-  masked = (high_rev >> 14) & MASK8;	/* 1 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 1;
-    }
-  }
 
-  masked = (high_rev >> 12) & MASK8;	/* 2 */
+  oligo = nexthigh_rev >> 18;	/* For 31..25 */
+  oligo |= low_rev << 14;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK8; /* 31 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 2;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos));
+      *(--pointers[masked]) = chrpos;
     }
   }
 
-  masked = (high_rev >> 10) & MASK8;	/* 3 */
+  masked = (oligo >> 2) & MASK8; /* 30 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 3;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 1));
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = (high_rev >> 8) & MASK8;	/* 4 */
+  masked = (oligo >> 4) & MASK8; /* 29 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 4;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 2));
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  masked = (high_rev >> 6) & MASK8;	/* 5 */
+  masked = (oligo >> 6) & MASK8; /* 28 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 5;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 3));
+      *(--pointers[masked]) = chrpos - 3;
     }
   }
 
-  masked = (high_rev >> 4) & MASK8;	/* 6 */
+  masked = (oligo >> 8) & MASK8; /* 27 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 6;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 4));
+      *(--pointers[masked]) = chrpos - 4;
     }
   }
 
-  masked = (high_rev >> 2) & MASK8;	/* 7 */
+  masked = (oligo >> 10) & MASK8; /* 26 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 7;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 5));
+      *(--pointers[masked]) = chrpos - 5;
     }
   }
 
-  masked = high_rev & MASK8;		/* 8 */
+  masked = (oligo >> 12) & MASK8; /* 25 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 8;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 6));
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos));
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 1));
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 2));
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 3));
+      *(--pointers[masked]) = chrpos - 3;
     }
   }
 
 
-  oligo = low_rev >> 18;		/* For 9..15 */
-  oligo |= high_rev << 14;
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
 
-  masked = (oligo >> 12) & MASK8; /* 9 */
+  masked = EXTRACT(_masked,0);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 9;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 4));
+      *(--pointers[masked]) = chrpos - 4;
     }
   }
 
-  masked = (oligo >> 10) & MASK8; /* 10 */
+  masked = EXTRACT(_masked,1);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 10;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 5));
+      *(--pointers[masked]) = chrpos - 5;
     }
   }
 
-  masked = (oligo >> 8) & MASK8; /* 11 */
+  masked = EXTRACT(_masked,2);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 11;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 6));
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK8;	/* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 7));
+      *(--pointers[masked]) = chrpos - 7;
     }
   }
 
-  masked = (oligo >> 6) & MASK8; /* 12 */
+  masked = (low_rev >> 2) & MASK8;	/* 23 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 12;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 8));
+      *(--pointers[masked]) = chrpos - 8;
     }
   }
 
-  masked = (oligo >> 4) & MASK8; /* 13 */
+  masked = (low_rev >> 4) & MASK8;	/* 22 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 13;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 9));
+      *(--pointers[masked]) = chrpos - 9;
     }
   }
 
-  masked = (oligo >> 2) & MASK8; /* 14 */
+  masked = (low_rev >> 6) & MASK8;	/* 21 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 14;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 10));
+      *(--pointers[masked]) = chrpos - 10;
     }
   }
 
-  masked = oligo & MASK8; /* 15 */
+  masked = (low_rev >> 8) & MASK8;	/* 20 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 15;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 11));
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = (low_rev >> 10) & MASK8; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 12));
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (low_rev >> 12) & MASK8; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 13));
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (low_rev >> 14) & MASK8; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 14));
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = low_rev >> 16;		/* 16, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 15));
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 7));
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 8));
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 9));
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 10));
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 11));
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 12));
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 13));
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 14));
+      *(--pointers[masked]) = chrpos - 14;
     }
   }
 
 
   masked = low_rev >> 16;		/* 16, No mask necessary */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 16;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 15));
+      *(--pointers[masked]) = chrpos - 15;
     }
   }
-  
-  masked = (low_rev >> 14) & MASK8; /* 17 */
+#endif
+
+
+  oligo = low_rev >> 18;		/* For 9..15 */
+  oligo |= high_rev << 14;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK8; /* 15 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 17;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 16));
+      *(--pointers[masked]) = chrpos - 16;
     }
   }
 
-  masked = (low_rev >> 12) & MASK8; /* 18 */
+  masked = (oligo >> 2) & MASK8; /* 14 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 18;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 17));
+      *(--pointers[masked]) = chrpos - 17;
     }
   }
 
-  masked = (low_rev >> 10) & MASK8; /* 19 */
+  masked = (oligo >> 4) & MASK8; /* 13 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 19;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 18));
+      *(--pointers[masked]) = chrpos - 18;
     }
   }
 
-  masked = (low_rev >> 8) & MASK8;	/* 20 */
+  masked = (oligo >> 6) & MASK8; /* 12 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 20;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 19));
+      *(--pointers[masked]) = chrpos - 19;
     }
   }
 
-  masked = (low_rev >> 6) & MASK8;	/* 21 */
+  masked = (oligo >> 8) & MASK8; /* 11 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 21;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 20));
+      *(--pointers[masked]) = chrpos - 20;
     }
   }
 
-  masked = (low_rev >> 4) & MASK8;	/* 22 */
+  masked = (oligo >> 10) & MASK8; /* 10 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 22;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 21));
+      *(--pointers[masked]) = chrpos - 21;
     }
   }
 
-  masked = (low_rev >> 2) & MASK8;	/* 23 */
+  masked = (oligo >> 12) & MASK8; /* 9 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 23;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 22));
+      *(--pointers[masked]) = chrpos - 22;
     }
   }
 
-  masked = low_rev & MASK8;	/* 24 */
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 24;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 16));
+      *(--pointers[masked]) = chrpos - 16;
     }
   }
 
-
-  oligo = nexthigh_rev >> 18;	/* For 25..31 */
-  oligo |= low_rev << 14;
-
-  masked = (oligo >> 12) & MASK8; /* 25 */
+  masked = EXTRACT(_masked,1);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 25;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 17));
+      *(--pointers[masked]) = chrpos - 17;
     }
   }
 
-  masked = (oligo >> 10) & MASK8; /* 26 */
+  masked = EXTRACT(_masked,2);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 26;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 18));
+      *(--pointers[masked]) = chrpos - 18;
     }
   }
 
-  masked = (oligo >> 8) & MASK8; /* 27 */
+  masked = EXTRACT(_masked,3);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 27;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 19));
+      *(--pointers[masked]) = chrpos - 19;
     }
   }
 
-  masked = (oligo >> 6) & MASK8; /* 28 */
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 28;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 20));
+      *(--pointers[masked]) = chrpos - 20;
     }
   }
 
-  masked = (oligo >> 4) & MASK8; /* 29 */
+  masked = EXTRACT(_masked,1);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 29;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 21));
+      *(--pointers[masked]) = chrpos - 21;
     }
   }
 
-  masked = (oligo >> 2) & MASK8; /* 30 */
+  masked = EXTRACT(_masked,2);
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 30;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 22));
+      *(--pointers[masked]) = chrpos - 22;
     }
   }
+#endif
 
-  masked = oligo & MASK8; /* 31 */
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK8;		/* 8 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 31;
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 23));
+      *(--pointers[masked]) = chrpos - 23;
     }
   }
 
-  return chrpos + 32;
+  masked = (high_rev >> 2) & MASK8;	/* 7 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 24));
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = (high_rev >> 4) & MASK8;	/* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 25));
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = (high_rev >> 6) & MASK8;	/* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 26));
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = (high_rev >> 8) & MASK8;	/* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 27));
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (high_rev >> 10) & MASK8;	/* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 28));
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (high_rev >> 12) & MASK8;	/* 2 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 29));
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (high_rev >> 14) & MASK8;	/* 1 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 30));
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = high_rev >> 16;		/* 0, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 31));
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 23));
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 24));
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 25));
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 26));
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 27));
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 28));
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 29));
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 30));
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = high_rev >> 16;		/* 0, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      debug(printf("Storing masked %u at %u\n",masked,chrpos - 31));
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
 }
 
 
@@ -10384,143 +12616,367 @@ store_8mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
 static void
 count_7mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
-
-  masked = high_rev >> 18;		/* 0, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("0 %04X => %d\n",masked,counts[masked]));
-  
-  masked = (high_rev >> 16) & MASK7;	/* 1 */
-  counts[masked] += 1;
-  debug(printf("1 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 14) & MASK7;	/* 2 */
-  counts[masked] += 1;
-  debug(printf("2 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 12) & MASK7;	/* 3 */
-  counts[masked] += 1;
-  debug(printf("3 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 10) & MASK7;	/* 4 */
-  counts[masked] += 1;
-  debug(printf("4 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 8) & MASK7;	/* 5 */
-  counts[masked] += 1;
-  debug(printf("5 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 6) & MASK7;	/* 6 */
-  counts[masked] += 1;
-  debug(printf("6 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 4) & MASK7;	/* 7 */
-  counts[masked] += 1;
-  debug(printf("7 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 2) & MASK7; /* 8 */
-  counts[masked] += 1;
-  debug(printf("8 %04X => %d\n",masked,counts[masked]));
-
-  masked = high_rev & MASK7;	/* 9 */
-  counts[masked] += 1;
-  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
 
-  oligo = low_rev >> 20;	/* For 10..15 */
-  oligo |= high_rev << 12;
-
-  masked = (oligo >> 10) & MASK7; /* 10 */
-  counts[masked] += 1;
-  debug(printf("10 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 8) & MASK7; /* 11 */
-  counts[masked] += 1;
-  debug(printf("11 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK7; /* 12 */
-  counts[masked] += 1;
-  debug(printf("12 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK7; /* 13 */
-  counts[masked] += 1;
-  debug(printf("13 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK7; /* 14 */
-  counts[masked] += 1;
-  debug(printf("14 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK7; /* 15 */
-  counts[masked] += 1;
-  debug(printf("15 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = low_rev >> 18;		/* 16, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("16 %04X => %d\n",masked,counts[masked]));
-  
-  masked = (low_rev >> 16) & MASK7; /* 17 */
-  counts[masked] += 1;
-  debug(printf("17 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 14) & MASK7; /* 18 */
-  counts[masked] += 1;
-  debug(printf("18 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 12) & MASK7; /* 19 */
-  counts[masked] += 1;
-  debug(printf("19 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 10) & MASK7;	/* 20 */
-  counts[masked] += 1;
-  debug(printf("20 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 8) & MASK7;	/* 21 */
-  counts[masked] += 1;
-  debug(printf("21 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 6) & MASK7;	/* 22 */
-  counts[masked] += 1;
-  debug(printf("22 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 4) & MASK7;	/* 23 */
-  counts[masked] += 1;
-  debug(printf("23 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 2) & MASK7;	/* 24 */
-  counts[masked] += 1;
-  debug(printf("24 %04X => %d\n",masked,counts[masked]));
-
-  masked = low_rev & MASK7;	/* 25 */
-  counts[masked] += 1;
-  debug(printf("25 %04X => %d\n",masked,counts[masked]));
-
-
-  oligo = nexthigh_rev >> 20;	/* For 26..31 */
+  oligo = nexthigh_rev >> 20;	/* For 31..26 */
   oligo |= low_rev << 12;
 
-  masked = (oligo >> 10) & MASK7; /* 26 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK7; /* 31 */
   counts[masked] += 1;
-  debug(printf("26 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 8) & MASK7; /* 27 */
-  counts[masked] += 1;
-  debug(printf("27 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK7; /* 28 */
-  counts[masked] += 1;
-  debug(printf("28 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK7; /* 29 */
-  counts[masked] += 1;
-  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
 
   masked = (oligo >> 2) & MASK7; /* 30 */
   counts[masked] += 1;
   debug(printf("30 %04X => %d\n",masked,counts[masked]));
 
-  masked = oligo & MASK7; /* 31 */
+  masked = (oligo >> 4) & MASK7; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK7; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK7; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK7; /* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
   counts[masked] += 1;
   debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK7;	/* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 2) & MASK7;	/* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 4) & MASK7;	/* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 6) & MASK7;	/* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 8) & MASK7;	/* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 10) & MASK7;	/* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 12) & MASK7; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 14) & MASK7; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 16) & MASK7; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rev >> 18;		/* 16, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rev >> 20;	/* For 15..10 */
+  oligo |= high_rev << 12;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK7; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK7; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK7; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK7; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK7; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK7; /* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK7;	/* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 2) & MASK7; /* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 4) & MASK7;	/* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 6) & MASK7;	/* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 8) & MASK7;	/* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 10) & MASK7;	/* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 12) & MASK7;	/* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 14) & MASK7;	/* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 16) & MASK7;	/* 1 */
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rev >> 18;		/* 0, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+#endif
 
   return;
 }
@@ -10554,6 +13010,113 @@ extract_7mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
 
   return;
 }
+
+static void
+count_7mers_fwd_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,18)); /* No mask necessary */
+  counts[array[0]] += 1;	/* 0 */
+  counts[array[1]] += 1;	/* 16 */
+  counts[array[2]] += 1; 	/* 32 */
+  counts[array[3]] += 1; 	/* 48 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,16), mask7));
+  counts[array[0]] += 1; 	/* 1 */
+  counts[array[1]] += 1; 	/* 17 */
+  counts[array[2]] += 1; 	/* 33 */
+  counts[array[3]] += 1; 	/* 49 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,14), mask7));
+  counts[array[0]] += 1;	/* 2 */
+  counts[array[1]] += 1;	/* 18 */
+  counts[array[2]] += 1;	/* 34 */
+  counts[array[3]] += 1;	/* 50 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask7));
+  counts[array[0]] += 1;	/* 3 */
+  counts[array[1]] += 1;	/* 19 */
+  counts[array[2]] += 1;	/* 35 */
+  counts[array[3]] += 1;	/* 51 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask7));
+  counts[array[0]] += 1;	/* 4 */
+  counts[array[1]] += 1;	/* 20 */
+  counts[array[2]] += 1;	/* 36 */
+  counts[array[3]] += 1;	/* 52 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask7));
+  counts[array[0]] += 1;	/* 5 */
+  counts[array[1]] += 1;	/* 21 */
+  counts[array[2]] += 1;	/* 37 */
+  counts[array[3]] += 1;	/* 53 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask7));
+  counts[array[0]] += 1;	/* 6 */
+  counts[array[1]] += 1;	/* 22 */
+  counts[array[2]] += 1;	/* 38 */
+  counts[array[3]] += 1;	/* 54 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask7));
+  counts[array[0]] += 1;	/* 7 */
+  counts[array[1]] += 1;	/* 23 */
+  counts[array[2]] += 1;	/* 39 */
+  counts[array[3]] += 1;	/* 55 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask7));
+  counts[array[0]] += 1;	/* 8 */
+  counts[array[1]] += 1;	/* 24 */
+  counts[array[2]] += 1;	/* 40 */
+  counts[array[3]] += 1;	/* 56 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask7));
+  counts[array[0]] += 1;	/* 9 */
+  counts[array[1]] += 1;	/* 25 */
+  counts[array[2]] += 1;	/* 41 */
+  counts[array[3]] += 1;	/* 57 */
+
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,20), _mm_slli_epi32(current,12));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,10), mask7));
+  counts[array[0]] += 1;	/* 10 */
+  counts[array[1]] += 1;	/* 26 */
+  counts[array[2]] += 1;	/* 42 */
+  counts[array[3]] += 1;	/* 58 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,8), mask7));
+  counts[array[0]] += 1;	/* 11 */
+  counts[array[1]] += 1;	/* 27 */
+  counts[array[2]] += 1;	/* 43 */
+  counts[array[3]] += 1;	/* 59 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask7));
+  counts[array[0]] += 1;	/* 12 */
+  counts[array[1]] += 1;	/* 28 */
+  counts[array[2]] += 1;	/* 44 */
+  counts[array[3]] += 1;	/* 60 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask7));
+  counts[array[0]] += 1;	/* 13 */
+  counts[array[1]] += 1;	/* 29 */
+  counts[array[2]] += 1;	/* 45 */
+  counts[array[3]] += 1;	/* 61 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask7));
+  counts[array[0]] += 1;	/* 14 */
+  counts[array[1]] += 1;	/* 30 */
+  counts[array[2]] += 1;	/* 46 */
+  counts[array[3]] += 1;	/* 62 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask7));
+  counts[array[0]] += 1;	/* 15 */
+  counts[array[1]] += 1;	/* 31 */
+  counts[array[2]] += 1;	/* 47 */
+  counts[array[3]] += 1;	/* 63 */
+
+  return;
+}
+
 #endif
 
 
@@ -10561,448 +13124,1042 @@ static int
 store_7mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
-
-  masked = high_rev >> 18;		/* 0, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos;
-    }
-  }
-  
-  masked = (high_rev >> 16) & MASK7;	/* 1 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 1;
-    }
-  }
-
-  masked = (high_rev >> 14) & MASK7;	/* 2 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 2;
-    }
-  }
-
-  masked = (high_rev >> 12) & MASK7;	/* 3 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 3;
-    }
-  }
-
-  masked = (high_rev >> 10) & MASK7;	/* 4 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 4;
-    }
-  }
-
-  masked = (high_rev >> 8) & MASK7;	/* 5 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 5;
-    }
-  }
-
-  masked = (high_rev >> 6) & MASK7;	/* 6 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 6;
-    }
-  }
-
-  masked = (high_rev >> 4) & MASK7;	/* 7 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 7;
-    }
-  }
-
-  masked = (high_rev >> 2) & MASK7; /* 8 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 8;
-    }
-  }
-
-  masked = high_rev & MASK7;	/* 9 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 9;
-    }
-  }
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
 
-  oligo = low_rev >> 20;	/* For 10..15 */
-  oligo |= high_rev << 12;
-
-  masked = (oligo >> 10) & MASK7; /* 10 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 10;
-    }
-  }
-
-  masked = (oligo >> 8) & MASK7; /* 11 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 11;
-    }
-  }
-
-  masked = (oligo >> 6) & MASK7; /* 12 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 12;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK7; /* 13 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 13;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK7; /* 14 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 14;
-    }
-  }
-
-  masked = oligo & MASK7; /* 15 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 15;
-    }
-  }
-
-
-  masked = low_rev >> 18;		/* 16, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 16;
-    }
-  }
-  
-  masked = (low_rev >> 16) & MASK7; /* 17 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 17;
-    }
-  }
-
-  masked = (low_rev >> 14) & MASK7; /* 18 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 18;
-    }
-  }
-
-  masked = (low_rev >> 12) & MASK7; /* 19 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 19;
-    }
-  }
-
-  masked = (low_rev >> 10) & MASK7;	/* 20 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 20;
-    }
-  }
-
-  masked = (low_rev >> 8) & MASK7;	/* 21 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 21;
-    }
-  }
-
-  masked = (low_rev >> 6) & MASK7;	/* 22 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 22;
-    }
-  }
-
-  masked = (low_rev >> 4) & MASK7;	/* 23 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 23;
-    }
-  }
-
-  masked = (low_rev >> 2) & MASK7;	/* 24 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 24;
-    }
-  }
-
-  masked = low_rev & MASK7;	/* 25 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 25;
-    }
-  }
-
-
-  oligo = nexthigh_rev >> 20;	/* For 26..31 */
+  oligo = nexthigh_rev >> 20;	/* For 31..26 */
   oligo |= low_rev << 12;
 
-  masked = (oligo >> 10) & MASK7; /* 26 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK7; /* 31 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 26;
-    }
-  }
-
-  masked = (oligo >> 8) & MASK7; /* 27 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 27;
-    }
-  }
-
-  masked = (oligo >> 6) & MASK7; /* 28 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 28;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK7; /* 29 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 29;
+      *(--pointers[masked]) = chrpos;
     }
   }
 
   masked = (oligo >> 2) & MASK7; /* 30 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 30;
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = oligo & MASK7; /* 31 */
+  masked = (oligo >> 4) & MASK7; /* 29 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 31;
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  return chrpos + 32;
+  masked = (oligo >> 6) & MASK7; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK7; /* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK7; /* 26 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK7;	/* 25 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = (low_rev >> 2) & MASK7;	/* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = (low_rev >> 4) & MASK7;	/* 23 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = (low_rev >> 6) & MASK7;	/* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = (low_rev >> 8) & MASK7;	/* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = (low_rev >> 10) & MASK7;	/* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = (low_rev >> 12) & MASK7; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (low_rev >> 14) & MASK7; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (low_rev >> 16) & MASK7; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = low_rev >> 18;		/* 16, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+#endif
+
+
+  oligo = low_rev >> 20;	/* For 15..10 */
+  oligo |= high_rev << 12;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK7; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK7; /* 14 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK7; /* 13 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK7; /* 12 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK7; /* 11 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK7; /* 10 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK7;	/* 9 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = (high_rev >> 2) & MASK7; /* 8 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = (high_rev >> 4) & MASK7;	/* 7 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = (high_rev >> 6) & MASK7;	/* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = (high_rev >> 8) & MASK7;	/* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = (high_rev >> 10) & MASK7;	/* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (high_rev >> 12) & MASK7;	/* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (high_rev >> 14) & MASK7;	/* 2 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (high_rev >> 16) & MASK7;	/* 1 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = high_rev >> 18;		/* 0, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+  
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
 }
 
 
 static void
 count_6mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
-
-  masked = high_rev >> 20;		/* 0, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("0 %04X => %d\n",masked,counts[masked]));
-  
-  masked = (high_rev >> 18) & MASK6;	/* 1 */
-  counts[masked] += 1;
-  debug(printf("1 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 16) & MASK6;	/* 2 */
-  counts[masked] += 1;
-  debug(printf("2 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 14) & MASK6;	/* 3 */
-  counts[masked] += 1;
-  debug(printf("3 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 12) & MASK6;	/* 4 */
-  counts[masked] += 1;
-  debug(printf("4 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 10) & MASK6;	/* 5 */
-  counts[masked] += 1;
-  debug(printf("5 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 8) & MASK6;	/* 6 */
-  counts[masked] += 1;
-  debug(printf("6 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 6) & MASK6;	/* 7 */
-  counts[masked] += 1;
-  debug(printf("7 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 4) & MASK6; /* 8 */
-  counts[masked] += 1;
-  debug(printf("8 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 2) & MASK6; /* 9 */
-  counts[masked] += 1;
-  debug(printf("9 %04X => %d\n",masked,counts[masked]));
-
-  masked = high_rev & MASK6;	/* 10 */
-  counts[masked] += 1;
-  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
 
-  oligo = low_rev >> 22;	/* For 11..15 */
-  oligo |= high_rev << 10;
-
-  masked = (oligo >> 8) & MASK6; /* 11 */
-  counts[masked] += 1;
-  debug(printf("11 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK6; /* 12 */
-  counts[masked] += 1;
-  debug(printf("12 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK6; /* 13 */
-  counts[masked] += 1;
-  debug(printf("13 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK6; /* 14 */
-  counts[masked] += 1;
-  debug(printf("14 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK6; /* 15 */
-  counts[masked] += 1;
-  debug(printf("15 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = low_rev >> 20;	/* 16, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("16 %04X => %d\n",masked,counts[masked]));
-  
-  masked = (low_rev >> 18) & MASK6; /* 17 */
-  counts[masked] += 1;
-  debug(printf("17 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 16) & MASK6; /* 18 */
-  counts[masked] += 1;
-  debug(printf("18 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 14) & MASK6; /* 19 */
-  counts[masked] += 1;
-  debug(printf("19 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 12) & MASK6;	/* 20 */
-  counts[masked] += 1;
-  debug(printf("20 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 10) & MASK6;	/* 21 */
-  counts[masked] += 1;
-  debug(printf("21 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 8) & MASK6;	/* 22 */
-  counts[masked] += 1;
-  debug(printf("22 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 6) & MASK6;	/* 23 */
-  counts[masked] += 1;
-  debug(printf("23 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 4) & MASK6;	/* 24 */
-  counts[masked] += 1;
-  debug(printf("24 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 2) & MASK6;	/* 25 */
-  counts[masked] += 1;
-  debug(printf("25 %04X => %d\n",masked,counts[masked]));
-
-  masked = low_rev & MASK6;	/* 26 */
-  counts[masked] += 1;
-  debug(printf("26 %04X => %d\n",masked,counts[masked]));
-
-
-  oligo = nexthigh_rev >> 22;	/* For 27..31 */
+  oligo = nexthigh_rev >> 22;	/* For 31..27 */
   oligo |= low_rev << 10;
 
-  masked = (oligo >> 8) & MASK6; /* 27 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK6; /* 31 */
   counts[masked] += 1;
-  debug(printf("27 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK6; /* 28 */
-  counts[masked] += 1;
-  debug(printf("28 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK6; /* 29 */
-  counts[masked] += 1;
-  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
 
   masked = (oligo >> 2) & MASK6; /* 30 */
   counts[masked] += 1;
   debug(printf("30 %04X => %d\n",masked,counts[masked]));
 
-  masked = oligo & MASK6; /* 31 */
+  masked = (oligo >> 4) & MASK6; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK6; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK6; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
   counts[masked] += 1;
   debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+
+  masked = (oligo >> 8) & MASK6; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK6;	/* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 2) & MASK6;	/* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 4) & MASK6;	/* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 6) & MASK6;	/* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 8) & MASK6;	/* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 10) & MASK6;	/* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 12) & MASK6;	/* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 14) & MASK6; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 16) & MASK6; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 18) & MASK6; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rev >> 20;	/* 16, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rev >> 22;	/* For 15..11 */
+  oligo |= high_rev << 10;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK6; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK6; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK6; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK6; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK6; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+
+  masked = (oligo >> 8) & MASK6; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK6;	/* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 2) & MASK6; /* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 4) & MASK6; /* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 6) & MASK6;	/* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 8) & MASK6;	/* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 10) & MASK6;	/* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 12) & MASK6;	/* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 14) & MASK6;	/* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 16) & MASK6;	/* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 18) & MASK6;	/* 1 */
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rev >> 20;		/* 0, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+#endif
 
   return;
 }
@@ -11037,6 +14194,113 @@ extract_6mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
 
   return;
 }
+
+static void
+count_6mers_fwd_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,20)); /* No mask necessary */;
+  counts[array[0]] += 1;	/* 0 */
+  counts[array[1]] += 1;	/* 16 */
+  counts[array[2]] += 1; 	/* 32 */
+  counts[array[3]] += 1; 	/* 48 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,18), mask6));
+  counts[array[0]] += 1; 	/* 1 */
+  counts[array[1]] += 1; 	/* 17 */
+  counts[array[2]] += 1; 	/* 33 */
+  counts[array[3]] += 1; 	/* 49 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,16), mask6));
+  counts[array[0]] += 1;	/* 2 */
+  counts[array[1]] += 1;	/* 18 */
+  counts[array[2]] += 1;	/* 34 */
+  counts[array[3]] += 1;	/* 50 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,14), mask6));
+  counts[array[0]] += 1;	/* 3 */
+  counts[array[1]] += 1;	/* 19 */
+  counts[array[2]] += 1;	/* 35 */
+  counts[array[3]] += 1;	/* 51 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask6));
+  counts[array[0]] += 1;	/* 4 */
+  counts[array[1]] += 1;	/* 20 */
+  counts[array[2]] += 1;	/* 36 */
+  counts[array[3]] += 1;	/* 52 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask6));
+  counts[array[0]] += 1;	/* 5 */
+  counts[array[1]] += 1;	/* 21 */
+  counts[array[2]] += 1;	/* 37 */
+  counts[array[3]] += 1;	/* 53 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask6));
+  counts[array[0]] += 1;	/* 6 */
+  counts[array[1]] += 1;	/* 22 */
+  counts[array[2]] += 1;	/* 38 */
+  counts[array[3]] += 1;	/* 54 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask6));
+  counts[array[0]] += 1;	/* 7 */
+  counts[array[1]] += 1;	/* 23 */
+  counts[array[2]] += 1;	/* 39 */
+  counts[array[3]] += 1;	/* 55 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask6));
+  counts[array[0]] += 1;	/* 8 */
+  counts[array[1]] += 1;	/* 24 */
+  counts[array[2]] += 1;	/* 40 */
+  counts[array[3]] += 1;	/* 56 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask6));
+  counts[array[0]] += 1;	/* 9 */
+  counts[array[1]] += 1;	/* 25 */
+  counts[array[2]] += 1;	/* 41 */
+  counts[array[3]] += 1;	/* 57 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask6));
+  counts[array[0]] += 1;	/* 10 */
+  counts[array[1]] += 1;	/* 26 */
+  counts[array[2]] += 1;	/* 42 */
+  counts[array[3]] += 1;	/* 58 */
+
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,22), _mm_slli_epi32(current,10));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,8), mask6));
+  counts[array[0]] += 1;	/* 11 */
+  counts[array[1]] += 1;	/* 27 */
+  counts[array[2]] += 1;	/* 43 */
+  counts[array[3]] += 1;	/* 59 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask6));
+  counts[array[0]] += 1;	/* 12 */
+  counts[array[1]] += 1;	/* 28 */
+  counts[array[2]] += 1;	/* 44 */
+  counts[array[3]] += 1;	/* 60 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask6));
+  counts[array[0]] += 1;	/* 13 */
+  counts[array[1]] += 1;	/* 29 */
+  counts[array[2]] += 1;	/* 45 */
+  counts[array[3]] += 1;	/* 61 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask6));
+  counts[array[0]] += 1;	/* 14 */
+  counts[array[1]] += 1;	/* 30 */
+  counts[array[2]] += 1;	/* 46 */
+  counts[array[3]] += 1;	/* 62 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask6));
+  counts[array[0]] += 1;	/* 15 */
+  counts[array[1]] += 1;	/* 31 */
+  counts[array[2]] += 1;	/* 47 */
+  counts[array[3]] += 1;	/* 63 */
+
+  return;
+}
+
 #endif
 
 
@@ -11044,448 +14308,1027 @@ static int
 store_6mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
-
-  masked = high_rev >> 20;		/* 0, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos;
-    }
-  }
-  
-  masked = (high_rev >> 18) & MASK6;	/* 1 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 1;
-    }
-  }
-
-  masked = (high_rev >> 16) & MASK6;	/* 2 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 2;
-    }
-  }
-
-  masked = (high_rev >> 14) & MASK6;	/* 3 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 3;
-    }
-  }
-
-  masked = (high_rev >> 12) & MASK6;	/* 4 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 4;
-    }
-  }
-
-  masked = (high_rev >> 10) & MASK6;	/* 5 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 5;
-    }
-  }
-
-  masked = (high_rev >> 8) & MASK6;	/* 6 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 6;
-    }
-  }
-
-  masked = (high_rev >> 6) & MASK6;	/* 7 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 7;
-    }
-  }
-
-  masked = (high_rev >> 4) & MASK6; /* 8 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 8;
-    }
-  }
-
-  masked = (high_rev >> 2) & MASK6; /* 9 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 9;
-    }
-  }
-
-  masked = high_rev & MASK6;	/* 10 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 10;
-    }
-  }
-
-
-  oligo = low_rev >> 22;	/* For 11..15 */
-  oligo |= high_rev << 10;
-
-  masked = (oligo >> 8) & MASK6; /* 11 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 11;
-    }
-  }
-
-  masked = (oligo >> 6) & MASK6; /* 12 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 12;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK6; /* 13 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 13;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK6; /* 14 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 14;
-    }
-  }
-
-  masked = oligo & MASK6; /* 15 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 15;
-    }
-  }
-
-
-  masked = low_rev >> 20;	/* 16, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 16;
-    }
-  }
-  
-  masked = (low_rev >> 18) & MASK6; /* 17 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 17;
-    }
-  }
-
-  masked = (low_rev >> 16) & MASK6; /* 18 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 18;
-    }
-  }
-
-  masked = (low_rev >> 14) & MASK6; /* 19 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 19;
-    }
-  }
-
-  masked = (low_rev >> 12) & MASK6;	/* 20 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 20;
-    }
-  }
-
-  masked = (low_rev >> 10) & MASK6;	/* 21 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 21;
-    }
-  }
-
-  masked = (low_rev >> 8) & MASK6;	/* 22 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 22;
-    }
-  }
-
-  masked = (low_rev >> 6) & MASK6;	/* 23 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 23;
-    }
-  }
-
-  masked = (low_rev >> 4) & MASK6;	/* 24 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 24;
-    }
-  }
-
-  masked = (low_rev >> 2) & MASK6;	/* 25 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 25;
-    }
-  }
-
-  masked = low_rev & MASK6;	/* 26 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 26;
-    }
-  }
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
 
   oligo = nexthigh_rev >> 22;	/* For 27..31 */
   oligo |= low_rev << 10;
 
-  masked = (oligo >> 8) & MASK6; /* 27 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK6; /* 31 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 27;
-    }
-  }
-
-  masked = (oligo >> 6) & MASK6; /* 28 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 28;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK6; /* 29 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 29;
+      *(--pointers[masked]) = chrpos;
     }
   }
 
   masked = (oligo >> 2) & MASK6; /* 30 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 30;
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = oligo & MASK6; /* 31 */
+  masked = (oligo >> 4) & MASK6; /* 29 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 31;
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  return chrpos + 32;
+  masked = (oligo >> 6) & MASK6; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK6; /* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+
+  masked = (oligo >> 8) & MASK6; /* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK6;	/* 26 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = (low_rev >> 2) & MASK6;	/* 25 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = (low_rev >> 4) & MASK6;	/* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = (low_rev >> 6) & MASK6;	/* 23 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = (low_rev >> 8) & MASK6;	/* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = (low_rev >> 10) & MASK6;	/* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = (low_rev >> 12) & MASK6;	/* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = (low_rev >> 14) & MASK6; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (low_rev >> 16) & MASK6; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (low_rev >> 18) & MASK6; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = low_rev >> 20;	/* 16, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+  
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+#endif
+
+
+  oligo = low_rev >> 22;	/* For 15..11 */
+  oligo |= high_rev << 10;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK6; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK6; /* 14 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK6; /* 13 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK6; /* 12 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK6; /* 11 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+
+  masked = (oligo >> 8) & MASK6; /* 11 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK6;	/* 10 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = (high_rev >> 2) & MASK6; /* 9 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = (high_rev >> 4) & MASK6; /* 8 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = (high_rev >> 6) & MASK6;	/* 7 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = (high_rev >> 8) & MASK6;	/* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = (high_rev >> 10) & MASK6;	/* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = (high_rev >> 12) & MASK6;	/* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (high_rev >> 14) & MASK6;	/* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (high_rev >> 16) & MASK6;	/* 2 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (high_rev >> 18) & MASK6;	/* 1 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = high_rev >> 20;		/* 0, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+  
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+
+  return chrpos - 32;
 }
 
 
 static void
 count_5mers_fwd (Count_T *counts, Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
-
-  masked = high_rev >> 22;		/* 0, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("0 %04X => %d\n",masked,counts[masked]));
-  
-  masked = (high_rev >> 20) & MASK5;	/* 1 */
-  counts[masked] += 1;
-  debug(printf("1 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 18) & MASK5;	/* 2 */
-  counts[masked] += 1;
-  debug(printf("2 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 16) & MASK5;	/* 3 */
-  counts[masked] += 1;
-  debug(printf("3 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 14) & MASK5;	/* 4 */
-  counts[masked] += 1;
-  debug(printf("4 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 12) & MASK5;	/* 5 */
-  counts[masked] += 1;
-  debug(printf("5 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 10) & MASK5;	/* 6 */
-  counts[masked] += 1;
-  debug(printf("6 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 8) & MASK5;	/* 7 */
-  counts[masked] += 1;
-  debug(printf("7 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 6) & MASK5; /* 8 */
-  counts[masked] += 1;
-  debug(printf("8 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 4) & MASK5; /* 9 */
-  counts[masked] += 1;
-  debug(printf("9 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rev >> 2) & MASK5; /* 10 */
-  counts[masked] += 1;
-  debug(printf("10 %04X => %d\n",masked,counts[masked]));
-
-  masked = high_rev & MASK5;	/* 11 */
-  counts[masked] += 1;
-  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
 
-  oligo = low_rev >> 24;	/* For 12..15 */
-  oligo |= high_rev << 8;
-
-  masked = (oligo >> 6) & MASK5; /* 12 */
-  counts[masked] += 1;
-  debug(printf("12 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK5; /* 13 */
-  counts[masked] += 1;
-  debug(printf("13 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK5; /* 14 */
-  counts[masked] += 1;
-  debug(printf("14 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK5; /* 15 */
-  counts[masked] += 1;
-  debug(printf("15 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = low_rev >> 22;		/* 16, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("16 %04X => %d\n",masked,counts[masked]));
-  
-  masked = (low_rev >> 20) & MASK5; /* 17 */
-  counts[masked] += 1;
-  debug(printf("17 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 18) & MASK5; /* 18 */
-  counts[masked] += 1;
-  debug(printf("18 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 16) & MASK5; /* 19 */
-  counts[masked] += 1;
-  debug(printf("19 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 14) & MASK5;	/* 20 */
-  counts[masked] += 1;
-  debug(printf("20 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 12) & MASK5;	/* 21 */
-  counts[masked] += 1;
-  debug(printf("21 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 10) & MASK5;	/* 22 */
-  counts[masked] += 1;
-  debug(printf("22 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 8) & MASK5;	/* 23 */
-  counts[masked] += 1;
-  debug(printf("23 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 6) & MASK5;	/* 24 */
-  counts[masked] += 1;
-  debug(printf("24 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 4) & MASK5;	/* 25 */
-  counts[masked] += 1;
-  debug(printf("25 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rev >> 2) & MASK5;	/* 26 */
-  counts[masked] += 1;
-  debug(printf("26 %04X => %d\n",masked,counts[masked]));
-
-  masked = low_rev & MASK5;	/* 27 */
-  counts[masked] += 1;
-  debug(printf("27 %04X => %d\n",masked,counts[masked]));
-
-
-  oligo = nexthigh_rev >> 24;	/* For 28..31 */
+  oligo = nexthigh_rev >> 24;	/* For 31..28 */
   oligo |= low_rev << 8;
 
-  masked = (oligo >> 6) & MASK5; /* 28 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK5; /* 31 */
   counts[masked] += 1;
-  debug(printf("28 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK5; /* 29 */
-  counts[masked] += 1;
-  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
 
   masked = (oligo >> 2) & MASK5; /* 30 */
   counts[masked] += 1;
   debug(printf("30 %04X => %d\n",masked,counts[masked]));
 
-  masked = oligo & MASK5; /* 31 */
+  masked = (oligo >> 4) & MASK5; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK5; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
   counts[masked] += 1;
   debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK5;	/* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 2) & MASK5;	/* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 4) & MASK5;	/* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 6) & MASK5;	/* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 8) & MASK5;	/* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 10) & MASK5;	/* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 12) & MASK5;	/* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 14) & MASK5;	/* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 16) & MASK5; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 18) & MASK5; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rev >> 20) & MASK5; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rev >> 22;		/* 16, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rev >> 24;	/* For 15..12 */
+  oligo |= high_rev << 8;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK5; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK5; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK5; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK5; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK5;	/* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 2) & MASK5; /* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 4) & MASK5; /* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 6) & MASK5; /* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 8) & MASK5;	/* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 10) & MASK5;	/* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 12) & MASK5;	/* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 14) & MASK5;	/* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 16) & MASK5;	/* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 18) & MASK5;	/* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rev >> 20) & MASK5;	/* 1 */
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rev >> 22;		/* 0, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+  
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+#endif
 
   return;
 }
@@ -11517,6 +15360,113 @@ extract_5mers_fwd_simd (__m128i *out, __m128i current, __m128i next) {
 
   return;
 }
+
+static void
+count_5mers_fwd_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,22)); /* No mask necessary */
+  counts[array[0]] += 1;	/* 0 */
+  counts[array[1]] += 1;	/* 16 */
+  counts[array[2]] += 1; 	/* 32 */
+  counts[array[3]] += 1; 	/* 48 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,20), mask5));
+  counts[array[0]] += 1; 	/* 1 */
+  counts[array[1]] += 1; 	/* 17 */
+  counts[array[2]] += 1; 	/* 33 */
+  counts[array[3]] += 1; 	/* 49 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,18), mask5));
+  counts[array[0]] += 1;	/* 2 */
+  counts[array[1]] += 1;	/* 18 */
+  counts[array[2]] += 1;	/* 34 */
+  counts[array[3]] += 1;	/* 50 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,16), mask5));
+  counts[array[0]] += 1;	/* 3 */
+  counts[array[1]] += 1;	/* 19 */
+  counts[array[2]] += 1;	/* 35 */
+  counts[array[3]] += 1;	/* 51 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,14), mask5));
+  counts[array[0]] += 1;	/* 4 */
+  counts[array[1]] += 1;	/* 20 */
+  counts[array[2]] += 1;	/* 36 */
+  counts[array[3]] += 1;	/* 52 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask5));
+  counts[array[0]] += 1;	/* 5 */
+  counts[array[1]] += 1;	/* 21 */
+  counts[array[2]] += 1;	/* 37 */
+  counts[array[3]] += 1;	/* 53 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask5));
+  counts[array[0]] += 1;	/* 6 */
+  counts[array[1]] += 1;	/* 22 */
+  counts[array[2]] += 1;	/* 38 */
+  counts[array[3]] += 1;	/* 54 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask5));
+  counts[array[0]] += 1;	/* 7 */
+  counts[array[1]] += 1;	/* 23 */
+  counts[array[2]] += 1;	/* 39 */
+  counts[array[3]] += 1;	/* 55 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask5));
+  counts[array[0]] += 1;	/* 8 */
+  counts[array[1]] += 1;	/* 24 */
+  counts[array[2]] += 1;	/* 40 */
+  counts[array[3]] += 1;	/* 56 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask5));
+  counts[array[0]] += 1;	/* 9 */
+  counts[array[1]] += 1;	/* 25 */
+  counts[array[2]] += 1;	/* 41 */
+  counts[array[3]] += 1;	/* 57 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask5));
+  counts[array[0]] += 1;	/* 10 */
+  counts[array[1]] += 1;	/* 26 */
+  counts[array[2]] += 1;	/* 42 */
+  counts[array[3]] += 1;	/* 58 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask5));
+  counts[array[0]] += 1;	/* 11 */
+  counts[array[1]] += 1;	/* 27 */
+  counts[array[2]] += 1;	/* 43 */
+  counts[array[3]] += 1;	/* 59 */
+
+
+  oligo = _mm_or_si128( _mm_srli_epi32(next,24), _mm_slli_epi32(current,8));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask5));
+  counts[array[0]] += 1;	/* 12 */
+  counts[array[1]] += 1;	/* 28 */
+  counts[array[2]] += 1;	/* 44 */
+  counts[array[3]] += 1;	/* 60 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask5));
+  counts[array[0]] += 1;	/* 13 */
+  counts[array[1]] += 1;	/* 29 */
+  counts[array[2]] += 1;	/* 45 */
+  counts[array[3]] += 1;	/* 61 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask5));
+  counts[array[0]] += 1;	/* 14 */
+  counts[array[1]] += 1;	/* 30 */
+  counts[array[2]] += 1;	/* 46 */
+  counts[array[3]] += 1;	/* 62 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask5));
+  counts[array[0]] += 1;	/* 15 */
+  counts[array[1]] += 1;	/* 31 */
+  counts[array[2]] += 1;	/* 47 */
+  counts[array[3]] += 1;	/* 63 */
+
+  return;
+}
+
 #endif
 
 
@@ -11524,309 +15474,677 @@ static int
 store_5mers_fwd (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T high_rev, Genomecomp_T low_rev, Genomecomp_T nexthigh_rev) {
   Genomecomp_T masked, oligo;
-
-  masked = high_rev >> 22;		/* 0, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos;
-    }
-  }
-  
-  masked = (high_rev >> 20) & MASK5;	/* 1 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 1;
-    }
-  }
-
-  masked = (high_rev >> 18) & MASK5;	/* 2 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 2;
-    }
-  }
-
-  masked = (high_rev >> 16) & MASK5;	/* 3 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 3;
-    }
-  }
-
-  masked = (high_rev >> 14) & MASK5;	/* 4 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 4;
-    }
-  }
-
-  masked = (high_rev >> 12) & MASK5;	/* 5 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 5;
-    }
-  }
-
-  masked = (high_rev >> 10) & MASK5;	/* 6 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 6;
-    }
-  }
-
-  masked = (high_rev >> 8) & MASK5;	/* 7 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 7;
-    }
-  }
-
-  masked = (high_rev >> 6) & MASK5; /* 8 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 8;
-    }
-  }
-
-  masked = (high_rev >> 4) & MASK5; /* 9 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 9;
-    }
-  }
-
-  masked = (high_rev >> 2) & MASK5; /* 10 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 10;
-    }
-  }
-
-  masked = high_rev & MASK5;	/* 11 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 11;
-    }
-  }
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
 
-  oligo = low_rev >> 24;	/* For 12..15 */
-  oligo |= high_rev << 8;
-
-  masked = (oligo >> 6) & MASK5; /* 12 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 12;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK5; /* 13 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 13;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK5; /* 14 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 14;
-    }
-  }
-
-  masked = oligo & MASK5; /* 15 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 15;
-    }
-  }
-
-
-  masked = low_rev >> 22;		/* 16, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 16;
-    }
-  }
-  
-  masked = (low_rev >> 20) & MASK5; /* 17 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 17;
-    }
-  }
-
-  masked = (low_rev >> 18) & MASK5; /* 18 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 18;
-    }
-  }
-
-  masked = (low_rev >> 16) & MASK5; /* 19 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 19;
-    }
-  }
-
-  masked = (low_rev >> 14) & MASK5;	/* 20 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 20;
-    }
-  }
-
-  masked = (low_rev >> 12) & MASK5;	/* 21 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 21;
-    }
-  }
-
-  masked = (low_rev >> 10) & MASK5;	/* 22 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 22;
-    }
-  }
-
-  masked = (low_rev >> 8) & MASK5;	/* 23 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 23;
-    }
-  }
-
-  masked = (low_rev >> 6) & MASK5;	/* 24 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 24;
-    }
-  }
-
-  masked = (low_rev >> 4) & MASK5;	/* 25 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 25;
-    }
-  }
-
-  masked = (low_rev >> 2) & MASK5;	/* 26 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 26;
-    }
-  }
-
-  masked = low_rev & MASK5;	/* 27 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 27;
-    }
-  }
-
-
-  oligo = nexthigh_rev >> 24;	/* For 28..31 */
+  oligo = nexthigh_rev >> 24;	/* For 31..28 */
   oligo |= low_rev << 8;
 
-  masked = (oligo >> 6) & MASK5; /* 28 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK5; /* 31 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 28;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK5; /* 29 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 29;
+      *(--pointers[masked]) = chrpos;
     }
   }
 
   masked = (oligo >> 2) & MASK5; /* 30 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 30;
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = oligo & MASK5; /* 31 */
+  masked = (oligo >> 4) & MASK5; /* 29 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 31;
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  return chrpos + 32;
+  masked = (oligo >> 6) & MASK5; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rev & MASK5;	/* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = (low_rev >> 2) & MASK5;	/* 26 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = (low_rev >> 4) & MASK5;	/* 25 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = (low_rev >> 6) & MASK5;	/* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = (low_rev >> 8) & MASK5;	/* 23 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = (low_rev >> 10) & MASK5;	/* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = (low_rev >> 12) & MASK5;	/* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = (low_rev >> 14) & MASK5;	/* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = (low_rev >> 16) & MASK5; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (low_rev >> 18) & MASK5; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (low_rev >> 20) & MASK5; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = low_rev >> 22;		/* 16, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+  
+#else
+  _oligo = _mm_setr_epi32(low_rev, low_rev >> 2, low_rev >> 4, low_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+#endif
+
+
+  oligo = low_rev >> 24;	/* For 15..12 */
+  oligo |= high_rev << 8;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK5; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK5; /* 14 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK5; /* 13 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK5; /* 12 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rev & MASK5;	/* 11 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = (high_rev >> 2) & MASK5; /* 10 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = (high_rev >> 4) & MASK5; /* 9 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = (high_rev >> 6) & MASK5; /* 8 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = (high_rev >> 8) & MASK5;	/* 7 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = (high_rev >> 10) & MASK5;	/* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = (high_rev >> 12) & MASK5;	/* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = (high_rev >> 14) & MASK5;	/* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (high_rev >> 16) & MASK5;	/* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (high_rev >> 18) & MASK5;	/* 2 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (high_rev >> 20) & MASK5;	/* 1 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = high_rev >> 22;		/* 0, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+  
+#else
+  _oligo = _mm_setr_epi32(high_rev, high_rev >> 2, high_rev >> 4, high_rev >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
 }
 
 
-#if (!defined(USE_SIMD_FOR_COUNTS) || defined(DEBUG14))
+#ifndef USE_SIMD_FOR_COUNTS
 static void
 count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
 			 int genestrand) {
@@ -11836,14 +16154,14 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 
   debug(printf("Starting count_positions_fwd_std\n"));
 
-  left_plus_length -= indexsize;
-#if 0
-  /* No.  Extends past end. */
-  left_plus_length += 1;	/* Needed to get last oligomer to match */
-#endif
+  if (left_plus_length < indexsize) {
+    left_plus_length = 0;
+  } else {
+    left_plus_length -= indexsize;
+  }
 
-  ptr = startptr = left/32U*3;
-  endptr = left_plus_length/32U*3;
+  startptr = left/32U*3;
+  ptr = endptr = left_plus_length/32U*3;
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
@@ -11877,7 +16195,9 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
     nexthigh_rev = reverse_nt[nextlow >> 16];
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-    if (indexsize == 8) {
+    if (indexsize == 9) {
+      count_9mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 8) {
       count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 7) {
       count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
@@ -11893,6 +16213,7 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
   } else {
     /* Genome_print_blocks(ref_blocks,left,left+16); */
 
+    /* End block */
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
     low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -11919,23 +16240,58 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
     nexthigh_rev = reverse_nt[nextlow >> 16];
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-    if (indexsize == 8) {
-      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    if (indexsize == 9) {
+      count_9mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 8) {
+      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else {
-      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
 
-    ptr += 3;
+    /* Middle blocks */
+    if (indexsize == 9) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
 
-    if (indexsize == 8) {
-      while (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	low = ref_blocks[ptr+1];
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = reverse_nt[low >> 16];
+	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	count_9mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
+      }
+
+    } else if (indexsize == 8) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -11963,10 +16319,12 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
 	count_8mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
       }
+
     } else if (indexsize == 7) {
-      while (ptr < endptr) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -11994,10 +16352,12 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
 	count_7mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
       }
+
     } else if (indexsize == 6) {
-      while (ptr < endptr) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -12025,10 +16385,12 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
 	count_6mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
       }
+
     } else if (indexsize == 5) {
-      while (ptr < endptr) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -12056,12 +16418,16 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
 	count_5mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
       }
+
     } else {
       abort();
     }
 
+    ptr -= 3;
+
+    /* Start block */
+    assert(ptr == startptr);
 
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
@@ -12089,106 +16455,124 @@ count_positions_fwd_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
     nexthigh_rev = reverse_nt[nextlow >> 16];
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-    if (indexsize == 8) {
-      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    if (indexsize == 9) {
+      count_9mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 8) {
+      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
 
   }
-  
+
   return;
 }
 #endif
 
-
-#if 0
-/* For debugging of SIMD procedures*/
-static void
-print_vector (__m128i x, char *label) {
-  __m128i a[1];
-  unsigned int *s = a;
-
-  _mm_store_si128(a,x);
-  _mm_mfence();
-  printf("%s: %u %u %u %u\n",label,s[0],s[1],s[2],s[3]);
-  return;
-}
-#endif
 
 
 #ifdef USE_SIMD_FOR_COUNTS
 static void
-count_positions_fwd_simd (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
-			  int genestrand) {
+count_positions_fwd_simd (Count_T *counts, int indexsize,
+			  Univcoord_T left, Univcoord_T left_plus_length, int genestrand) {
   int startdiscard, enddiscard;
-  Genomecomp_T ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
-    low, high, nextlow;
-  Genomecomp_T high0_rev, low0_rev, high1_rev, low1_rev, /*low0,*/ high0, low1, high1;
-  __m128i current, next;
-  __m128i array[16];
+  Genomecomp_T ptr, startptr, endptr, nexthigh_rev, nextlow;
+  Genomecomp_T high0_rev, low0_rev, low0, high0, low1, high1;
+  __m128i current, next, mask2, mask4;
+  /* __m128i array[16]; */
+#ifdef HAVE_SSSE3
+  __m128i reverse8;
+#else
+  __m128i mask8;
+#endif
 #ifdef HAVE_SSE4_1
   __m128i temp;
+#else
+  Genomecomp_T high1_rev, low1_rev;
 #endif
 
 
   debug(printf("Starting count_positions_fwd_simd\n"));
 
-  left_plus_length -= indexsize;
-#if 0
-  /* No.  Extends past end. */
-  left_plus_length += 1;	/* Needed to get last oligomer to match */
-#endif
+  if (left_plus_length < indexsize) {
+    left_plus_length = 0;
+  } else {
+    left_plus_length -= indexsize;
+  }
 
-  ptr = startptr = left/32U*3;
-  endptr = left_plus_length/32U*3;
+  startptr = left/32U*3;
+  ptr = endptr = left_plus_length/32U*3;
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
+  mask2 = _mm_set1_epi32(0x33333333);
+  mask4 = _mm_set1_epi32(0x0F0F0F0F);
+#ifdef HAVE_SSSE3
+  reverse8 = _mm_set_epi8(0x0C,0x0D,0x0E,0x0F, 0x08,0x09,0x0A,0x0B, 0x04,0x05,0x06,0x07, 0x00,0x01,0x02,0x03);
+#else
+  mask8 = _mm_set1_epi32(0x00FF00FF);
+#endif
+
   if (left_plus_length <= left) {
     /* Skip */
 
   } else if (startptr == endptr) {
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
     nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
+    high0 = ref_blocks[ptr];
+    low0 = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); nextlow = Cmet_reduce_ct(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    high_rev = reverse_nt[low >> 16];
-    high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
-    low_rev = reverse_nt[high >> 16];
-    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-    nexthigh_rev = reverse_nt[nextlow >> 16];
-    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+    current = _mm_set_epi32(0,nextlow,high0,low0);
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+    current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+    current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-    if (indexsize == 8) {
-      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+#ifdef HAVE_SSE4_1
+    high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+    low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+    nexthigh_rev = (unsigned int) _mm_extract_epi32(current,2);
+#else
+    high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+    low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+    nexthigh_rev = (reverse_nt[nextlow >> 16] | reverse_nt[nextlow & 0x0000FFFF] << 16);
+#endif
+
+    if (indexsize == 9) {
+      count_9mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 8) {
+      count_8mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 7) {
-      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      count_7mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 6) {
-      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      count_6mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 5) {
-      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      count_5mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -12197,425 +16581,691 @@ count_positions_fwd_simd (Count_T *counts, int indexsize, Univcoord_T left, Univ
   } else {
     /* Genome_print_blocks(ref_blocks,left,left+16); */
 
+    /* End block */
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
     nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
+    high0 = ref_blocks[ptr];
+    low0 = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); nextlow = Cmet_reduce_ct(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    high_rev = reverse_nt[low >> 16];
-    high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
-    low_rev = reverse_nt[high >> 16];
-    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-    nexthigh_rev = reverse_nt[nextlow >> 16];
-    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+    current = _mm_set_epi32(0,nextlow,high0,low0);
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+    current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+    current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-    if (indexsize == 8) {
-      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+#ifdef HAVE_SSE4_1
+    high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+    low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+    nexthigh_rev = (unsigned int) _mm_extract_epi32(current,2);
+#else
+    high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+    low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+    nexthigh_rev = (reverse_nt[nextlow >> 16] | reverse_nt[nextlow & 0x0000FFFF] << 16);
+#endif
+
+    if (indexsize == 9) {
+      count_9mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 8) {
+      count_8mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      count_7mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      count_6mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      count_5mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else {
+      abort();
+    }
+
+    /* Middle blocks */
+    if (indexsize == 9) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+#if 0
+	extract_9mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_9mers_fwd_simd(counts,current,next);
+#endif
+      }
+
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	count_9mers_fwd(counts,high0_rev,low0_rev,nexthigh_rev);
+      }
+
+    } else if (indexsize == 8) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2);*/
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+#if 0
+	extract_8mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_8mers_fwd_simd(counts,current,next);
+#endif
+      }
+
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	count_8mers_fwd(counts,high0_rev,low0_rev,nexthigh_rev);
+      }
+
+    } else if (indexsize == 7) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+#if 0
+	extract_7mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_7mers_fwd_simd(counts,current,next);
+#endif
+      }
+
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	count_7mers_fwd(counts,high0_rev,low0_rev,nexthigh_rev);
+      }
+
+    } else if (indexsize == 6) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+#if 0
+	extract_6mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_6mers_fwd_simd(counts,current,next);
+#endif
+      }
+
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	count_6mers_fwd(counts,high0_rev,low0_rev,nexthigh_rev);
+      }
+
+    } else if (indexsize == 5) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+#if 0
+	extract_5mers_fwd_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_5mers_fwd_simd(counts,current,next);
+#endif
+      }
+
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	count_5mers_fwd(counts,high0_rev,low0_rev,nexthigh_rev);
+      }
+
+    } else {
+      abort();
+    }
+
+    ptr -= 3;
+
+    /* Start block */
+    assert(ptr == startptr);
+
+#ifdef WORDS_BIGENDIAN
+    high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    /* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+    high0 = ref_blocks[ptr];
+    low0 = ref_blocks[ptr+1];
+    /* nextlow = ref_blocks[ptr+4]; */
+#endif
+    if (mode == CMET_STRANDED) {
+      high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+      } else {
+	high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
+      }
+    }
+
+    current = _mm_set_epi32(0,0,high0,low0);
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+    current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+    current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+    nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+    high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+    low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+    high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+    low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+    if (indexsize == 9) {
+      count_9mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 8) {
+      count_8mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 7) {
+      count_7mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 6) {
+      count_6mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 5) {
+      count_5mers_fwd_partial(counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
-
-    ptr += 3;
-
-    if (indexsize == 8) {
-      while (ptr + 3 < endptr) {
-#ifdef WORDS_BIGENDIAN
-	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
-#else
-	high0 = ref_blocks[ptr];
-	/* low0 = ref_blocks[ptr+1]; */
-	high1 = ref_blocks[ptr+3];
-	low1 = ref_blocks[ptr+4];
-	nextlow = ref_blocks[ptr+7];
-#endif
-	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
-	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	  nextlow = Cmet_reduce_ct(nextlow);
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
-	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    nextlow = Cmet_reduce_ct(nextlow);
-	  } else {
-	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
-	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    nextlow = Cmet_reduce_ga(nextlow);
-	  }
-	}
-
-	high0_rev = nexthigh_rev; /* depended on low0 */
-	low0_rev = reverse_nt[high0 >> 16];
-	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
-	high1_rev = reverse_nt[low1 >> 16];
-	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
-	low1_rev = reverse_nt[high1 >> 16];
-	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
-#ifdef HAVE_SSE4_1
-	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
-	next = _mm_shuffle_epi32(temp,0x39);
-#else
-	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
-#endif
-
-	extract_8mers_fwd_simd(array,current,next);
-	count_fwdrev_simd(counts,(Genomecomp_T *) array);
-	ptr += 6;
-      }
-
-      if (ptr < endptr) {
-#ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
-#else
-	high = ref_blocks[ptr];
-	/* low = ref_blocks[ptr+1]; */
-	nextlow = ref_blocks[ptr+4];
-#endif
-	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-	  } else {
-	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
-	  }
-	}
-
-	high_rev = nexthigh_rev; /* depended on low */
-	low_rev = reverse_nt[high >> 16];
-	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-	count_8mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
-      }
-
-    } else if (indexsize == 7) {
-      while (ptr + 3 < endptr) {
-#ifdef WORDS_BIGENDIAN
-	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
-#else
-	high0 = ref_blocks[ptr];
-	/* low0 = ref_blocks[ptr+1]; */
-	high1 = ref_blocks[ptr+3];
-	low1 = ref_blocks[ptr+4];
-	nextlow = ref_blocks[ptr+7];
-#endif
-	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
-	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	  nextlow = Cmet_reduce_ct(nextlow);
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
-	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    nextlow = Cmet_reduce_ct(nextlow);
-	  } else {
-	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
-	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    nextlow = Cmet_reduce_ga(nextlow);
-	  }
-	}
-
-	high0_rev = nexthigh_rev; /* depended on low0 */
-	low0_rev = reverse_nt[high0 >> 16];
-	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
-	high1_rev = reverse_nt[low1 >> 16];
-	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
-	low1_rev = reverse_nt[high1 >> 16];
-	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
-#ifdef HAVE_SSE4_1
-	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
-	next = _mm_shuffle_epi32(temp,0x39);
-#else
-	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
-#endif
-
-	extract_7mers_fwd_simd(array,current,next);
-	count_fwdrev_simd(counts,(Genomecomp_T *) array);
-	ptr += 6;
-      }
-
-      if (ptr < endptr) {
-#ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
-#else
-	high = ref_blocks[ptr];
-	/* low = ref_blocks[ptr+1]; */
-	nextlow = ref_blocks[ptr+4];
-#endif
-	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-	  } else {
-	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
-	  }
-	}
-
-	high_rev = nexthigh_rev; /* depended on low */
-	low_rev = reverse_nt[high >> 16];
-	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-	count_7mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
-      }
-
-    } else if (indexsize == 6) {
-      while (ptr + 3 < endptr) {
-#ifdef WORDS_BIGENDIAN
-	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
-#else
-	high0 = ref_blocks[ptr];
-	/* low0 = ref_blocks[ptr+1]; */
-	high1 = ref_blocks[ptr+3];
-	low1 = ref_blocks[ptr+4];
-	nextlow = ref_blocks[ptr+7];
-#endif
-	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
-	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	  nextlow = Cmet_reduce_ct(nextlow);
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
-	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    nextlow = Cmet_reduce_ct(nextlow);
-	  } else {
-	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
-	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    nextlow = Cmet_reduce_ga(nextlow);
-	  }
-	}
-
-	high0_rev = nexthigh_rev; /* depended on low0 */
-	low0_rev = reverse_nt[high0 >> 16];
-	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
-	high1_rev = reverse_nt[low1 >> 16];
-	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
-	low1_rev = reverse_nt[high1 >> 16];
-	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
-#ifdef HAVE_SSE4_1
-	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
-	next = _mm_shuffle_epi32(temp,0x39);
-#else
-	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
-#endif
-
-	extract_6mers_fwd_simd(array,current,next);
-	count_fwdrev_simd(counts,(Genomecomp_T *) array);
-	ptr += 6;
-      }
-
-      if (ptr < endptr) {
-#ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
-#else
-	high = ref_blocks[ptr];
-	/* low = ref_blocks[ptr+1]; */
-	nextlow = ref_blocks[ptr+4];
-#endif
-	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-	  } else {
-	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
-	  }
-	}
-
-	high_rev = nexthigh_rev; /* depended on low */
-	low_rev = reverse_nt[high >> 16];
-	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-	count_6mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
-      }
-
-    } else if (indexsize == 5) {
-      while (ptr + 3 < endptr) {
-#ifdef WORDS_BIGENDIAN
-	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
-#else
-	high0 = ref_blocks[ptr];
-	/* low0 = ref_blocks[ptr+1]; */
-	high1 = ref_blocks[ptr+3];
-	low1 = ref_blocks[ptr+4];
-	nextlow = ref_blocks[ptr+7];
-#endif
-	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
-	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	  nextlow = Cmet_reduce_ct(nextlow);
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
-	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    nextlow = Cmet_reduce_ct(nextlow);
-	  } else {
-	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
-	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    nextlow = Cmet_reduce_ga(nextlow);
-	  }
-	}
-
-	high0_rev = nexthigh_rev; /* depended on low0 */
-	low0_rev = reverse_nt[high0 >> 16];
-	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
-	high1_rev = reverse_nt[low1 >> 16];
-	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
-	low1_rev = reverse_nt[high1 >> 16];
-	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
-#ifdef HAVE_SSE4_1
-	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
-	next = _mm_shuffle_epi32(temp,0x39);
-#else
-	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
-#endif
-
-	extract_5mers_fwd_simd(array,current,next);
-	count_fwdrev_simd(counts,(Genomecomp_T *) array);
-	ptr += 6;
-      }
-
-      if (ptr < endptr) {
-#ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
-#else
-	high = ref_blocks[ptr];
-	/* low = ref_blocks[ptr+1]; */
-	nextlow = ref_blocks[ptr+4];
-#endif
-	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-	  } else {
-	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
-	  }
-	}
-
-	high_rev = nexthigh_rev; /* depended on low */
-	low_rev = reverse_nt[high >> 16];
-	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-	count_5mers_fwd(counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
-      }
-
-    } else {
-      abort();
-    }
-
-
-#ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    /* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
-#else
-    high = ref_blocks[ptr];
-    /* low = ref_blocks[ptr+1]; */
-    nextlow = ref_blocks[ptr+4];
-#endif
-    if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-    } else if (mode == CMET_NONSTRANDED) {
-      if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
-      } else {
-	high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
-      }
-    }
-
-    high_rev = nexthigh_rev;	/* depended on low */
-    low_rev = reverse_nt[high >> 16];
-    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-    nexthigh_rev = reverse_nt[nextlow >> 16];
-    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
-
-    if (indexsize == 8) {
-      count_8mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
-    } else if (indexsize == 7) {
-      count_7mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
-    } else if (indexsize == 6) {
-      count_6mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
-    } else if (indexsize == 5) {
-      count_5mers_fwd_partial(counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
-    } else {
-      abort();
-    }
-
   }
   
   return;
@@ -12623,7 +17273,7 @@ count_positions_fwd_simd (Count_T *counts, int indexsize, Univcoord_T left, Univ
 #endif
 
 
-#if (!defined(USE_SIMD_FOR_COUNTS) || defined(DEBUG14))
+#ifndef USE_SIMD_FOR_COUNTS
 static void
 store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
 			 Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
@@ -12633,14 +17283,15 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
     low, high, nextlow;
 
 
-  left_plus_length -= indexsize;
-#if 0
-  /* No.  Extends past end. */
-  left_plus_length += 1;	/* Needed to get last oligomer to match */
-#endif
+  if (left_plus_length < indexsize) {
+    left_plus_length = 0;
+  } else {
+    left_plus_length -= indexsize;
+  }
+  chrpos += (left_plus_length - left); /* We are starting from the right */
 
-  ptr = startptr = left/32U*3;
-  endptr = left_plus_length/32U*3;
+  startptr = left/32U*3;
+  ptr = endptr = left_plus_length/32U*3;
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
@@ -12674,7 +17325,9 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
     nexthigh_rev = reverse_nt[nextlow >> 16];
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-    if (indexsize == 8) {
+    if (indexsize == 9) {
+      chrpos = store_9mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 8) {
       chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 7) {
       chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
@@ -12690,6 +17343,7 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
   } else {
     /* Genome_print_blocks(ref_blocks,left,left+16); */
 
+    /* End block */
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
     low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -12716,23 +17370,57 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
     nexthigh_rev = reverse_nt[nextlow >> 16];
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    if (indexsize == 9) {
+      chrpos = store_9mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else {
-      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
 
-    ptr += 3;
+    if (indexsize == 9) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
 
-    if (indexsize == 8) {
-      while (ptr < endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	low = ref_blocks[ptr+1];
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	high_rev = reverse_nt[low >> 16];
+	high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
+	low_rev = reverse_nt[high >> 16];
+	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
+	nexthigh_rev = reverse_nt[nextlow >> 16];
+	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+
+	chrpos = store_9mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
+      }
+
+    } else if (indexsize == 8) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -12760,11 +17448,12 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
 	chrpos = store_8mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
       }
 
     } else if (indexsize == 7) {
-      while (ptr < endptr) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -12792,11 +17481,12 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
 	chrpos = store_7mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
       }
 
     } else if (indexsize == 6) {
-      while (ptr < endptr) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -12824,11 +17514,12 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
 	chrpos = store_6mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
       }
 
     } else if (indexsize == 5) {
-      while (ptr < endptr) {
+      while (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -12856,12 +17547,15 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
 	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
 	chrpos = store_5mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
       }
     } else {
       abort();
     }
 
+    ptr -= 3;
+
+    /* Start block */
+    assert(ptr == startptr);
 
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
@@ -12889,15 +17583,18 @@ store_positions_fwd_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
     nexthigh_rev = reverse_nt[nextlow >> 16];
     nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    if (indexsize == 9) {
+      chrpos = store_9mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
 
@@ -12914,67 +17611,97 @@ store_positions_fwd_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *co
 			  Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
 			  int genestrand) {
   int startdiscard, enddiscard;
-  Genomecomp_T ptr, startptr, endptr, high_rev, low_rev, nexthigh_rev,
-    low, high, nextlow;
-  Genomecomp_T high0_rev, low0_rev, high1_rev, low1_rev, /* low0, */ high0, low1, high1;
-  __m128i current, next;
+  Genomecomp_T ptr, startptr, endptr, nexthigh_rev, nextlow;
+  Genomecomp_T high0_rev, low0_rev, low0, high0, low1, high1;
+  __m128i current, next, mask2, mask4;
   __m128i array[16];
+#ifdef HAVE_SSSE3
+  __m128i reverse8;
+#else
+  __m128i mask8;
+#endif
 #ifdef HAVE_SSE4_1
   __m128i temp;
+#else
+  Genomecomp_T high1_rev, low1_rev;
 #endif
 
 
   debug(printf("Starting store_positions_fwd_simd\n"));
 
-  left_plus_length -= indexsize;
-#if 0
-  /* No.  Extends past end. */
-  left_plus_length += 1;	/* Needed to get last oligomer to match */
-#endif
+  if (left_plus_length < indexsize) {
+    left_plus_length = 0;
+  } else {
+    left_plus_length -= indexsize;
+  }
+  chrpos += (left_plus_length - left); /* We are starting from the right */
 
-  ptr = startptr = left/32U*3;
-  endptr = left_plus_length/32U*3;
+  startptr = left/32U*3;
+  ptr = endptr = left_plus_length/32U*3;
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
+  mask2 = _mm_set1_epi32(0x33333333);
+  mask4 = _mm_set1_epi32(0x0F0F0F0F);
+#ifdef HAVE_SSSE3
+  reverse8 = _mm_set_epi8(0x0C,0x0D,0x0E,0x0F, 0x08,0x09,0x0A,0x0B, 0x04,0x05,0x06,0x07, 0x00,0x01,0x02,0x03);
+#else
+  mask8 = _mm_set1_epi32(0x00FF00FF);
+#endif
+
   if (left_plus_length <= left) {
     /* Skip */
 
   } else if (startptr == endptr) {
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
     nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
+    high0 = ref_blocks[ptr];
+    low0 = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); nextlow = Cmet_reduce_ct(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    high_rev = reverse_nt[low >> 16];
-    high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
-    low_rev = reverse_nt[high >> 16];
-    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-    nexthigh_rev = reverse_nt[nextlow >> 16];
-    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+    current = _mm_set_epi32(0,nextlow,high0,low0);
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+    current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+    current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+#ifdef HAVE_SSE4_1
+    high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+    low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+    nexthigh_rev = (unsigned int) _mm_extract_epi32(current,2);
+#else
+    high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+    low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+    nexthigh_rev = (reverse_nt[nextlow >> 16] | reverse_nt[nextlow & 0x0000FFFF] << 16);
+#endif
+
+    if (indexsize == 9) {
+      chrpos = store_9mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,enddiscard);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,enddiscard);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -12983,425 +17710,667 @@ store_positions_fwd_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *co
   } else {
     /* Genome_print_blocks(ref_blocks,left,left+16); */
 
+    /* End block */
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
     nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
+    high0 = ref_blocks[ptr];
+    low0 = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+      high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); nextlow = Cmet_reduce_ct(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    high_rev = reverse_nt[low >> 16];
-    high_rev |= (reverse_nt[low & 0x0000FFFF] << 16);
-    low_rev = reverse_nt[high >> 16];
-    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-    nexthigh_rev = reverse_nt[nextlow >> 16];
-    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+    current = _mm_set_epi32(0,nextlow,high0,low0);
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+    current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+    current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+#ifdef HAVE_SSE4_1
+    high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+    low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+    nexthigh_rev = (unsigned int) _mm_extract_epi32(current,2);
+#else
+    high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+    low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+    nexthigh_rev = (reverse_nt[nextlow >> 16] | reverse_nt[nextlow & 0x0000FFFF] << 16);
+#endif
+
+    if (indexsize == 9) {
+      chrpos = store_9mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
     } else {
-      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
 
-    ptr += 3;
+    /* Middle blocks */
+    if (indexsize == 9) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
 
-    if (indexsize == 8) {
-      while (ptr + 3 < endptr) {
 #ifdef WORDS_BIGENDIAN
 	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
 	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
 	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
 #else
 	high0 = ref_blocks[ptr];
-	/* low0 = ref_blocks[ptr+1]; */
+	low0 = ref_blocks[ptr+1];
 	high1 = ref_blocks[ptr+3];
 	low1 = ref_blocks[ptr+4];
-	nextlow = ref_blocks[ptr+7];
+	/* nextlow = ref_blocks[ptr+7]; */
 #endif
 	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
 	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	  nextlow = Cmet_reduce_ct(nextlow);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
 	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    nextlow = Cmet_reduce_ct(nextlow);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
 	  } else {
-	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
 	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    nextlow = Cmet_reduce_ga(nextlow);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
 	  }
 	}
 
-	high0_rev = nexthigh_rev; /* depended on low0 */
-	low0_rev = reverse_nt[high0 >> 16];
-	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
-	high1_rev = reverse_nt[low1 >> 16];
-	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
-	low1_rev = reverse_nt[high1 >> 16];
-	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+	nexthigh_rev = high0_rev;
 #ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
 	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
 	next = _mm_shuffle_epi32(temp,0x39);
 #else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
+	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
+#endif
+
+	extract_9mers_fwd_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+      }
+
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	chrpos = store_9mers_fwd(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev);
+      }
+
+    } else if (indexsize == 8) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+#else
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	/* nextlow = ref_blocks[ptr+7]; */
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	  }
+	}
+
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
+
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
+	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
+	next = _mm_shuffle_epi32(temp,0x39);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
 	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
 #endif
 
 	extract_8mers_fwd_simd(array,current,next);
 	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
-	ptr += 6;
       }
 
-      if (ptr < endptr) {
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
 #else
-	high = ref_blocks[ptr];
-	/* low = ref_blocks[ptr+1]; */
-	nextlow = ref_blocks[ptr+4];
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
 #endif
 	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
 	  } else {
-	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
 	  }
 	}
 
-	high_rev = nexthigh_rev; /* depended on low */
-	low_rev = reverse_nt[high >> 16];
-	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-	chrpos = store_8mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	chrpos = store_8mers_fwd(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev);
       }
 
     } else if (indexsize == 7) {
-      while (ptr + 3 < endptr) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
 #ifdef WORDS_BIGENDIAN
 	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
 	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
 	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
 #else
 	high0 = ref_blocks[ptr];
-	/* low0 = ref_blocks[ptr+1]; */
+	low0 = ref_blocks[ptr+1];
 	high1 = ref_blocks[ptr+3];
 	low1 = ref_blocks[ptr+4];
-	nextlow = ref_blocks[ptr+7];
+	/* nextlow = ref_blocks[ptr+7]; */
 #endif
 	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
 	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	  nextlow = Cmet_reduce_ct(nextlow);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
 	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    nextlow = Cmet_reduce_ct(nextlow);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
 	  } else {
-	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
 	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    nextlow = Cmet_reduce_ga(nextlow);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
 	  }
 	}
 
-	high0_rev = nexthigh_rev; /* depended on low0 */
-	low0_rev = reverse_nt[high0 >> 16];
-	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
-	high1_rev = reverse_nt[low1 >> 16];
-	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
-	low1_rev = reverse_nt[high1 >> 16];
-	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+	nexthigh_rev = high0_rev;
 #ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
 	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
 	next = _mm_shuffle_epi32(temp,0x39);
 #else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
 	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
 #endif
 
 	extract_7mers_fwd_simd(array,current,next);
 	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
-	ptr += 6;
       }
 
-      if (ptr < endptr) {
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
 #else
-	high = ref_blocks[ptr];
-	/* low = ref_blocks[ptr+1]; */
-	nextlow = ref_blocks[ptr+4];
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
 #endif
 	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
 	  } else {
-	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
 	  }
 	}
 
-	high_rev = nexthigh_rev; /* depended on low */
-	low_rev = reverse_nt[high >> 16];
-	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-	chrpos = store_7mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	chrpos = store_7mers_fwd(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev);
       }
 
     } else if (indexsize == 6) {
-      while (ptr + 3 < endptr) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
 #ifdef WORDS_BIGENDIAN
 	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
 	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
 	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
 #else
 	high0 = ref_blocks[ptr];
-	/* low0 = ref_blocks[ptr+1]; */
+	low0 = ref_blocks[ptr+1];
 	high1 = ref_blocks[ptr+3];
 	low1 = ref_blocks[ptr+4];
-	nextlow = ref_blocks[ptr+7];
+	/* nextlow = ref_blocks[ptr+7]; */
 #endif
 	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
 	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	  nextlow = Cmet_reduce_ct(nextlow);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
 	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    nextlow = Cmet_reduce_ct(nextlow);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
 	  } else {
-	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
 	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    nextlow = Cmet_reduce_ga(nextlow);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
 	  }
 	}
 
-	high0_rev = nexthigh_rev; /* depended on low0 */
-	low0_rev = reverse_nt[high0 >> 16];
-	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
-	high1_rev = reverse_nt[low1 >> 16];
-	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
-	low1_rev = reverse_nt[high1 >> 16];
-	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+	nexthigh_rev = high0_rev;
 #ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
 	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
 	next = _mm_shuffle_epi32(temp,0x39);
 #else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
 	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
 #endif
 
 	extract_6mers_fwd_simd(array,current,next);
 	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
-	ptr += 6;
       }
 
-      if (ptr < endptr) {
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
 #else
-	high = ref_blocks[ptr];
-	/* low = ref_blocks[ptr+1]; */
-	nextlow = ref_blocks[ptr+4];
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
 #endif
 	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
 	  } else {
-	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
 	  }
 	}
 
-	high_rev = nexthigh_rev; /* depended on low */
-	low_rev = reverse_nt[high >> 16];
-	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-	chrpos = store_6mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	chrpos = store_6mers_fwd(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev);
       }
 
     } else if (indexsize == 5) {
-      while (ptr + 3 < endptr) {
+      while (ptr > startptr + 6) {
+	ptr -= 6;
+
 #ifdef WORDS_BIGENDIAN
 	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
 	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
 	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
 #else
 	high0 = ref_blocks[ptr];
-	/* low0 = ref_blocks[ptr+1]; */
+	low0 = ref_blocks[ptr+1];
 	high1 = ref_blocks[ptr+3];
 	low1 = ref_blocks[ptr+4];
-	nextlow = ref_blocks[ptr+7];
+	/* nextlow = ref_blocks[ptr+7]; */
 #endif
 	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
 	  high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	  nextlow = Cmet_reduce_ct(nextlow);
+	  /* nextlow = Cmet_reduce_ct(nextlow); */
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
 	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    nextlow = Cmet_reduce_ct(nextlow);
+	    /* nextlow = Cmet_reduce_ct(nextlow); */
 	  } else {
-	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
 	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    nextlow = Cmet_reduce_ga(nextlow);
+	    /* nextlow = Cmet_reduce_ga(nextlow); */
 	  }
 	}
 
-	high0_rev = nexthigh_rev; /* depended on low0 */
-	low0_rev = reverse_nt[high0 >> 16];
-	low0_rev |= (reverse_nt[high0 & 0x0000FFFF] << 16);
-	high1_rev = reverse_nt[low1 >> 16];
-	high1_rev |= (reverse_nt[low1 & 0x0000FFFF] << 16);
-	low1_rev = reverse_nt[high1 >> 16];
-	low1_rev |= (reverse_nt[high1 & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+	current = _mm_set_epi32(high1,low1,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-	current = _mm_setr_epi32(high0_rev,low0_rev,high1_rev,low1_rev);
+	nexthigh_rev = high0_rev;
 #ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	/* low0_rev = (unsigned int) _mm_extract_epi32(current,1); */
+	/* high1_rev = (unsigned int) _mm_extract_epi32(current,2); */
+	/* low1_rev = (unsigned int) _mm_extract_epi32(current,3); */
+
 	temp = _mm_insert_epi32(current,nexthigh_rev,0x00);
 	next = _mm_shuffle_epi32(temp,0x39);
 #else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+	high1_rev = (reverse_nt[low1 >> 16] | reverse_nt[low1 & 0x0000FFFF] << 16);
+	low1_rev = (reverse_nt[high1 >> 16] | reverse_nt[high1 & 0x0000FFFF] << 16);
+
 	next = _mm_setr_epi32(low0_rev,high1_rev,low1_rev,nexthigh_rev);
 #endif
 
 	extract_5mers_fwd_simd(array,current,next);
 	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
-	ptr += 6;
       }
 
-      if (ptr < endptr) {
+      if (ptr > startptr + 3) {
+	ptr -= 3;
+
 #ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr]);
-	/* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
 #else
-	high = ref_blocks[ptr];
-	/* low = ref_blocks[ptr+1]; */
-	nextlow = ref_blocks[ptr+4];
+	high0 = ref_blocks[ptr];
+	low0 = ref_blocks[ptr+1];
+	/* nextlow = ref_blocks[ptr+4]; */
 #endif
 	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	  high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
 	  } else {
-	    high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
 	  }
 	}
 
-	high_rev = nexthigh_rev; /* depended on low */
-	low_rev = reverse_nt[high >> 16];
-	low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-	nexthigh_rev = reverse_nt[nextlow >> 16];
-	nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+	current = _mm_set_epi32(0,0,high0,low0);
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+	current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+	current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+	current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-	chrpos = store_5mers_fwd(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev);
-	ptr += 3;
+	nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+	high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+	low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+	high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+	low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+	chrpos = store_5mers_fwd(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev);
       }
 
     } else {
       abort();
     }
 
+    ptr -= 3;
+
+    /* Start block */
+    assert(ptr == startptr);
 
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    /* low = Bigendian_convert_uint(ref_blocks[ptr+1]); */
-    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+    high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    /* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
 #else
-    high = ref_blocks[ptr];
-    /* low = ref_blocks[ptr+1]; */
-    nextlow = ref_blocks[ptr+4];
+    high0 = ref_blocks[ptr];
+    low0 = ref_blocks[ptr+1];
+    /* nextlow = ref_blocks[ptr+4]; */
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+      high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); /* low = Cmet_reduce_ct(low); */ nextlow = Cmet_reduce_ct(nextlow);
+	high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0); /* nextlow = Cmet_reduce_ct(nextlow); */
       } else {
-	high = Cmet_reduce_ga(high); /* low = Cmet_reduce_ga(low); */ nextlow = Cmet_reduce_ga(nextlow);
+	high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0); /* nextlow = Cmet_reduce_ga(nextlow); */
       }
     }
 
-    high_rev = nexthigh_rev;	/* depended on low */
-    low_rev = reverse_nt[high >> 16];
-    low_rev |= (reverse_nt[high & 0x0000FFFF] << 16);
-    nexthigh_rev = reverse_nt[nextlow >> 16];
-    nexthigh_rev |= (reverse_nt[nextlow & 0x0000FFFF] << 16);
+    current = _mm_set_epi32(0,0,high0,low0);
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,2),mask2),_mm_slli_epi32(_mm_and_si128(current,mask2),2)); /* Swap pairs */
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,4),mask4),_mm_slli_epi32(_mm_and_si128(current,mask4),4)); /* Swap nibbles */
+#ifdef HAVE_SSSE3
+    current = _mm_shuffle_epi8(current,reverse8); /* Reverse bytes */
+#else
+    current = _mm_or_si128(_mm_and_si128(_mm_srli_epi32(current,8),mask8),_mm_slli_epi32(_mm_and_si128(current,mask8),8)); /* Swap bytes */
+    current = _mm_or_si128(_mm_srli_epi32(current,16),_mm_slli_epi32(current,16)); /* Swap 16-bit quantities */
+#endif
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+    nexthigh_rev = high0_rev;
+#ifdef HAVE_SSE4_1
+    high0_rev = (unsigned int) _mm_extract_epi32(current,0);
+    low0_rev = (unsigned int) _mm_extract_epi32(current,1);
+#else
+    high0_rev = (reverse_nt[low0 >> 16] | reverse_nt[low0 & 0x0000FFFF] << 16);
+    low0_rev = (reverse_nt[high0 >> 16] | reverse_nt[high0 & 0x0000FFFF] << 16);
+#endif
+
+    if (indexsize == 9) {
+      chrpos = store_9mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_7mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_6mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high_rev,low_rev,nexthigh_rev,/*startdiscard*/0,enddiscard);
+      chrpos = store_5mers_fwd_partial(chrpos,pointers,positions,counts,high0_rev,low0_rev,nexthigh_rev,startdiscard,/*enddiscard*/31);
     } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
-
   }
   
   return;
@@ -13414,45 +18383,161 @@ store_positions_fwd_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *co
  ************************************************************************/
 
 static void
+count_9mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
+			 int startdiscard, int enddiscard) {
+  Genomecomp_T masked;
+  int pos;
+
+  pos = startdiscard;
+
+  while (pos <= enddiscard && pos <= 7) {
+    masked = low_rc >> 2*pos;
+    masked &= MASK9;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos++;
+  }
+
+  while (pos <= enddiscard && pos <= 15) {
+    masked = low_rc >> 2*pos;
+    masked |= high_rc << (32 - 2*pos);
+    masked &= MASK9;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos++;
+  }
+
+  while (pos <= enddiscard && pos <= 23) {
+    masked = high_rc >> (2*pos - 32);
+    masked &= MASK9;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK9;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos++;
+  }
+
+  return;
+}
+
+static int
+store_9mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+			 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
+			 int startdiscard, int enddiscard) {
+  Genomecomp_T masked;
+  int pos;
+
+  pos = startdiscard;
+
+  while (pos <= enddiscard && pos <= 7) {
+    masked = low_rc >> 2*pos;
+    masked &= MASK9;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard && pos <= 15) {
+    masked = low_rc >> 2*pos;
+    masked |= high_rc << (32 - 2*pos);
+    masked &= MASK9;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard && pos <= 23) {
+    masked = high_rc >> (2*pos - 32);
+    masked &= MASK9;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK9;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos++;
+  }
+
+  return chrpos;
+}
+
+
+static void
 count_8mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc,
 			 int startdiscard, int enddiscard) {
   Genomecomp_T masked;
   int pos;
 
-  pos = enddiscard;
+  pos = startdiscard;
 
-  while (pos >= startdiscard && pos >= 25) {
-    masked = high_rc >> (2*pos - 32);
-    masked |= nextlow_rc << (64 - 2*pos);
+  while (pos <= enddiscard && pos <= 8) {
+    masked = low_rc >> 2*pos;
     masked &= MASK8;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
   }
 
-  while (pos >= startdiscard && pos >= 16) {
-    masked = high_rc >> (2*pos - 32);
-    masked &= MASK8;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
-  }
-
-  while (pos >= startdiscard && pos >= 9) {
+  while (pos <= enddiscard && pos <= 15) {
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK8;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
   }
 
-  while (pos >= startdiscard) {
-    masked = low_rc >> 2*pos;
+  while (pos <= enddiscard && pos <= 24) {
+    masked = high_rc >> (2*pos - 32);
     masked &= MASK8;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK8;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos++;
   }
 
   return;
@@ -13466,64 +18551,64 @@ store_8mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
   Genomecomp_T masked;
   int pos;
 
-  pos = enddiscard;
+  pos = startdiscard;
 
-  while (pos >= startdiscard && pos >= 25) {
-    masked = high_rc >> (2*pos - 32);
-    masked |= nextlow_rc << (64 - 2*pos);
+  while (pos <= enddiscard && pos <= 8) {
+    masked = low_rc >> 2*pos;
     masked &= MASK8;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
   }
 
-  while (pos >= startdiscard && pos >= 16) {
-    masked = high_rc >> (2*pos - 32);
-    masked &= MASK8;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos--;
-  }
-
-  while (pos >= startdiscard && pos >= 9) {
+  while (pos <= enddiscard && pos <= 15) {
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK8;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
   }
 
-  while (pos >= startdiscard) {
-    masked = low_rc >> 2*pos;
+  while (pos <= enddiscard && pos <= 24) {
+    masked = high_rc >> (2*pos - 32);
     masked &= MASK8;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK8;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos++;
   }
 
   return chrpos;
@@ -13536,40 +18621,40 @@ count_7mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high
   Genomecomp_T masked;
   int pos;
 
-  pos = enddiscard;
+  pos = startdiscard;
 
-  while (pos >= startdiscard && pos >= 26) {
-    masked = high_rc >> (2*pos - 32);
-    masked |= nextlow_rc << (64 - 2*pos);
+  while (pos <= enddiscard && pos <= 9) {
+    masked = low_rc >> 2*pos;
     masked &= MASK7;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
   }
 
-  while (pos >= startdiscard && pos >= 16) {
-    masked = high_rc >> (2*pos - 32);
-    masked &= MASK7;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
-  }
-
-  while (pos >= startdiscard && pos >= 10) {
+  while (pos <= enddiscard && pos <= 15) {
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK7;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
   }
 
-  while (pos >= startdiscard) {
-    masked = low_rc >> 2*pos;
+  while (pos <= enddiscard && pos <= 25) {
+    masked = high_rc >> (2*pos - 32);
     masked &= MASK7;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK7;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos++;
   }
 
   return;
@@ -13583,64 +18668,64 @@ store_7mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
   Genomecomp_T masked;
   int pos;
 
-  pos = enddiscard;
+  pos = startdiscard;
 
-  while (pos >= startdiscard && pos >= 26) {
-    masked = high_rc >> (2*pos - 32);
-    masked |= nextlow_rc << (64 - 2*pos);
+  while (pos <= enddiscard && pos <= 9) {
+    masked = low_rc >> 2*pos;
     masked &= MASK7;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
   }
 
-  while (pos >= startdiscard && pos >= 16) {
-    masked = high_rc >> (2*pos - 32);
-    masked &= MASK7;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos--;
-  }
-
-  while (pos >= startdiscard && pos >= 10) {
+  while (pos <= enddiscard && pos <= 15) {
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK7;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
   }
 
-  while (pos >= startdiscard) {
-    masked = low_rc >> 2*pos;
+  while (pos <= enddiscard && pos <= 25) {
+    masked = high_rc >> (2*pos - 32);
     masked &= MASK7;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK7;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos++;
   }
 
   return chrpos;
@@ -13653,40 +18738,40 @@ count_6mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high
   Genomecomp_T masked;
   int pos;
 
-  pos = enddiscard;
+  pos = startdiscard;
 
-  while (pos >= startdiscard && pos >= 27) {
-    masked = high_rc >> (2*pos - 32);
-    masked |= nextlow_rc << (64 - 2*pos);
+  while (pos <= enddiscard && pos <= 10) {
+    masked = low_rc >> 2*pos;
     masked &= MASK6;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
   }
 
-  while (pos >= startdiscard && pos >= 16) {
-    masked = high_rc >> (2*pos - 32);
-    masked &= MASK6;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
-  }
-
-  while (pos >= startdiscard && pos >= 11) {
+  while (pos <= enddiscard && pos <= 15) {
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK6;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
   }
 
-  while (pos >= startdiscard) {
-    masked = low_rc >> 2*pos;
+  while (pos <= enddiscard && pos <= 26) {
+    masked = high_rc >> (2*pos - 32);
     masked &= MASK6;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK6;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos++;
   }
 
   return;
@@ -13700,64 +18785,64 @@ store_6mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
   Genomecomp_T masked;
   int pos;
 
-  pos = enddiscard;
+  pos = startdiscard;
 
-  while (pos >= startdiscard && pos >= 27) {
-    masked = high_rc >> (2*pos - 32);
-    masked |= nextlow_rc << (64 - 2*pos);
+  while (pos <= enddiscard && pos <= 10) {
+    masked = low_rc >> 2*pos;
     masked &= MASK6;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
   }
 
-  while (pos >= startdiscard && pos >= 16) {
-    masked = high_rc >> (2*pos - 32);
-    masked &= MASK6;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos--;
-  }
-
-  while (pos >= startdiscard && pos >= 11) {
+  while (pos <= enddiscard && pos <= 15) {
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK6;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
   }
 
-  while (pos >= startdiscard) {
-    masked = low_rc >> 2*pos;
+  while (pos <= enddiscard && pos <= 26) {
+    masked = high_rc >> (2*pos - 32);
     masked &= MASK6;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK6;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos++;
   }
 
   return chrpos;
@@ -13770,40 +18855,40 @@ count_5mers_rev_partial (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high
   Genomecomp_T masked;
   int pos;
 
-  pos = enddiscard;
+  pos = startdiscard;
 
-  while (pos >= startdiscard && pos >= 28) {
-    masked = high_rc >> (2*pos - 32);
-    masked |= nextlow_rc << (64 - 2*pos);
+  while (pos <= enddiscard && pos <= 11) {
+    masked = low_rc >> 2*pos;
     masked &= MASK5;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
   }
 
-  while (pos >= startdiscard && pos >= 16) {
-    masked = high_rc >> (2*pos - 32);
-    masked &= MASK5;
-    counts[masked] += 1;
-    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
-  }
-
-  while (pos >= startdiscard && pos >= 12) {
+  while (pos <= enddiscard && pos <= 15) {
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK5;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
   }
 
-  while (pos >= startdiscard) {
-    masked = low_rc >> 2*pos;
+  while (pos <= enddiscard && pos <= 27) {
+    masked = high_rc >> (2*pos - 32);
     masked &= MASK5;
     counts[masked] += 1;
     debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
-    pos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK5;
+    counts[masked] += 1;
+    debug(printf("%d %04X => %d\n",pos,masked,counts[masked]));
+    pos++;
   }
 
   return;
@@ -13817,64 +18902,64 @@ store_5mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
   Genomecomp_T masked;
   int pos;
 
-  pos = enddiscard;
+  pos = startdiscard;
 
-  while (pos >= startdiscard && pos >= 28) {
-    masked = high_rc >> (2*pos - 32);
-    masked |= nextlow_rc << (64 - 2*pos);
+  while (pos <= enddiscard && pos <= 11) {
+    masked = low_rc >> 2*pos;
     masked &= MASK5;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
   }
 
-  while (pos >= startdiscard && pos >= 16) {
-    masked = high_rc >> (2*pos - 32);
-    masked &= MASK5;
-    if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
-	counts[masked] = 0;
-      } else {
-	*(pointers[masked]++) = chrpos;
-      }
-    }
-    chrpos++;
-    pos--;
-  }
-
-  while (pos >= startdiscard && pos >= 12) {
+  while (pos <= enddiscard && pos <= 15) {
     masked = low_rc >> 2*pos;
     masked |= high_rc << (32 - 2*pos);
     masked &= MASK5;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
   }
 
-  while (pos >= startdiscard) {
-    masked = low_rc >> 2*pos;
+  while (pos <= enddiscard && pos <= 27) {
+    masked = high_rc >> (2*pos - 32);
     masked &= MASK5;
     if (counts[masked]) {
-      if (pointers[masked] == positions[masked/*+1*/]) {
+      if (pointers[masked] == positions[masked]) {
 	counts[masked] = 0;
       } else {
-	*(pointers[masked]++) = chrpos;
+	*(--pointers[masked]) = chrpos;
       }
     }
-    chrpos++;
-    pos--;
+    chrpos--;
+    pos++;
+  }
+
+  while (pos <= enddiscard) {
+    masked = high_rc >> (2*pos - 32);
+    masked |= nextlow_rc << (64 - 2*pos);
+    masked &= MASK5;
+    if (counts[masked]) {
+      if (pointers[masked] == positions[masked]) {
+	counts[masked] = 0;
+      } else {
+	*(--pointers[masked]) = chrpos;
+      }
+    }
+    chrpos--;
+    pos++;
   }
 
   return chrpos;
@@ -13882,150 +18967,1551 @@ store_5mers_rev_partial (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positi
 
 
 static void
-count_8mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+count_9mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  oligo = high_rc >> 18;	/* For 31..25 */
-  oligo |= nextlow_rc << 14;
 
-  masked = (oligo >> 12) & MASK8; /* 31 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK9;	/* 0 */
   counts[masked] += 1;
-  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
-  masked = (oligo >> 10) & MASK8; /* 30 */
+  masked = (low_rc >> 2) & MASK9; /* 1 */
   counts[masked] += 1;
-  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
 
-  masked = (oligo >> 8) & MASK8; /* 29 */
+  masked = (low_rc >> 4) & MASK9; /* 2 */
   counts[masked] += 1;
-  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
 
-  masked = (oligo >> 6) & MASK8; /* 28 */
-  counts[masked] += 1;
-  debug(printf("28 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK8; /* 27 */
-  counts[masked] += 1;
-  debug(printf("27 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK8; /* 26 */
-  counts[masked] += 1;
-  debug(printf("26 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK8; /* 25 */
-  counts[masked] += 1;
-  debug(printf("25 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = high_rc >> 16;	/* 24, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("24 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 14) & MASK8; /* 23 */
-  counts[masked] += 1;
-  debug(printf("23 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 12) & MASK8; /* 22 */
-  counts[masked] += 1;
-  debug(printf("22 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 10) & MASK8; /* 21 */
-  counts[masked] += 1;
-  debug(printf("21 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 8) & MASK8; /* 20 */
-  counts[masked] += 1;
-  debug(printf("20 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 6) & MASK8; /* 19 */
-  counts[masked] += 1;
-  debug(printf("19 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 4) & MASK8; /* 18 */
-  counts[masked] += 1;
-  debug(printf("18 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 2) & MASK8; /* 17 */
-  counts[masked] += 1;
-  debug(printf("17 %04X => %d\n",masked,counts[masked]));
-
-  masked = high_rc & MASK8;	/* 16 */
-  counts[masked] += 1;
-  debug(printf("16 %04X => %d\n",masked,counts[masked]));
-
-
-  oligo = low_rc >> 18;		/* For 15..9 */
-  oligo |= high_rc << 14;
-
-  masked = (oligo >> 12) & MASK8; /* 15 */
-  counts[masked] += 1;
-  debug(printf("15 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 10) & MASK8; /* 14 */
-  counts[masked] += 1;
-  debug(printf("14 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 8) & MASK8; /* 13 */
-  counts[masked] += 1;
-  debug(printf("13 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK8; /* 12 */
-  counts[masked] += 1;
-  debug(printf("12 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK8; /* 11 */
-  counts[masked] += 1;
-  debug(printf("11 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK8; /* 10 */
-  counts[masked] += 1;
-  debug(printf("10 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK8; /* 9 */
-  counts[masked] += 1;
-  debug(printf("9 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = low_rc >> 16;	/* 8, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("8 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 14) & MASK8; /* 7 */
-  counts[masked] += 1;
-  debug(printf("7 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 12) & MASK8; /* 6 */
-  counts[masked] += 1;
-  debug(printf("6 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 10) & MASK8; /* 5 */
-  counts[masked] += 1;
-  debug(printf("5 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 8) & MASK8; /* 4 */
-  counts[masked] += 1;
-  debug(printf("4 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 6) & MASK8; /* 3 */
+  masked = (low_rc >> 6) & MASK9; /* 3 */
   counts[masked] += 1;
   debug(printf("3 %04X => %d\n",masked,counts[masked]));
 
-  masked = (low_rc >> 4) & MASK8; /* 2 */
+  masked = (low_rc >> 8) & MASK9; /* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 10) & MASK9; /* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 12) & MASK9; /* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rc >> 14;	/* 7, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
   counts[masked] += 1;
   debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rc >> 16;		/* For 15..8 */
+  oligo |= high_rc << 16;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK9; /* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK9; /* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK9; /* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK9; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK9; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK9; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 12) & MASK9; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 14) & MASK9; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK9;	/* 16 */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 2) & MASK9; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 4) & MASK9; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 6) & MASK9; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 8) & MASK9; /* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 10) & MASK9; /* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 12) & MASK9; /* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rc >> 14;	/* 23, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = high_rc >> 16;	/* For 31..24 */
+  oligo |= nextlow_rc << 16;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK9; /* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK9; /* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK9; /* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK9; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK9; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK9; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 12) & MASK9; /* 30 */
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 14) & MASK9; /* 31 */
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+#endif
+
+  return;
+}
+
+/* Expecting current to have {low0_rc, high0_rc, low1_rc, high1_rc},
+   and next to have {high0_rc, low1_rc, high1_rc, nextlow_rc} */
+#ifdef USE_SIMD_FOR_COUNTS
+static void
+extract_9mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
+  __m128i oligo;
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,16), _mm_slli_epi32(next,16));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,14), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,12), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,10), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,8), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,6), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,4), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(oligo,2), mask9));
+  _mm_store_si128(out++, _mm_and_si128( oligo, mask9));
+
+  _mm_store_si128(out++, _mm_srli_epi32(current,14)); /* No mask necessary */;
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,12), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,10), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,8), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,6), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,4), mask9));
+  _mm_store_si128(out++, _mm_and_si128( _mm_srli_epi32(current,2), mask9));
+  _mm_store_si128(out++, _mm_and_si128( current, mask9));
+
+  return;
+}
+
+static void
+count_9mers_rev_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,16), _mm_slli_epi32(next,16));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,14), mask9));
+  counts[array[0]] += 1;	/* 63 */
+  counts[array[1]] += 1;	/* 47 */
+  counts[array[2]] += 1; 	/* 31 */
+  counts[array[3]] += 1; 	/* 15 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,12), mask9));
+  counts[array[0]] += 1; 	/* 62 */
+  counts[array[1]] += 1; 	/* 46 */
+  counts[array[2]] += 1; 	/* 30 */
+  counts[array[3]] += 1; 	/* 14 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,10), mask9));
+  counts[array[0]] += 1;	/* 61 */
+  counts[array[1]] += 1;	/* 45 */
+  counts[array[2]] += 1;	/* 29 */
+  counts[array[3]] += 1;	/* 13 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,8), mask9));
+  counts[array[0]] += 1;	/* 60 */
+  counts[array[1]] += 1;	/* 44 */
+  counts[array[2]] += 1;	/* 28 */
+  counts[array[3]] += 1;	/* 12 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask9));
+  counts[array[0]] += 1;	/* 59 */
+  counts[array[1]] += 1;	/* 43 */
+  counts[array[2]] += 1;	/* 27 */
+  counts[array[3]] += 1;	/* 11 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask9));
+  counts[array[0]] += 1;	/* 58 */
+  counts[array[1]] += 1;	/* 42 */
+  counts[array[2]] += 1;	/* 26 */
+  counts[array[3]] += 1;	/* 10 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask9));
+  counts[array[0]] += 1;	/* 57 */
+  counts[array[1]] += 1;	/* 41 */
+  counts[array[2]] += 1;	/* 25 */
+  counts[array[3]] += 1;	/* 9 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask9));
+  counts[array[0]] += 1;	/* 56 */
+  counts[array[1]] += 1;	/* 50 */
+  counts[array[2]] += 1;	/* 24 */
+  counts[array[3]] += 1;	/* 8 */
+
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,14)); /* No mask necessary */;
+  counts[array[0]] += 1;	/* 55 */
+  counts[array[1]] += 1;	/* 39 */
+  counts[array[2]] += 1;	/* 23 */
+  counts[array[3]] += 1;	/* 7 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask9));
+  counts[array[0]] += 1;	/* 54 */
+  counts[array[1]] += 1;	/* 38 */
+  counts[array[2]] += 1;	/* 22 */
+  counts[array[3]] += 1;	/* 6 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask9));
+  counts[array[0]] += 1;	/* 53 */
+  counts[array[1]] += 1;	/* 37 */
+  counts[array[2]] += 1;	/* 21 */
+  counts[array[3]] += 1;	/* 5 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask9));
+  counts[array[0]] += 1;	/* 52 */
+  counts[array[1]] += 1;	/* 36 */
+  counts[array[2]] += 1;	/* 20 */
+  counts[array[3]] += 1;	/* 4 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask9));
+  counts[array[0]] += 1;	/* 51 */
+  counts[array[1]] += 1;	/* 35 */
+  counts[array[2]] += 1;	/* 19 */
+  counts[array[3]] += 1;	/* 3 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask9));
+  counts[array[0]] += 1;	/* 50 */
+  counts[array[1]] += 1;	/* 34 */
+  counts[array[2]] += 1;	/* 18 */
+  counts[array[3]] += 1;	/* 2 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask9));
+  counts[array[0]] += 1;	/* 49 */
+  counts[array[1]] += 1;	/* 33 */
+  counts[array[2]] += 1;	/* 17 */
+  counts[array[3]] += 1;	/* 1 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask9));
+  counts[array[0]] += 1;	/* 48 */
+  counts[array[1]] += 1;	/* 32 */
+  counts[array[2]] += 1;	/* 16 */
+  counts[array[3]] += 1;	/* 0 */
+
+  return;
+}
+#endif
+
+
+static int
+store_9mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
+		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK9;	/* 0 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = (low_rc >> 2) & MASK9; /* 1 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = (low_rc >> 4) & MASK9; /* 2 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = (low_rc >> 6) & MASK9; /* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+  masked = (low_rc >> 8) & MASK9; /* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = (low_rc >> 10) & MASK9; /* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = (low_rc >> 12) & MASK9; /* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = low_rc >> 14;	/* 7, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+#endif
+
+
+  oligo = low_rc >> 16;		/* For 15..8 */
+  oligo |= high_rc << 16;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK9; /* 8 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK9; /* 9 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK9; /* 10 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK9; /* 11 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK9; /* 12 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK9; /* 13 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (oligo >> 12) & MASK9; /* 14 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = (oligo >> 14) & MASK9; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK9;	/* 16 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (high_rc >> 2) & MASK9; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (high_rc >> 4) & MASK9; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (high_rc >> 6) & MASK9; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = (high_rc >> 8) & MASK9; /* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = (high_rc >> 10) & MASK9; /* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = (high_rc >> 12) & MASK9; /* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = high_rc >> 14;	/* 23, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+#endif
+
+
+  oligo = high_rc >> 16;	/* For 31..24 */
+  oligo |= nextlow_rc << 16;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK9; /* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK9; /* 25 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK9; /* 26 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK9; /* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK9; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK9; /* 29 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (oligo >> 12) & MASK9; /* 30 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = (oligo >> 14) & MASK9; /* 31 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask9));
+#else
+  _masked = _mm_and_si128(_oligo, mask9);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
+}
+
+
+static void
+count_8mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
+  Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK8;	/* 0 */
+  counts[masked] += 1;
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
   masked = (low_rc >> 2) & MASK8; /* 1 */
   counts[masked] += 1;
   debug(printf("1 %04X => %d\n",masked,counts[masked]));
 
-  masked = low_rc & MASK8;	/* 0 */
+  masked = (low_rc >> 4) & MASK8; /* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 6) & MASK8; /* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 8) & MASK8; /* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 10) & MASK8; /* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 12) & MASK8; /* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 14) & MASK8; /* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rc >> 16;	/* 8, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == (low_rc & MASK8));
   counts[masked] += 1;
   debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((low_rc >> 2) & MASK8));
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((low_rc >> 4) & MASK8));
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((low_rc >> 6) & MASK8));
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == ((low_rc >> 8) & MASK8));
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((low_rc >> 10) & MASK8));
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((low_rc >> 12) & MASK8));
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((low_rc >> 14) & MASK8));
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+
+  masked = low_rc >> 16;	/* 8, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rc >> 18;		/* For 15..9 */
+  oligo |= high_rc << 14;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK8; /* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK8; /* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK8; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK8; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK8; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK8; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 12) & MASK8; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == (oligo & MASK8));
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((oligo >> 2) & MASK8));
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((oligo >> 4) & MASK8));
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((oligo >> 6) & MASK8));
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == ((oligo >> 8) & MASK8));
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((oligo >> 10) & MASK8));
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((oligo >> 12) & MASK8));
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK8;	/* 16 */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 2) & MASK8; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 4) & MASK8; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 6) & MASK8; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 8) & MASK8; /* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 10) & MASK8; /* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 12) & MASK8; /* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 14) & MASK8; /* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rc >> 16;	/* 24, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == (high_rc & MASK8));
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((high_rc >> 2) & MASK8));
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((high_rc >> 4) & MASK8));
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((high_rc >> 6) & MASK8));
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == ((high_rc >> 8) & MASK8));
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((high_rc >> 10) & MASK8));
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((high_rc >> 12) & MASK8));
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((high_rc >> 14) & MASK8));
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+
+  masked = high_rc >> 16;	/* 24, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = high_rc >> 18;	/* For 31..25 */
+  oligo |= nextlow_rc << 14;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK8; /* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK8; /* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK8; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK8; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK8; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK8; /* 30 */
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 12) & MASK8; /* 31 */
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == (oligo & MASK8));
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((oligo >> 2) & MASK8));
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((oligo >> 4) & MASK8));
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((oligo >> 6) & MASK8));
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == ((oligo >> 8) & MASK8));
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((oligo >> 10) & MASK8));
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((oligo >> 12) & MASK8));
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+#endif
 
   return;
 }
-
 
 
 /* Expecting current to have {low0_rc, high0_rc, low1_rc, high1_rc},
@@ -14056,8 +20542,114 @@ extract_8mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
 
   return;
 }
-#endif
 
+static void
+count_8mers_rev_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,18), _mm_slli_epi32(next,14));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,12), mask8));
+  counts[array[0]] += 1;	/* 63 */
+  counts[array[1]] += 1;	/* 47 */
+  counts[array[2]] += 1; 	/* 31 */
+  counts[array[3]] += 1; 	/* 15 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,10), mask8));
+  counts[array[0]] += 1; 	/* 62 */
+  counts[array[1]] += 1; 	/* 46 */
+  counts[array[2]] += 1; 	/* 30 */
+  counts[array[3]] += 1; 	/* 14 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,8), mask8));
+  counts[array[0]] += 1;	/* 61 */
+  counts[array[1]] += 1;	/* 45 */
+  counts[array[2]] += 1;	/* 29 */
+  counts[array[3]] += 1;	/* 13 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask8));
+  counts[array[0]] += 1;	/* 60 */
+  counts[array[1]] += 1;	/* 44 */
+  counts[array[2]] += 1;	/* 28 */
+  counts[array[3]] += 1;	/* 12 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask8));
+  counts[array[0]] += 1;	/* 59 */
+  counts[array[1]] += 1;	/* 43 */
+  counts[array[2]] += 1;	/* 27 */
+  counts[array[3]] += 1;	/* 11 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask8));
+  counts[array[0]] += 1;	/* 58 */
+  counts[array[1]] += 1;	/* 42 */
+  counts[array[2]] += 1;	/* 26 */
+  counts[array[3]] += 1;	/* 10 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask8));
+  counts[array[0]] += 1;	/* 57 */
+  counts[array[1]] += 1;	/* 41 */
+  counts[array[2]] += 1;	/* 25 */
+  counts[array[3]] += 1;	/* 9 */
+
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,16)); /* No mask necessary */;
+  counts[array[0]] += 1;	/* 56 */
+  counts[array[1]] += 1;	/* 50 */
+  counts[array[2]] += 1;	/* 24 */
+  counts[array[3]] += 1;	/* 8 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,14), mask8));
+  counts[array[0]] += 1;	/* 55 */
+  counts[array[1]] += 1;	/* 39 */
+  counts[array[2]] += 1;	/* 23 */
+  counts[array[3]] += 1;	/* 7 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask8));
+  counts[array[0]] += 1;	/* 54 */
+  counts[array[1]] += 1;	/* 38 */
+  counts[array[2]] += 1;	/* 22 */
+  counts[array[3]] += 1;	/* 6 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask8));
+  counts[array[0]] += 1;	/* 53 */
+  counts[array[1]] += 1;	/* 37 */
+  counts[array[2]] += 1;	/* 21 */
+  counts[array[3]] += 1;	/* 5 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask8));
+  counts[array[0]] += 1;	/* 52 */
+  counts[array[1]] += 1;	/* 36 */
+  counts[array[2]] += 1;	/* 20 */
+  counts[array[3]] += 1;	/* 4 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask8));
+  counts[array[0]] += 1;	/* 51 */
+  counts[array[1]] += 1;	/* 35 */
+  counts[array[2]] += 1;	/* 19 */
+  counts[array[3]] += 1;	/* 3 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask8));
+  counts[array[0]] += 1;	/* 50 */
+  counts[array[1]] += 1;	/* 34 */
+  counts[array[2]] += 1;	/* 18 */
+  counts[array[3]] += 1;	/* 2 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask8));
+  counts[array[0]] += 1;	/* 49 */
+  counts[array[1]] += 1;	/* 33 */
+  counts[array[2]] += 1;	/* 17 */
+  counts[array[3]] += 1;	/* 1 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask8));
+  counts[array[0]] += 1;	/* 48 */
+  counts[array[1]] += 1;	/* 32 */
+  counts[array[2]] += 1;	/* 16 */
+  counts[array[3]] += 1;	/* 0 */
+
+  return;
+}
+
+#endif
 
 
 
@@ -14065,305 +20657,705 @@ static int
 store_8mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  oligo = high_rc >> 18;	/* For 31..25 */
-  oligo |= nextlow_rc << 14;
 
-  masked = (oligo >> 12) & MASK8; /* 31 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK8;	/* 0 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos;
+      *(--pointers[masked]) = chrpos;
     }
   }
 
-  masked = (oligo >> 10) & MASK8; /* 30 */
+  masked = (low_rc >> 2) & MASK8; /* 1 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 1;
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = (oligo >> 8) & MASK8; /* 29 */
+  masked = (low_rc >> 4) & MASK8; /* 2 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 2;
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  masked = (oligo >> 6) & MASK8; /* 28 */
+  masked = (low_rc >> 6) & MASK8; /* 3 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 3;
+      *(--pointers[masked]) = chrpos - 3;
     }
   }
 
-  masked = (oligo >> 4) & MASK8; /* 27 */
+  masked = (low_rc >> 8) & MASK8; /* 4 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 4;
+      *(--pointers[masked]) = chrpos - 4;
     }
   }
 
-  masked = (oligo >> 2) & MASK8; /* 26 */
+  masked = (low_rc >> 10) & MASK8; /* 5 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 5;
+      *(--pointers[masked]) = chrpos - 5;
     }
   }
 
-  masked = oligo & MASK8; /* 25 */
+  masked = (low_rc >> 12) & MASK8; /* 6 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 6;
+      *(--pointers[masked]) = chrpos - 6;
     }
   }
 
-
-  masked = high_rc >> 16;	/* 24, No mask necessary */
+  masked = (low_rc >> 14) & MASK8; /* 7 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 7;
+      *(--pointers[masked]) = chrpos - 7;
     }
   }
 
-  masked = (high_rc >> 14) & MASK8; /* 23 */
+  masked = low_rc >> 16;	/* 8, No mask necessary */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 8;
+      *(--pointers[masked]) = chrpos - 8;
     }
   }
 
-  masked = (high_rc >> 12) & MASK8; /* 22 */
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == (low_rc & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 9;
+      *(--pointers[masked]) = chrpos;
     }
   }
 
-  masked = (high_rc >> 10) & MASK8; /* 21 */
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((low_rc >> 2) & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 10;
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = (high_rc >> 8) & MASK8; /* 20 */
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((low_rc >> 4) & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 11;
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  masked = (high_rc >> 6) & MASK8; /* 19 */
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((low_rc >> 6) & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 12;
-    }
-  }
-
-  masked = (high_rc >> 4) & MASK8; /* 18 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 13;
-    }
-  }
-
-  masked = (high_rc >> 2) & MASK8; /* 17 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 14;
-    }
-  }
-
-  masked = high_rc & MASK8;	/* 16 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 15;
+      *(--pointers[masked]) = chrpos - 3;
     }
   }
 
 
-  oligo = low_rc >> 18;		/* For 15..9 */
-  oligo |= high_rc << 14;
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
 
-  masked = (oligo >> 12) & MASK8; /* 15 */
+  masked = EXTRACT(_masked,0);
+  assert(masked == ((low_rc >> 8) & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 16;
+      *(--pointers[masked]) = chrpos - 4;
     }
   }
 
-  masked = (oligo >> 10) & MASK8; /* 14 */
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((low_rc >> 10) & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 17;
+      *(--pointers[masked]) = chrpos - 5;
     }
   }
 
-  masked = (oligo >> 8) & MASK8; /* 13 */
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((low_rc >> 12) & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 18;
+      *(--pointers[masked]) = chrpos - 6;
     }
   }
 
-  masked = (oligo >> 6) & MASK8; /* 12 */
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((low_rc >> 14) & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 19;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK8; /* 11 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 20;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK8; /* 10 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 21;
-    }
-  }
-
-  masked = oligo & MASK8; /* 9 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 22;
+      *(--pointers[masked]) = chrpos - 7;
     }
   }
 
 
   masked = low_rc >> 16;	/* 8, No mask necessary */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 23;
+      *(--pointers[masked]) = chrpos - 8;
     }
   }
+#endif
 
-  masked = (low_rc >> 14) & MASK8; /* 7 */
+
+  oligo = low_rc >> 18;		/* For 15..9 */
+  oligo |= high_rc << 14;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK8; /* 9 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 24;
+      *(--pointers[masked]) = chrpos - 9;
     }
   }
 
-  masked = (low_rc >> 12) & MASK8; /* 6 */
+  masked = (oligo >> 2) & MASK8; /* 10 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 25;
+      *(--pointers[masked]) = chrpos - 10;
     }
   }
 
-  masked = (low_rc >> 10) & MASK8; /* 5 */
+  masked = (oligo >> 4) & MASK8; /* 11 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 26;
+      *(--pointers[masked]) = chrpos - 11;
     }
   }
 
-  masked = (low_rc >> 8) & MASK8; /* 4 */
+  masked = (oligo >> 6) & MASK8; /* 12 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 27;
+      *(--pointers[masked]) = chrpos - 12;
     }
   }
 
-  masked = (low_rc >> 6) & MASK8; /* 3 */
+  masked = (oligo >> 8) & MASK8; /* 13 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 28;
+      *(--pointers[masked]) = chrpos - 13;
     }
   }
 
-  masked = (low_rc >> 4) & MASK8; /* 2 */
+  masked = (oligo >> 10) & MASK8; /* 14 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 29;
+      *(--pointers[masked]) = chrpos - 14;
     }
   }
 
-  masked = (low_rc >> 2) & MASK8; /* 1 */
+  masked = (oligo >> 12) & MASK8; /* 15 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 30;
+      *(--pointers[masked]) = chrpos - 15;
     }
   }
 
-  masked = low_rc & MASK8;	/* 0 */
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == (oligo & MASK8));
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 31;
+      *(--pointers[masked]) = chrpos - 9;
     }
   }
 
-  return chrpos + 32;
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((oligo >> 2) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((oligo >> 4) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((oligo >> 6) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == ((oligo >> 8) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((oligo >> 10) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((oligo >> 12) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK8;	/* 16 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (high_rc >> 2) & MASK8; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (high_rc >> 4) & MASK8; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (high_rc >> 6) & MASK8; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = (high_rc >> 8) & MASK8; /* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = (high_rc >> 10) & MASK8; /* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = (high_rc >> 12) & MASK8; /* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = (high_rc >> 14) & MASK8; /* 23 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = high_rc >> 16;	/* 24, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == (high_rc & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((high_rc >> 2) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((high_rc >> 4) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((high_rc >> 6) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == ((high_rc >> 8) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((high_rc >> 10) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((high_rc >> 12) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((high_rc >> 14) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+
+  masked = high_rc >> 16;	/* 24, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+#endif
+
+
+  oligo = high_rc >> 18;	/* For 31..25 */
+  oligo |= nextlow_rc << 14;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK8; /* 25 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK8; /* 26 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK8; /* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK8; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK8; /* 29 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK8; /* 30 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = (oligo >> 12) & MASK8; /* 31 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == (oligo & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((oligo >> 2) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((oligo >> 4) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  assert(masked == ((oligo >> 6) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask8));
+#else
+  _masked = _mm_and_si128(_oligo, mask8);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  assert(masked == ((oligo >> 8) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  assert(masked == ((oligo >> 10) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  assert(masked == ((oligo >> 12) & MASK8));
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
 }
 
 
@@ -14371,144 +21363,367 @@ store_8mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Cou
 static void
 count_7mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  oligo = high_rc >> 20;	/* For 31..26 */
-  oligo |= nextlow_rc << 12;
 
-  masked = (oligo >> 10) & MASK7; /* 31 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK7;	/* 0 */
   counts[masked] += 1;
-  debug(printf("31 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 8) & MASK7; /* 30 */
-  counts[masked] += 1;
-  debug(printf("30 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK7; /* 29 */
-  counts[masked] += 1;
-  debug(printf("29 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK7; /* 28 */
-  counts[masked] += 1;
-  debug(printf("28 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK7; /* 27 */
-  counts[masked] += 1;
-  debug(printf("27 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK7; /* 26 */
-  counts[masked] += 1;
-  debug(printf("26 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = high_rc >> 18;	/* 25, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("25 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 16) & MASK7; /* 24 */
-  counts[masked] += 1;
-  debug(printf("24 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 14) & MASK7; /* 23 */
-  counts[masked] += 1;
-  debug(printf("23 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 12) & MASK7; /* 22 */
-  counts[masked] += 1;
-  debug(printf("22 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 10) & MASK7; /* 21 */
-  counts[masked] += 1;
-  debug(printf("21 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 8) & MASK7; /* 20 */
-  counts[masked] += 1;
-  debug(printf("20 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 6) & MASK7; /* 19 */
-  counts[masked] += 1;
-  debug(printf("19 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 4) & MASK7; /* 18 */
-  counts[masked] += 1;
-  debug(printf("18 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 2) & MASK7; /* 17 */
-  counts[masked] += 1;
-  debug(printf("17 %04X => %d\n",masked,counts[masked]));
-
-  masked = high_rc & MASK7;	/* 16 */
-  counts[masked] += 1;
-  debug(printf("16 %04X => %d\n",masked,counts[masked]));
-
-
-  oligo = low_rc >> 20;		/* For 15..10 */
-  oligo |= high_rc << 12;
-
-  masked = (oligo >> 10) & MASK7; /* 15 */
-  counts[masked] += 1;
-  debug(printf("15 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 8) & MASK7; /* 14 */
-  counts[masked] += 1;
-  debug(printf("14 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK7; /* 13 */
-  counts[masked] += 1;
-  debug(printf("13 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK7; /* 12 */
-  counts[masked] += 1;
-  debug(printf("12 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK7; /* 11 */
-  counts[masked] += 1;
-  debug(printf("11 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK7; /* 10 */
-  counts[masked] += 1;
-  debug(printf("10 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = low_rc >> 18;	/* 9, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("9 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 16) & MASK7; /* 8 */
-  counts[masked] += 1;
-  debug(printf("8 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 14) & MASK7; /* 7 */
-  counts[masked] += 1;
-  debug(printf("7 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 12) & MASK7; /* 6 */
-  counts[masked] += 1;
-  debug(printf("6 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 10) & MASK7; /* 5 */
-  counts[masked] += 1;
-  debug(printf("5 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 8) & MASK7; /* 4 */
-  counts[masked] += 1;
-  debug(printf("4 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 6) & MASK7; /* 3 */
-  counts[masked] += 1;
-  debug(printf("3 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 4) & MASK7; /* 2 */
-  counts[masked] += 1;
-  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
   masked = (low_rc >> 2) & MASK7; /* 1 */
   counts[masked] += 1;
   debug(printf("1 %04X => %d\n",masked,counts[masked]));
 
-  masked = low_rc & MASK7;	/* 0 */
+  masked = (low_rc >> 4) & MASK7; /* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 6) & MASK7; /* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 8) & MASK7; /* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 10) & MASK7; /* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 12) & MASK7; /* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 14) & MASK7; /* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 16) & MASK7; /* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rc >> 18;	/* 9, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
   counts[masked] += 1;
   debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rc >> 20;		/* For 15..10 */
+  oligo |= high_rc << 12;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK7; /* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK7; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK7; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK7; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK7; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK7; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK7;	/* 16 */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 2) & MASK7; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 4) & MASK7; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 6) & MASK7; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 8) & MASK7; /* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 10) & MASK7; /* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 12) & MASK7; /* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 14) & MASK7; /* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 16) & MASK7; /* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rc >> 18;	/* 25, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = high_rc >> 20;	/* For 31..26 */
+  oligo |= nextlow_rc << 12;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK7; /* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK7; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK7; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK7; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK7; /* 30 */
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 10) & MASK7; /* 31 */
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+#endif
 
   return;
 }
@@ -14542,6 +21757,112 @@ extract_7mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
 
   return;
 }
+
+static void
+count_7mers_rev_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,20), _mm_slli_epi32(next,12));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,10), mask7));
+  counts[array[0]] += 1;	/* 63 */
+  counts[array[1]] += 1;	/* 47 */
+  counts[array[2]] += 1; 	/* 31 */
+  counts[array[3]] += 1; 	/* 15 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,8), mask7));
+  counts[array[0]] += 1; 	/* 62 */
+  counts[array[1]] += 1; 	/* 46 */
+  counts[array[2]] += 1; 	/* 30 */
+  counts[array[3]] += 1; 	/* 14 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask7));
+  counts[array[0]] += 1;	/* 61 */
+  counts[array[1]] += 1;	/* 45 */
+  counts[array[2]] += 1;	/* 29 */
+  counts[array[3]] += 1;	/* 13 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask7));
+  counts[array[0]] += 1;	/* 60 */
+  counts[array[1]] += 1;	/* 44 */
+  counts[array[2]] += 1;	/* 28 */
+  counts[array[3]] += 1;	/* 12 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask7));
+  counts[array[0]] += 1;	/* 59 */
+  counts[array[1]] += 1;	/* 43 */
+  counts[array[2]] += 1;	/* 27 */
+  counts[array[3]] += 1;	/* 11 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask7));
+  counts[array[0]] += 1;	/* 58 */
+  counts[array[1]] += 1;	/* 42 */
+  counts[array[2]] += 1;	/* 26 */
+  counts[array[3]] += 1;	/* 10 */
+
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,18)); /* No mask necessary */
+  counts[array[0]] += 1;	/* 57 */
+  counts[array[1]] += 1;	/* 41 */
+  counts[array[2]] += 1;	/* 25 */
+  counts[array[3]] += 1;	/* 9 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,16), mask7));
+  counts[array[0]] += 1;	/* 56 */
+  counts[array[1]] += 1;	/* 50 */
+  counts[array[2]] += 1;	/* 24 */
+  counts[array[3]] += 1;	/* 8 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,14), mask7));
+  counts[array[0]] += 1;	/* 55 */
+  counts[array[1]] += 1;	/* 39 */
+  counts[array[2]] += 1;	/* 23 */
+  counts[array[3]] += 1;	/* 7 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask7));
+  counts[array[0]] += 1;	/* 54 */
+  counts[array[1]] += 1;	/* 38 */
+  counts[array[2]] += 1;	/* 22 */
+  counts[array[3]] += 1;	/* 6 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask7));
+  counts[array[0]] += 1;	/* 53 */
+  counts[array[1]] += 1;	/* 37 */
+  counts[array[2]] += 1;	/* 21 */
+  counts[array[3]] += 1;	/* 5 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask7));
+  counts[array[0]] += 1;	/* 52 */
+  counts[array[1]] += 1;	/* 36 */
+  counts[array[2]] += 1;	/* 20 */
+  counts[array[3]] += 1;	/* 4 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask7));
+  counts[array[0]] += 1;	/* 51 */
+  counts[array[1]] += 1;	/* 35 */
+  counts[array[2]] += 1;	/* 19 */
+  counts[array[3]] += 1;	/* 3 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask7));
+  counts[array[0]] += 1;	/* 50 */
+  counts[array[1]] += 1;	/* 34 */
+  counts[array[2]] += 1;	/* 18 */
+  counts[array[3]] += 1;	/* 2 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask7));
+  counts[array[0]] += 1;	/* 49 */
+  counts[array[1]] += 1;	/* 33 */
+  counts[array[2]] += 1;	/* 17 */
+  counts[array[3]] += 1;	/* 1 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask7));
+  counts[array[0]] += 1;	/* 48 */
+  counts[array[1]] += 1;	/* 32 */
+  counts[array[2]] += 1;	/* 16 */
+  counts[array[3]] += 1;	/* 0 */
+
+  return;
+}
 #endif
 
 
@@ -14549,449 +21870,1043 @@ static Chrpos_T
 store_7mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  oligo = high_rc >> 20;	/* For 31..26 */
-  oligo |= nextlow_rc << 12;
 
-  masked = (oligo >> 10) & MASK7; /* 31 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK7;	/* 0 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos;
-    }
-  }
-
-  masked = (oligo >> 8) & MASK7; /* 30 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 1;
-    }
-  }
-
-  masked = (oligo >> 6) & MASK7; /* 29 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 2;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK7; /* 28 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 3;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK7; /* 27 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 4;
-    }
-  }
-
-  masked = oligo & MASK7; /* 26 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 5;
-    }
-  }
-
-
-  masked = high_rc >> 18;	/* 25, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 6;
-    }
-  }
-
-  masked = (high_rc >> 16) & MASK7; /* 24 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 7;
-    }
-  }
-
-  masked = (high_rc >> 14) & MASK7; /* 23 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 8;
-    }
-  }
-
-  masked = (high_rc >> 12) & MASK7; /* 22 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 9;
-    }
-  }
-
-  masked = (high_rc >> 10) & MASK7; /* 21 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 10;
-    }
-  }
-
-  masked = (high_rc >> 8) & MASK7; /* 20 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 11;
-    }
-  }
-
-  masked = (high_rc >> 6) & MASK7; /* 19 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 12;
-    }
-  }
-
-  masked = (high_rc >> 4) & MASK7; /* 18 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 13;
-    }
-  }
-
-  masked = (high_rc >> 2) & MASK7; /* 17 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 14;
-    }
-  }
-
-  masked = high_rc & MASK7;	/* 16 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 15;
-    }
-  }
-
-
-  oligo = low_rc >> 20;		/* For 15..10 */
-  oligo |= high_rc << 12;
-
-  masked = (oligo >> 10) & MASK7; /* 15 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 16;
-    }
-  }
-
-  masked = (oligo >> 8) & MASK7; /* 14 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 17;
-    }
-  }
-
-  masked = (oligo >> 6) & MASK7; /* 13 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 18;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK7; /* 12 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 19;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK7; /* 11 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 20;
-    }
-  }
-
-  masked = oligo & MASK7; /* 10 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 21;
-    }
-  }
-
-
-  masked = low_rc >> 18;	/* 9, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 22;
-    }
-  }
-
-  masked = (low_rc >> 16) & MASK7; /* 8 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 23;
-    }
-  }
-
-  masked = (low_rc >> 14) & MASK7; /* 7 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 24;
-    }
-  }
-
-  masked = (low_rc >> 12) & MASK7; /* 6 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 25;
-    }
-  }
-
-  masked = (low_rc >> 10) & MASK7; /* 5 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 26;
-    }
-  }
-
-  masked = (low_rc >> 8) & MASK7; /* 4 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 27;
-    }
-  }
-
-  masked = (low_rc >> 6) & MASK7; /* 3 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 28;
-    }
-  }
-
-  masked = (low_rc >> 4) & MASK7; /* 2 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 29;
+      *(--pointers[masked]) = chrpos;
     }
   }
 
   masked = (low_rc >> 2) & MASK7; /* 1 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 30;
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = low_rc & MASK7;	/* 0 */
+  masked = (low_rc >> 4) & MASK7; /* 2 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 31;
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  return chrpos + 32;
+  masked = (low_rc >> 6) & MASK7; /* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+  masked = (low_rc >> 8) & MASK7; /* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = (low_rc >> 10) & MASK7; /* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = (low_rc >> 12) & MASK7; /* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = (low_rc >> 14) & MASK7; /* 7 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = (low_rc >> 16) & MASK7; /* 8 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = low_rc >> 18;	/* 9, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+#endif
+
+
+  oligo = low_rc >> 20;		/* For 15..10 */
+  oligo |= high_rc << 12;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK7; /* 10 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK7; /* 11 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK7; /* 12 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK7; /* 13 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK7; /* 14 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK7; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK7;	/* 16 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (high_rc >> 2) & MASK7; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (high_rc >> 4) & MASK7; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (high_rc >> 6) & MASK7; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = (high_rc >> 8) & MASK7; /* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = (high_rc >> 10) & MASK7; /* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = (high_rc >> 12) & MASK7; /* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = (high_rc >> 14) & MASK7; /* 23 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = (high_rc >> 16) & MASK7; /* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = high_rc >> 18;	/* 25, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+#endif
+
+
+  oligo = high_rc >> 20;	/* For 31..26 */
+  oligo |= nextlow_rc << 12;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK7; /* 26 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK7; /* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK7; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK7; /* 29 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK7; /* 30 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = (oligo >> 10) & MASK7; /* 31 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask7));
+#else
+  _masked = _mm_and_si128(_oligo, mask7);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
 }
 
 
 static void
 count_6mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  oligo = high_rc >> 22;	/* For 31..27 */
-  oligo |= nextlow_rc << 10;
 
-  masked = (oligo >> 8) & MASK6; /* 31 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK6;	/* 0 */
   counts[masked] += 1;
-  debug(printf("31 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK6; /* 30 */
-  counts[masked] += 1;
-  debug(printf("30 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK6; /* 29 */
-  counts[masked] += 1;
-  debug(printf("29 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK6; /* 28 */
-  counts[masked] += 1;
-  debug(printf("28 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK6; /* 27 */
-  counts[masked] += 1;
-  debug(printf("27 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = high_rc >> 20;	/* 26, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("26 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 18) & MASK6; /* 25 */
-  counts[masked] += 1;
-  debug(printf("25 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 16) & MASK6; /* 24 */
-  counts[masked] += 1;
-  debug(printf("24 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 14) & MASK6; /* 23 */
-  counts[masked] += 1;
-  debug(printf("23 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 12) & MASK6; /* 22 */
-  counts[masked] += 1;
-  debug(printf("22 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 10) & MASK6; /* 21 */
-  counts[masked] += 1;
-  debug(printf("21 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 8) & MASK6; /* 20 */
-  counts[masked] += 1;
-  debug(printf("20 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 6) & MASK6; /* 19 */
-  counts[masked] += 1;
-  debug(printf("19 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 4) & MASK6; /* 18 */
-  counts[masked] += 1;
-  debug(printf("18 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 2) & MASK6; /* 17 */
-  counts[masked] += 1;
-  debug(printf("17 %04X => %d\n",masked,counts[masked]));
-
-  masked = high_rc & MASK6;	/* 16 */
-  counts[masked] += 1;
-  debug(printf("16 %04X => %d\n",masked,counts[masked]));
-
-
-  oligo = low_rc >> 22;		/* For 15..11 */
-  oligo |= high_rc << 10;
-
-  masked = (oligo >> 8) & MASK6; /* 15 */
-  counts[masked] += 1;
-  debug(printf("15 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 6) & MASK6; /* 14 */
-  counts[masked] += 1;
-  debug(printf("14 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK6; /* 13 */
-  counts[masked] += 1;
-  debug(printf("13 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK6; /* 12 */
-  counts[masked] += 1;
-  debug(printf("12 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK6; /* 11 */
-  counts[masked] += 1;
-  debug(printf("11 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = low_rc >> 20;	/* 10, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("10 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 18) & MASK6; /* 9 */
-  counts[masked] += 1;
-  debug(printf("9 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 16) & MASK6; /* 8 */
-  counts[masked] += 1;
-  debug(printf("8 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 14) & MASK6; /* 7 */
-  counts[masked] += 1;
-  debug(printf("7 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 12) & MASK6; /* 6 */
-  counts[masked] += 1;
-  debug(printf("6 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 10) & MASK6; /* 5 */
-  counts[masked] += 1;
-  debug(printf("5 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 8) & MASK6; /* 4 */
-  counts[masked] += 1;
-  debug(printf("4 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 6) & MASK6; /* 3 */
-  counts[masked] += 1;
-  debug(printf("3 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 4) & MASK6; /* 2 */
-  counts[masked] += 1;
-  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
   masked = (low_rc >> 2) & MASK6; /* 1 */
   counts[masked] += 1;
   debug(printf("1 %04X => %d\n",masked,counts[masked]));
 
-  masked = low_rc & MASK6;	/* 0 */
+  masked = (low_rc >> 4) & MASK6; /* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 6) & MASK6; /* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 8) & MASK6; /* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 10) & MASK6; /* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 12) & MASK6; /* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 14) & MASK6; /* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 16) & MASK6; /* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 18) & MASK6; /* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rc >> 20;	/* 10, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
   counts[masked] += 1;
   debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rc >> 22;		/* For 15..11 */
+  oligo |= high_rc << 10;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK6; /* 11 */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK6; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK6; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK6; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK6; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+
+  masked = (oligo >> 8) & MASK6; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK6;	/* 16 */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 2) & MASK6; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 4) & MASK6; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 6) & MASK6; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 8) & MASK6; /* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 10) & MASK6; /* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 12) & MASK6; /* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 14) & MASK6; /* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 16) & MASK6; /* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 18) & MASK6; /* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rc >> 20;	/* 26, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = high_rc >> 22;	/* For 31..27 */
+  oligo |= nextlow_rc << 10;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK6; /* 27 */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK6; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK6; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK6; /* 30 */
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 8) & MASK6; /* 31 */
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+
+  masked = (oligo >> 8) & MASK6; /* 31 */
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+#endif
 
   return;
 }
@@ -15024,6 +22939,113 @@ extract_6mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
 
   return;
 }
+
+static void
+count_6mers_rev_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,22), _mm_slli_epi32(next,10));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,8), mask6));
+  counts[array[0]] += 1;	/* 63 */
+  counts[array[1]] += 1;	/* 47 */
+  counts[array[2]] += 1; 	/* 31 */
+  counts[array[3]] += 1; 	/* 15 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask6));
+  counts[array[0]] += 1; 	/* 62 */
+  counts[array[1]] += 1; 	/* 46 */
+  counts[array[2]] += 1; 	/* 30 */
+  counts[array[3]] += 1; 	/* 14 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask6));
+  counts[array[0]] += 1;	/* 61 */
+  counts[array[1]] += 1;	/* 45 */
+  counts[array[2]] += 1;	/* 29 */
+  counts[array[3]] += 1;	/* 13 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask6));
+  counts[array[0]] += 1;	/* 60 */
+  counts[array[1]] += 1;	/* 44 */
+  counts[array[2]] += 1;	/* 28 */
+  counts[array[3]] += 1;	/* 12 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask6));
+  counts[array[0]] += 1;	/* 59 */
+  counts[array[1]] += 1;	/* 43 */
+  counts[array[2]] += 1;	/* 27 */
+  counts[array[3]] += 1;	/* 11 */
+
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,20));
+  counts[array[0]] += 1;	/* 58 */
+  counts[array[1]] += 1;	/* 42 */
+  counts[array[2]] += 1;	/* 26 */
+  counts[array[3]] += 1;	/* 10 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,18), mask6));
+  counts[array[0]] += 1;	/* 57 */
+  counts[array[1]] += 1;	/* 41 */
+  counts[array[2]] += 1;	/* 25 */
+  counts[array[3]] += 1;	/* 9 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,16), mask6));
+  counts[array[0]] += 1;	/* 56 */
+  counts[array[1]] += 1;	/* 50 */
+  counts[array[2]] += 1;	/* 24 */
+  counts[array[3]] += 1;	/* 8 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,14), mask6));
+  counts[array[0]] += 1;	/* 55 */
+  counts[array[1]] += 1;	/* 39 */
+  counts[array[2]] += 1;	/* 23 */
+  counts[array[3]] += 1;	/* 7 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask6));
+  counts[array[0]] += 1;	/* 54 */
+  counts[array[1]] += 1;	/* 38 */
+  counts[array[2]] += 1;	/* 22 */
+  counts[array[3]] += 1;	/* 6 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask6));
+  counts[array[0]] += 1;	/* 53 */
+  counts[array[1]] += 1;	/* 37 */
+  counts[array[2]] += 1;	/* 21 */
+  counts[array[3]] += 1;	/* 5 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask6));
+  counts[array[0]] += 1;	/* 52 */
+  counts[array[1]] += 1;	/* 36 */
+  counts[array[2]] += 1;	/* 20 */
+  counts[array[3]] += 1;	/* 4 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask6));
+  counts[array[0]] += 1;	/* 51 */
+  counts[array[1]] += 1;	/* 35 */
+  counts[array[2]] += 1;	/* 19 */
+  counts[array[3]] += 1;	/* 3 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask6));
+  counts[array[0]] += 1;	/* 50 */
+  counts[array[1]] += 1;	/* 34 */
+  counts[array[2]] += 1;	/* 18 */
+  counts[array[3]] += 1;	/* 2 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask6));
+  counts[array[0]] += 1;	/* 49 */
+  counts[array[1]] += 1;	/* 33 */
+  counts[array[2]] += 1;	/* 17 */
+  counts[array[3]] += 1;	/* 1 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask6));
+  counts[array[0]] += 1;	/* 48 */
+  counts[array[1]] += 1;	/* 32 */
+  counts[array[2]] += 1;	/* 16 */
+  counts[array[3]] += 1;	/* 0 */
+
+  return;
+}
+
 #endif
 
 
@@ -15031,452 +23053,1030 @@ static int
 store_6mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  oligo = high_rc >> 22;	/* For 31..27 */
-  oligo |= nextlow_rc << 10;
 
-  masked = (oligo >> 8) & MASK6; /* 31 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK6;	/* 0 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos;
-    }
-  }
-
-  masked = (oligo >> 6) & MASK6; /* 30 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 1;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK6; /* 29 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 2;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK6; /* 28 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 3;
-    }
-  }
-
-  masked = oligo & MASK6; /* 27 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 4;
-    }
-  }
-
-
-  masked = high_rc >> 20;	/* 26, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 5;
-    }
-  }
-
-  masked = (high_rc >> 18) & MASK6; /* 25 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 6;
-    }
-  }
-
-  masked = (high_rc >> 16) & MASK6; /* 24 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 7;
-    }
-  }
-
-  masked = (high_rc >> 14) & MASK6; /* 23 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 8;
-    }
-  }
-
-  masked = (high_rc >> 12) & MASK6; /* 22 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 9;
-    }
-  }
-
-  masked = (high_rc >> 10) & MASK6; /* 21 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 10;
-    }
-  }
-
-  masked = (high_rc >> 8) & MASK6; /* 20 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 11;
-    }
-  }
-
-  masked = (high_rc >> 6) & MASK6; /* 19 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 12;
-    }
-  }
-
-  masked = (high_rc >> 4) & MASK6; /* 18 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 13;
-    }
-  }
-
-  masked = (high_rc >> 2) & MASK6; /* 17 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 14;
-    }
-  }
-
-  masked = high_rc & MASK6;	/* 16 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 15;
-    }
-  }
-
-
-  oligo = low_rc >> 22;		/* For 15..11 */
-  oligo |= high_rc << 10;
-
-  masked = (oligo >> 8) & MASK6; /* 15 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 16;
-    }
-  }
-
-  masked = (oligo >> 6) & MASK6; /* 14 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 17;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK6; /* 13 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 18;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK6; /* 12 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 19;
-    }
-  }
-
-  masked = oligo & MASK6; /* 11 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 20;
-    }
-  }
-
-
-  masked = low_rc >> 20;	/* 10, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 21;
-    }
-  }
-
-  masked = (low_rc >> 18) & MASK6; /* 9 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 22;
-    }
-  }
-
-  masked = (low_rc >> 16) & MASK6; /* 8 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 23;
-    }
-  }
-
-  masked = (low_rc >> 14) & MASK6; /* 7 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 24;
-    }
-  }
-
-  masked = (low_rc >> 12) & MASK6; /* 6 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 25;
-    }
-  }
-
-  masked = (low_rc >> 10) & MASK6; /* 5 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 26;
-    }
-  }
-
-  masked = (low_rc >> 8) & MASK6; /* 4 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 27;
-    }
-  }
-
-  masked = (low_rc >> 6) & MASK6; /* 3 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 28;
-    }
-  }
-
-  masked = (low_rc >> 4) & MASK6; /* 2 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 29;
+      *(--pointers[masked]) = chrpos;
     }
   }
 
   masked = (low_rc >> 2) & MASK6; /* 1 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 30;
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = low_rc & MASK6;	/* 0 */
+  masked = (low_rc >> 4) & MASK6; /* 2 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 31;
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  return chrpos + 32;
+  masked = (low_rc >> 6) & MASK6; /* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+  masked = (low_rc >> 8) & MASK6; /* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = (low_rc >> 10) & MASK6; /* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = (low_rc >> 12) & MASK6; /* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = (low_rc >> 14) & MASK6; /* 7 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = (low_rc >> 16) & MASK6; /* 8 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = (low_rc >> 18) & MASK6; /* 9 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = low_rc >> 20;	/* 10, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+#endif
+
+
+  oligo = low_rc >> 22;		/* For 15..11 */
+  oligo |= high_rc << 10;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK6; /* 11 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK6; /* 12 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK6; /* 13 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK6; /* 14 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK6; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+
+  masked = (oligo >> 8) & MASK6; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK6;	/* 16 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (high_rc >> 2) & MASK6; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (high_rc >> 4) & MASK6; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (high_rc >> 6) & MASK6; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = (high_rc >> 8) & MASK6; /* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = (high_rc >> 10) & MASK6; /* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = (high_rc >> 12) & MASK6; /* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = (high_rc >> 14) & MASK6; /* 23 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = (high_rc >> 16) & MASK6; /* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = (high_rc >> 18) & MASK6; /* 25 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = high_rc >> 20;	/* 26, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+#endif
+
+
+  oligo = high_rc >> 22;	/* For 31..27 */
+  oligo |= nextlow_rc << 10;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK6; /* 27 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK6; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK6; /* 29 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK6; /* 30 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = (oligo >> 8) & MASK6; /* 31 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask6));
+#else
+  _masked = _mm_and_si128(_oligo, mask6);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+
+  masked = (oligo >> 8) & MASK6; /* 31 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
 }
 
 
 static void
 count_5mers_rev (Count_T *counts, Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  oligo = high_rc >> 24;	/* For 31..28 */
-  oligo |= nextlow_rc << 8;
 
-  masked = (oligo >> 6) & MASK5; /* 31 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK5;	/* 0 */
   counts[masked] += 1;
-  debug(printf("31 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK5; /* 30 */
-  counts[masked] += 1;
-  debug(printf("30 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK5; /* 29 */
-  counts[masked] += 1;
-  debug(printf("29 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK5; /* 28 */
-  counts[masked] += 1;
-  debug(printf("28 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = high_rc >> 22;	/* 27, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("27 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 20) & MASK5; /* 26 */
-  counts[masked] += 1;
-  debug(printf("26 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 18) & MASK5; /* 25 */
-  counts[masked] += 1;
-  debug(printf("25 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 16) & MASK5; /* 24 */
-  counts[masked] += 1;
-  debug(printf("24 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 14) & MASK5; /* 23 */
-  counts[masked] += 1;
-  debug(printf("23 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 12) & MASK5; /* 22 */
-  counts[masked] += 1;
-  debug(printf("22 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 10) & MASK5; /* 21 */
-  counts[masked] += 1;
-  debug(printf("21 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 8) & MASK5; /* 20 */
-  counts[masked] += 1;
-  debug(printf("20 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 6) & MASK5; /* 19 */
-  counts[masked] += 1;
-  debug(printf("19 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 4) & MASK5; /* 18 */
-  counts[masked] += 1;
-  debug(printf("18 %04X => %d\n",masked,counts[masked]));
-
-  masked = (high_rc >> 2) & MASK5; /* 17 */
-  counts[masked] += 1;
-  debug(printf("17 %04X => %d\n",masked,counts[masked]));
-
-  masked = high_rc & MASK5;	/* 16 */
-  counts[masked] += 1;
-  debug(printf("16 %04X => %d\n",masked,counts[masked]));
-
-
-  oligo = low_rc >> 24;		/* For 15..12 */
-  oligo |= high_rc << 8;
-
-  masked = (oligo >> 6) & MASK5; /* 15 */
-  counts[masked] += 1;
-  debug(printf("15 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 4) & MASK5; /* 14 */
-  counts[masked] += 1;
-  debug(printf("14 %04X => %d\n",masked,counts[masked]));
-
-  masked = (oligo >> 2) & MASK5; /* 13 */
-  counts[masked] += 1;
-  debug(printf("13 %04X => %d\n",masked,counts[masked]));
-
-  masked = oligo & MASK5; /* 12 */
-  counts[masked] += 1;
-  debug(printf("12 %04X => %d\n",masked,counts[masked]));
-
-
-  masked = low_rc >> 22;	/* 11, No mask necessary */
-  counts[masked] += 1;
-  debug(printf("11 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 20) & MASK5; /* 10 */
-  counts[masked] += 1;
-  debug(printf("10 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 18) & MASK5; /* 9 */
-  counts[masked] += 1;
-  debug(printf("9 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 16) & MASK5; /* 8 */
-  counts[masked] += 1;
-  debug(printf("8 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 14) & MASK5; /* 7 */
-  counts[masked] += 1;
-  debug(printf("7 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 12) & MASK5; /* 6 */
-  counts[masked] += 1;
-  debug(printf("6 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 10) & MASK5; /* 5 */
-  counts[masked] += 1;
-  debug(printf("5 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 8) & MASK5; /* 4 */
-  counts[masked] += 1;
-  debug(printf("4 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 6) & MASK5; /* 3 */
-  counts[masked] += 1;
-  debug(printf("3 %04X => %d\n",masked,counts[masked]));
-
-  masked = (low_rc >> 4) & MASK5; /* 2 */
-  counts[masked] += 1;
-  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+  debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
   masked = (low_rc >> 2) & MASK5; /* 1 */
   counts[masked] += 1;
   debug(printf("1 %04X => %d\n",masked,counts[masked]));
 
-  masked = low_rc & MASK5;	/* 0 */
+  masked = (low_rc >> 4) & MASK5; /* 2 */
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 6) & MASK5; /* 3 */
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 8) & MASK5; /* 4 */
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 10) & MASK5; /* 5 */
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 12) & MASK5; /* 6 */
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 14) & MASK5; /* 7 */
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 16) & MASK5; /* 8 */
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 18) & MASK5; /* 9 */
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = (low_rc >> 20) & MASK5; /* 10 */
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = low_rc >> 22;	/* 11, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
   counts[masked] += 1;
   debug(printf("0 %04X => %d\n",masked,counts[masked]));
 
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("1 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("2 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("3 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("4 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("5 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("6 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("7 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("8 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("9 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("10 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("11 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = low_rc >> 24;		/* For 15..12 */
+  oligo |= high_rc << 8;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK5; /* 12 */
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK5; /* 13 */
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK5; /* 14 */
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK5; /* 15 */
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("12 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("13 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("14 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("15 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK5;	/* 16 */
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 2) & MASK5; /* 17 */
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 4) & MASK5; /* 18 */
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 6) & MASK5; /* 19 */
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 8) & MASK5; /* 20 */
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 10) & MASK5; /* 21 */
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 12) & MASK5; /* 22 */
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 14) & MASK5; /* 23 */
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 16) & MASK5; /* 24 */
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 18) & MASK5; /* 25 */
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = (high_rc >> 20) & MASK5; /* 26 */
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = high_rc >> 22;	/* 27, No mask necessary */
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("16 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("17 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("18 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("19 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("20 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("21 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("22 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("23 %04X => %d\n",masked,counts[masked]));
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("24 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("25 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("26 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("27 %04X => %d\n",masked,counts[masked]));
+#endif
+
+
+  oligo = high_rc >> 24;	/* For 31..28 */
+  oligo |= nextlow_rc << 8;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK5; /* 28 */
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 2) & MASK5; /* 29 */
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 4) & MASK5; /* 30 */
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = (oligo >> 6) & MASK5; /* 31 */
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  counts[masked] += 1;
+  debug(printf("28 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,1);
+  counts[masked] += 1;
+  debug(printf("29 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,2);
+  counts[masked] += 1;
+  debug(printf("30 %04X => %d\n",masked,counts[masked]));
+
+  masked = EXTRACT(_masked,3);
+  counts[masked] += 1;
+  debug(printf("31 %04X => %d\n",masked,counts[masked]));
+#endif
 
   return;
 }
+
 
 /* Expecting current to have {low0_rc, high0_rc, low1_rc, high1_rc},
    and next to have {high0_rc, low1_rc, high1_rc, nextlow_rc} */
@@ -15506,6 +24106,112 @@ extract_5mers_rev_simd (__m128i *out, __m128i current, __m128i next) {
 
   return;
 }
+
+static void
+count_5mers_rev_simd (Count_T *counts, __m128i current, __m128i next) {
+  __m128i oligo;
+  Genomecomp_T array[4];
+
+  oligo = _mm_or_si128( _mm_srli_epi32(current,24), _mm_slli_epi32(next,8));
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,6), mask5));
+  counts[array[0]] += 1;	/* 63 */
+  counts[array[1]] += 1;	/* 47 */
+  counts[array[2]] += 1; 	/* 31 */
+  counts[array[3]] += 1; 	/* 15 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,4), mask5));
+  counts[array[0]] += 1; 	/* 62 */
+  counts[array[1]] += 1; 	/* 46 */
+  counts[array[2]] += 1; 	/* 30 */
+  counts[array[3]] += 1; 	/* 14 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(oligo,2), mask5));
+  counts[array[0]] += 1;	/* 61 */
+  counts[array[1]] += 1;	/* 45 */
+  counts[array[2]] += 1;	/* 29 */
+  counts[array[3]] += 1;	/* 13 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( oligo, mask5));
+  counts[array[0]] += 1;	/* 60 */
+  counts[array[1]] += 1;	/* 44 */
+  counts[array[2]] += 1;	/* 28 */
+  counts[array[3]] += 1;	/* 12 */
+
+
+  _mm_store_si128((__m128i *) array, _mm_srli_epi32(current,22));
+  counts[array[0]] += 1;	/* 59 */
+  counts[array[1]] += 1;	/* 43 */
+  counts[array[2]] += 1;	/* 27 */
+  counts[array[3]] += 1;	/* 11 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,20), mask5));
+  counts[array[0]] += 1;	/* 58 */
+  counts[array[1]] += 1;	/* 42 */
+  counts[array[2]] += 1;	/* 26 */
+  counts[array[3]] += 1;	/* 10 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,18), mask5));
+  counts[array[0]] += 1;	/* 57 */
+  counts[array[1]] += 1;	/* 41 */
+  counts[array[2]] += 1;	/* 25 */
+  counts[array[3]] += 1;	/* 9 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,16), mask5));
+  counts[array[0]] += 1;	/* 56 */
+  counts[array[1]] += 1;	/* 50 */
+  counts[array[2]] += 1;	/* 24 */
+  counts[array[3]] += 1;	/* 8 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,14), mask5));
+  counts[array[0]] += 1;	/* 55 */
+  counts[array[1]] += 1;	/* 39 */
+  counts[array[2]] += 1;	/* 23 */
+  counts[array[3]] += 1;	/* 7 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,12), mask5));
+  counts[array[0]] += 1;	/* 54 */
+  counts[array[1]] += 1;	/* 38 */
+  counts[array[2]] += 1;	/* 22 */
+  counts[array[3]] += 1;	/* 6 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,10), mask5));
+  counts[array[0]] += 1;	/* 53 */
+  counts[array[1]] += 1;	/* 37 */
+  counts[array[2]] += 1;	/* 21 */
+  counts[array[3]] += 1;	/* 5 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,8), mask5));
+  counts[array[0]] += 1;	/* 52 */
+  counts[array[1]] += 1;	/* 36 */
+  counts[array[2]] += 1;	/* 20 */
+  counts[array[3]] += 1;	/* 4 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,6), mask5));
+  counts[array[0]] += 1;	/* 51 */
+  counts[array[1]] += 1;	/* 35 */
+  counts[array[2]] += 1;	/* 19 */
+  counts[array[3]] += 1;	/* 3 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,4), mask5));
+  counts[array[0]] += 1;	/* 50 */
+  counts[array[1]] += 1;	/* 34 */
+  counts[array[2]] += 1;	/* 18 */
+  counts[array[3]] += 1;	/* 2 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( _mm_srli_epi32(current,2), mask5));
+  counts[array[0]] += 1;	/* 49 */
+  counts[array[1]] += 1;	/* 33 */
+  counts[array[2]] += 1;	/* 17 */
+  counts[array[3]] += 1;	/* 1 */
+
+  _mm_store_si128((__m128i *) array, _mm_and_si128( current, mask5));
+  counts[array[0]] += 1;	/* 48 */
+  counts[array[1]] += 1;	/* 32 */
+  counts[array[2]] += 1;	/* 16 */
+  counts[array[3]] += 1;	/* 0 */
+
+  return;
+}
 #endif
 
 
@@ -15513,309 +24219,677 @@ static int
 store_5mers_rev (Chrpos_T chrpos, Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts,
 		 Genomecomp_T low_rc, Genomecomp_T high_rc, Genomecomp_T nextlow_rc) {
   Genomecomp_T masked, oligo;
+#ifdef INDIVIDUAL_SHIFTS
+#elif defined(SIMD_MASK_THEN_STORE)
+  UINT4 _masked[4] __attribute__ ((aligned (16)));
+  __m128i _oligo;
+#else
+  __m128i _oligo, _masked;
+#endif
 
-  oligo = high_rc >> 24;	/* For 31..28 */
-  oligo |= nextlow_rc << 8;
 
-  masked = (oligo >> 6) & MASK5; /* 31 */
+#ifdef INDIVIDUAL_SHIFTS
+  masked = low_rc & MASK5;	/* 0 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK5; /* 30 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 1;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK5; /* 29 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 2;
-    }
-  }
-
-  masked = oligo & MASK5; /* 28 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 3;
-    }
-  }
-
-
-  masked = high_rc >> 22;	/* 27, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 4;
-    }
-  }
-
-  masked = (high_rc >> 20) & MASK5; /* 26 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 5;
-    }
-  }
-
-  masked = (high_rc >> 18) & MASK5; /* 25 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 6;
-    }
-  }
-
-  masked = (high_rc >> 16) & MASK5; /* 24 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 7;
-    }
-  }
-
-  masked = (high_rc >> 14) & MASK5; /* 23 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 8;
-    }
-  }
-
-  masked = (high_rc >> 12) & MASK5; /* 22 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 9;
-    }
-  }
-
-  masked = (high_rc >> 10) & MASK5; /* 21 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 10;
-    }
-  }
-
-  masked = (high_rc >> 8) & MASK5; /* 20 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 11;
-    }
-  }
-
-  masked = (high_rc >> 6) & MASK5; /* 19 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 12;
-    }
-  }
-
-  masked = (high_rc >> 4) & MASK5; /* 18 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 13;
-    }
-  }
-
-  masked = (high_rc >> 2) & MASK5; /* 17 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 14;
-    }
-  }
-
-  masked = high_rc & MASK5;	/* 16 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 15;
-    }
-  }
-
-
-  oligo = low_rc >> 24;		/* For 15..12 */
-  oligo |= high_rc << 8;
-
-  masked = (oligo >> 6) & MASK5; /* 15 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 16;
-    }
-  }
-
-  masked = (oligo >> 4) & MASK5; /* 14 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 17;
-    }
-  }
-
-  masked = (oligo >> 2) & MASK5; /* 13 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 18;
-    }
-  }
-
-  masked = oligo & MASK5; /* 12 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 19;
-    }
-  }
-
-
-  masked = low_rc >> 22;	/* 11, No mask necessary */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 20;
-    }
-  }
-
-  masked = (low_rc >> 20) & MASK5; /* 10 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 21;
-    }
-  }
-
-  masked = (low_rc >> 18) & MASK5; /* 9 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 22;
-    }
-  }
-
-  masked = (low_rc >> 16) & MASK5; /* 8 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 23;
-    }
-  }
-
-  masked = (low_rc >> 14) & MASK5; /* 7 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 24;
-    }
-  }
-
-  masked = (low_rc >> 12) & MASK5; /* 6 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 25;
-    }
-  }
-
-  masked = (low_rc >> 10) & MASK5; /* 5 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 26;
-    }
-  }
-
-  masked = (low_rc >> 8) & MASK5; /* 4 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 27;
-    }
-  }
-
-  masked = (low_rc >> 6) & MASK5; /* 3 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 28;
-    }
-  }
-
-  masked = (low_rc >> 4) & MASK5; /* 2 */
-  if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
-      counts[masked] = 0;
-    } else {
-      *(pointers[masked]++) = chrpos + 29;
+      *(--pointers[masked]) = chrpos;
     }
   }
 
   masked = (low_rc >> 2) & MASK5; /* 1 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 30;
+      *(--pointers[masked]) = chrpos - 1;
     }
   }
 
-  masked = low_rc & MASK5;	/* 0 */
+  masked = (low_rc >> 4) & MASK5; /* 2 */
   if (counts[masked]) {
-    if (pointers[masked] == positions[masked/*+1*/]) {
+    if (pointers[masked] == positions[masked]) {
       counts[masked] = 0;
     } else {
-      *(pointers[masked]++) = chrpos + 31;
+      *(--pointers[masked]) = chrpos - 2;
     }
   }
 
-  return chrpos + 32;
+  masked = (low_rc >> 6) & MASK5; /* 3 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+  masked = (low_rc >> 8) & MASK5; /* 4 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = (low_rc >> 10) & MASK5; /* 5 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = (low_rc >> 12) & MASK5; /* 6 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = (low_rc >> 14) & MASK5; /* 7 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+  masked = (low_rc >> 16) & MASK5; /* 8 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = (low_rc >> 18) & MASK5; /* 9 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = (low_rc >> 20) & MASK5; /* 10 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = low_rc >> 22;	/* 11, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(low_rc, low_rc >> 2, low_rc >> 4, low_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 1;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 2;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 3;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 4;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 5;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 6;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 7;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 8;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 9;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 10;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 11;
+    }
+  }
+#endif
+
+
+  oligo = low_rc >> 24;		/* For 15..12 */
+  oligo |= high_rc << 8;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK5; /* 12 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK5; /* 13 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK5; /* 14 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK5; /* 15 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 12;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 13;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 14;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 15;
+    }
+  }
+#endif
+
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = high_rc & MASK5;	/* 16 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = (high_rc >> 2) & MASK5; /* 17 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = (high_rc >> 4) & MASK5; /* 18 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = (high_rc >> 6) & MASK5; /* 19 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+  masked = (high_rc >> 8) & MASK5; /* 20 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = (high_rc >> 10) & MASK5; /* 21 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = (high_rc >> 12) & MASK5; /* 22 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = (high_rc >> 14) & MASK5; /* 23 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+  masked = (high_rc >> 16) & MASK5; /* 24 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = (high_rc >> 18) & MASK5; /* 25 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = (high_rc >> 20) & MASK5; /* 26 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = high_rc >> 22;	/* 27, No mask necessary */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(high_rc, high_rc >> 2, high_rc >> 4, high_rc >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 16;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 17;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 18;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 19;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 20;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 21;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 22;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 23;
+    }
+  }
+
+
+  _oligo = _mm_srli_epi32(_oligo, 8);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 24;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 25;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 26;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 27;
+    }
+  }
+#endif
+
+
+  oligo = high_rc >> 24;	/* For 31..28 */
+  oligo |= nextlow_rc << 8;
+
+#ifdef INDIVIDUAL_SHIFTS
+  masked = oligo & MASK5; /* 28 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = (oligo >> 2) & MASK5; /* 29 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = (oligo >> 4) & MASK5; /* 30 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = (oligo >> 6) & MASK5; /* 31 */
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+
+#else
+  _oligo = _mm_setr_epi32(oligo, oligo >> 2, oligo >> 4, oligo >> 6);
+#ifdef SIMD_MASK_THEN_STORE
+  _mm_store_si128((__m128i *) _masked,_mm_and_si128(_oligo, mask5));
+#else
+  _masked = _mm_and_si128(_oligo, mask5);
+#endif
+
+  masked = EXTRACT(_masked,0);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 28;
+    }
+  }
+
+  masked = EXTRACT(_masked,1);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 29;
+    }
+  }
+
+  masked = EXTRACT(_masked,2);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 30;
+    }
+  }
+
+  masked = EXTRACT(_masked,3);
+  if (counts[masked]) {
+    if (pointers[masked] == positions[masked]) {
+      counts[masked] = 0;
+    } else {
+      *(--pointers[masked]) = chrpos - 31;
+    }
+  }
+#endif
+
+  return chrpos - 32;
 }
 
 
-#if (!defined(USE_SIMD_FOR_COUNTS) || defined(DEBUG14))
+#ifndef USE_SIMD_FOR_COUNTS
 static void
 count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
 			 int genestrand) {
@@ -15825,16 +24899,15 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 
   debug(printf("Starting count_positions_rev_std\n"));
 
-#if 0
-  /* No.  This extends past the query */
-  if (left != 0U) {
-    left -= 1;	/* Needed to get last oligomer to match */
-  }
-#endif
-  left_plus_length -= indexsize;
 
-  startptr = left/32U*3;
-  ptr = endptr = left_plus_length/32U*3;
+  if (left_plus_length < indexsize) {
+    left_plus_length = 0;
+  } else {
+    left_plus_length -= indexsize;
+  }
+
+  ptr = startptr = left/32U*3;
+  endptr = left_plus_length/32U*3;
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
@@ -15865,7 +24938,9 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
     high_rc = ~high;
     nextlow_rc = ~nextlow;
 
-    if (indexsize == 8) {
+    if (indexsize == 9) {
+      count_9mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 8) {
       count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 7) {
       count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
@@ -15881,6 +24956,7 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
   } else {
     /* Genome_print_blocks(ref_blocks,left,left+16); */
 
+    /* Start block */
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
     low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -15904,22 +24980,55 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
     high_rc = ~high;
     nextlow_rc = ~nextlow;
 
-    if (indexsize == 8) {
-      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    if (indexsize == 9) {
+      count_9mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 8) {
+      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
 
-    ptr -= 3;
+    ptr += 3;
 
-    if (indexsize == 8) {
-      while (ptr > startptr) {
+    /* Middle blocks */
+    if (indexsize == 9) {
+      while (ptr + 3 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	low = ref_blocks[ptr+1];
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	low_rc = ~low;
+	high_rc = ~high;
+	nextlow_rc = ~nextlow;
+
+	count_9mers_rev(counts,low_rc,high_rc,nextlow_rc);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 8) {
+      while (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -15944,10 +25053,11 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 	nextlow_rc = ~nextlow;
 
 	count_8mers_rev(counts,low_rc,high_rc,nextlow_rc);
-	ptr -= 3;
+	ptr += 3;
       }
+
     } else if (indexsize == 7) {
-      while (ptr > startptr) {
+      while (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -15972,10 +25082,11 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 	nextlow_rc = ~nextlow;
 
 	count_7mers_rev(counts,low_rc,high_rc,nextlow_rc);
-	ptr -= 3;
+	ptr += 3;
       }
+
     } else if (indexsize == 6) {
-      while (ptr > startptr) {
+      while (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -16000,10 +25111,11 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 	nextlow_rc = ~nextlow;
 
 	count_6mers_rev(counts,low_rc,high_rc,nextlow_rc);
-	ptr -= 3;
+	ptr += 3;
       }
+
     } else if (indexsize == 5) {
-      while (ptr > startptr) {
+      while (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -16028,12 +25140,15 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 	nextlow_rc = ~nextlow;
 
 	count_5mers_rev(counts,low_rc,high_rc,nextlow_rc);
-	ptr -= 3;
+	ptr += 3;
       }
     } else {
       abort();
     }
 
+
+    /* End block */
+    assert(ptr == endptr);
 
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
@@ -16058,18 +25173,20 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
     high_rc = ~high;
     nextlow_rc = ~nextlow;
 
-    if (indexsize == 8) {
-      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    if (indexsize == 9) {
+      count_9mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 8) {
+      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else {
-      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
+
   }
   
   return;
@@ -16079,68 +25196,71 @@ count_positions_rev_std (Count_T *counts, int indexsize, Univcoord_T left, Univc
 
 #ifdef USE_SIMD_FOR_COUNTS
 static void
-count_positions_rev_simd (Count_T *counts, int indexsize, Univcoord_T left, Univcoord_T left_plus_length,
-			  int genestrand) {
+count_positions_rev_simd (Count_T *counts, int indexsize,
+			  Univcoord_T left, Univcoord_T left_plus_length, int genestrand) {
   int startdiscard, enddiscard;
-  Genomecomp_T ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
-    low, high, nextlow;
-  Genomecomp_T low1_rc, high1_rc, low0, high0, low1, high1;
-  __m128i current, next;
-  __m128i array[16];
+  Genomecomp_T ptr, startptr, endptr, nextlow_rc, nextlow;
+  Genomecomp_T low1_rc, high1_rc, high0, low1, high1;
+  __m128i current, next, invert3;
+  /* __m128i array[16]; */
 #ifdef HAVE_SSE4_1
   __m128i temp;
+#else
+  Genomecomp_T low0_rc, high0_rc;
 #endif
 
   debug(printf("Starting count_positions_rev_simd\n"));
 
-#if 0
-  /* No.  This extends past the query */
-  if (left != 0U) {
-    left -= 1;	/* Needed to get last oligomer to match */
+  if (left_plus_length < indexsize) {
+    left_plus_length = 0;
+  } else {
+    left_plus_length -= indexsize;
   }
-#endif
-  left_plus_length -= indexsize;
 
-  startptr = left/32U*3;
-  ptr = endptr = left_plus_length/32U*3;
+  ptr = startptr = left/32U*3;
+  endptr = left_plus_length/32U*3;
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
+  invert3 = _mm_set_epi32(0x00000000,0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF);
+
   if (left_plus_length <= left) {
     /* Skip */
 
   } else if (startptr == endptr) {
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low1 = Bigendian_convert_uint(ref_blocks[ptr+1]);
     nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
+    high1 = ref_blocks[ptr];
+    low1 = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1); nextlow = Cmet_reduce_ga(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1); nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1); nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    low_rc = ~low;
-    high_rc = ~high;
+    low1_rc = ~low1;
+    high1_rc = ~high1;
     nextlow_rc = ~nextlow;
 
-    if (indexsize == 8) {
-      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    if (indexsize == 9) {
+      count_9mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 8) {
+      count_8mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 7) {
-      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      count_7mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 6) {
-      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      count_6mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 5) {
-      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      count_5mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -16149,415 +25269,532 @@ count_positions_rev_simd (Count_T *counts, int indexsize, Univcoord_T left, Univ
   } else {
     /* Genome_print_blocks(ref_blocks,left,left+16); */
 
+    /* Start block */
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low1 = Bigendian_convert_uint(ref_blocks[ptr+1]);
     nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
+    high1 = ref_blocks[ptr];
+    low1 = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1); nextlow = Cmet_reduce_ga(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1); nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1); nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    low_rc = ~low;
-    high_rc = ~high;
     nextlow_rc = ~nextlow;
+    low1_rc = ~low1;
+    high1_rc = ~high1;
 
-    if (indexsize == 8) {
-      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    if (indexsize == 9) {
+      count_9mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 8) {
+      count_8mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      count_7mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      count_6mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
-    } else {
-      abort();
-    }
-
-    if (indexsize == 8) {
-      while (ptr > startptr + 6) {
-	ptr -= 6;
-
-#ifdef WORDS_BIGENDIAN
-	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
-	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
-#else
-	high0 = ref_blocks[ptr];
-	low0 = ref_blocks[ptr+1];
-	high1 = ref_blocks[ptr+3];
-	low1 = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
-#endif
-	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
-	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	  /* nextlow = Cmet_reduce_ga(nextlow); */
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
-	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    /* nextlow = Cmet_reduce_ct(nextlow); */
-	  } else {
-	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
-	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    /* nextlow = Cmet_reduce_ga(nextlow); */
-	  }
-	}
-
-	nextlow_rc = low_rc; /* depended on nextlow */
-	low_rc = ~low0;
-	high_rc = ~high0;
-	low1_rc = ~low1;
-	high1_rc = ~high1;
-
-	/* Use _set_ and not _setr_ */
-	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
-#ifdef HAVE_SSE4_1
-	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
-	next = _mm_shuffle_epi32(temp,0x93);
-#else
-	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
-#endif
-
-	extract_8mers_rev_simd(array,current,next);
-	count_fwdrev_simd(counts,(Genomecomp_T *) array);
-      }
-
-      if (ptr == startptr + 3) {
-	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
-      } else {
-	ptr = startptr;		/* ptr -= 6; */
-
-#ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
-#else
-	high = ref_blocks[ptr+3];
-	low = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
-#endif
-	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
-	  } else {
-	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-	  }
-	}
-
-	nextlow_rc = low_rc;	/* depended on nextlow; */
-	low_rc = ~low;
-	high_rc = ~high;
-
-	count_8mers_rev(counts,low_rc,high_rc,nextlow_rc);
-	/* ptr already at startptr */
-      }
-
-    } else if (indexsize == 7) {
-      while (ptr > startptr + 6) {
-	ptr -= 6;
-
-#ifdef WORDS_BIGENDIAN
-	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
-	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
-#else
-	high0 = ref_blocks[ptr];
-	low0 = ref_blocks[ptr+1];
-	high1 = ref_blocks[ptr+3];
-	low1 = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
-#endif
-	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
-	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	  /* nextlow = Cmet_reduce_ga(nextlow); */
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
-	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    /* nextlow = Cmet_reduce_ct(nextlow); */
-	  } else {
-	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
-	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    /* nextlow = Cmet_reduce_ga(nextlow); */
-	  }
-	}
-
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low0;
-	high_rc = ~high0;
-	low1_rc = ~low1;
-	high1_rc = ~high1;
-
-	/* Use _set_ and not _setr_ */
-	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
-#ifdef HAVE_SSE4_1
-	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
-	next = _mm_shuffle_epi32(temp,0x93);
-#else
-	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
-#endif
-
-	extract_7mers_rev_simd(array,current,next);
-	count_fwdrev_simd(counts,(Genomecomp_T *) array);
-      }
-
-      if (ptr == startptr + 3) {
-	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
-      } else {
-	ptr = startptr; /* ptr -= 6; */
-
-#ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
-#else
-	high = ref_blocks[ptr+3];
-	low = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
-#endif
-	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
-	  } else {
-	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-	  }
-	}
-
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low;
-	high_rc = ~high;
-
-	count_7mers_rev(counts,low_rc,high_rc,nextlow_rc);
-	/* ptr already at startptr */
-      }
-
-    } else if (indexsize == 6) {
-      while (ptr > startptr + 6) {
-	ptr -= 6;
-
-#ifdef WORDS_BIGENDIAN
-	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
-	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
-#else
-	high0 = ref_blocks[ptr];
-	low0 = ref_blocks[ptr+1];
-	high1 = ref_blocks[ptr+3];
-	low1 = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
-#endif
-	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
-	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	  /* nextlow = Cmet_reduce_ga(nextlow); */
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
-	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    /* nextlow = Cmet_reduce_ct(nextlow); */
-	  } else {
-	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
-	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    /* nextlow = Cmet_reduce_ga(nextlow); */
-	  }
-	}
-
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low0;
-	high_rc = ~high0;
-	low1_rc = ~low1;
-	high1_rc = ~high1;
-
-	/* Use _set_ and not _setr_ */
-	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
-#ifdef HAVE_SSE4_1
-	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
-	next = _mm_shuffle_epi32(temp,0x93);
-#else
-	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
-#endif
-
-	extract_6mers_rev_simd(array,current,next);
-	count_fwdrev_simd(counts,(Genomecomp_T *) array);
-      }
-
-      if (ptr == startptr + 3) {
-	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
-      } else {
-	ptr = startptr; /* ptr -= 6; */
-
-#ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
-#else
-	high = ref_blocks[ptr+3];
-	low = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
-#endif
-	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
-	  } else {
-	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-	  }
-	}
-
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low;
-	high_rc = ~high;
-
-	count_6mers_rev(counts,low_rc,high_rc,nextlow_rc);
-	/* ptr already at startptr */
-      }
-
-    } else if (indexsize == 5) {
-      while (ptr > startptr + 6) {
-	ptr -= 6;
-
-#ifdef WORDS_BIGENDIAN
-	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
-	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
-#else
-	high0 = ref_blocks[ptr];
-	low0 = ref_blocks[ptr+1];
-	high1 = ref_blocks[ptr+3];
-	low1 = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
-#endif
-	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
-	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	  /* nextlow = Cmet_reduce_ga(nextlow); */
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
-	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    /* nextlow = Cmet_reduce_ct(nextlow); */
-	  } else {
-	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
-	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    /* nextlow = Cmet_reduce_ga(nextlow); */
-	  }
-	}
-
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low0;
-	high_rc = ~high0;
-	low1_rc = ~low1;
-	high1_rc = ~high1;
-
-	/* Use _set_ and not _setr_ */
-	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
-#ifdef HAVE_SSE4_1
-	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
-	next = _mm_shuffle_epi32(temp,0x93);
-#else
-	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
-#endif
-
-	extract_5mers_rev_simd(array,current,next);
-	count_fwdrev_simd(counts,(Genomecomp_T *) array);
-      }
-
-      if (ptr == startptr + 3) {
-	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
-      } else {
-	ptr = startptr; /* ptr -= 6; */
-	
-#ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
-#else
-	high = ref_blocks[ptr+3];
-	low = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
-#endif
-	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-	} else if (mode == CMET_NONSTRANDED) {
-	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
-	  } else {
-	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-	  }
-	}
-
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low;
-	high_rc = ~high;
-
-	count_5mers_rev(counts,low_rc,high_rc,nextlow_rc);
-	/* ptr already at startptr */
-      }
-
-    } else {
-      abort();
-    }
-
-
-#ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
-    /* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
-#else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
-    /* nextlow = ref_blocks[ptr+4]; */
-#endif
-    if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-    } else if (mode == CMET_NONSTRANDED) {
-      if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
-      } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
-      }
-    }
-
-    nextlow_rc = low_rc;	/* depended on nextlow */
-    low_rc = ~low;
-    high_rc = ~high;
-
-    if (indexsize == 8) {
-      count_8mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
-    } else if (indexsize == 7) {
-      count_7mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
-    } else if (indexsize == 6) {
-      count_6mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
-    } else if (indexsize == 5) {
-      count_5mers_rev_partial(counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      count_5mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
+      abort();
+    }
+
+    ptr += 3;
+
+    /* Middle blocks */
+    if (indexsize == 9) {
+      while (ptr + 6 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
+#ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+#if 0
+	extract_9mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+        count_9mers_rev_simd(counts,current,next);
+#endif
+	ptr += 6;
+      }
+
+      if (ptr + 3 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
+
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	count_9mers_rev(counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 8) {
+      while (ptr + 6 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
+#ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+#if 0
+	extract_8mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_8mers_rev_simd(counts,current,next);
+#endif
+	ptr += 6;
+      }
+
+      if (ptr + 3 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
+
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	count_8mers_rev(counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 7) {
+      while (ptr + 6 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
+#ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+#if 0
+	extract_7mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_7mers_rev_simd(counts,current,next);
+#endif
+	ptr += 6;
+      }
+
+      if (ptr + 3 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
+
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	count_7mers_rev(counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 6) {
+      while (ptr + 6 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
+#ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+#if 0
+	extract_6mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_6mers_rev_simd(counts,current,next);
+#endif
+	ptr += 6;
+      }
+
+      if (ptr + 3 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
+
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	count_6mers_rev(counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 5) {
+      while (ptr + 6 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
+#ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+#if 0
+	extract_5mers_rev_simd(array,current,next);
+	count_fwdrev_simd(counts,(Genomecomp_T *) array);
+#else
+	count_5mers_rev_simd(counts,current,next);
+#endif
+	ptr += 6;
+      }
+
+      if (ptr + 3 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
+
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	count_5mers_rev(counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
+      }
+
+    } else {
+      abort();
+    }
+
+
+    /* End block */
+    assert(ptr == endptr);
+
+#ifdef WORDS_BIGENDIAN
+    high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+    /* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+    high1 = ref_blocks[ptr];
+    /* low1 = ref_blocks[ptr+1]; */
+    nextlow = ref_blocks[ptr+4];
+#endif
+    if (mode == CMET_STRANDED) {
+      high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+    } else if (mode == CMET_NONSTRANDED) {
+      if (genestrand > 0) {
+	high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
+      } else {
+	high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+      }
+    }
+
+    /* low1_rc = ~low1; */
+    low1_rc = nextlow_rc;
+
+    nextlow_rc = ~nextlow;
+    high1_rc = ~high1;
+
+    if (indexsize == 9) {
+      count_9mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 8) {
+      count_8mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 7) {
+      count_7mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 6) {
+      count_6mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 5) {
+      count_5mers_rev_partial(counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else {
       abort();
     }
   }
@@ -16567,7 +25804,7 @@ count_positions_rev_simd (Count_T *counts, int indexsize, Univcoord_T left, Univ
 #endif
  
 
-#if (!defined(USE_SIMD_FOR_COUNTS) || defined(DEBUG14))
+#ifndef USE_SIMD_FOR_COUNTS
 static void
 store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *counts, int indexsize,
 			 Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
@@ -16577,16 +25814,15 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
     low, high, nextlow;
 
 
-#if 0
-  /* No.  This extends past the query */
-  if (left != 0U) {
-    left -= 1;	/* Needed to get last oligomer to match */
+  if (left_plus_length < indexsize) {
+    left_plus_length = 0;
+  } else {
+    left_plus_length -= indexsize;
   }
-#endif
-  left_plus_length -= indexsize;
+  chrpos += (left_plus_length - left); /* We are starting from the right */
 
-  startptr = left/32U*3;
-  ptr = endptr = left_plus_length/32U*3;
+  ptr = startptr = left/32U*3;
+  endptr = left_plus_length/32U*3;
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
@@ -16617,7 +25853,9 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
     high_rc = ~high;
     nextlow_rc = ~nextlow;
 
-    if (indexsize == 8) {
+    if (indexsize == 9) {
+      chrpos = store_9mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 8) {
       chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 7) {
       chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
@@ -16633,6 +25871,7 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
   } else {
     /* Genome_print_blocks(ref_blocks,left,left+16); */
 
+    /* Start block */
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
     low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -16656,22 +25895,55 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
     high_rc = ~high;
     nextlow_rc = ~nextlow;
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    if (indexsize == 9) {
+      chrpos = store_9mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
 
-    ptr -= 3;
+    ptr += 3;
 
-    if (indexsize == 8) {
-      while (ptr > startptr) {
+    /* Middle blocks */
+    if (indexsize == 9) {
+      while (ptr + 3 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high = Bigendian_convert_uint(ref_blocks[ptr]);
+	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high = ref_blocks[ptr];
+	low = ref_blocks[ptr+1];
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	low_rc = ~low;
+	high_rc = ~high;
+	nextlow_rc = ~nextlow;
+
+	chrpos = store_9mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 8) {
+      while (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -16696,11 +25968,11 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
 	nextlow_rc = ~nextlow;
 
 	chrpos = store_8mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
-	ptr -= 3;
+	ptr += 3;
       }
 
     } else if (indexsize == 7) {
-      while (ptr > startptr) {
+      while (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -16725,11 +25997,11 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
 	nextlow_rc = ~nextlow;
 
 	chrpos = store_7mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
-	ptr -= 3;
+	ptr += 3;
       }
 
     } else if (indexsize == 6) {
-      while (ptr > startptr) {
+      while (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -16754,11 +26026,11 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
 	nextlow_rc = ~nextlow;
 
 	chrpos = store_6mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
-	ptr -= 3;
+	ptr += 3;
       }
 
     } else if (indexsize == 5) {
-      while (ptr > startptr) {
+      while (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high = Bigendian_convert_uint(ref_blocks[ptr]);
 	low = Bigendian_convert_uint(ref_blocks[ptr+1]);
@@ -16783,12 +26055,16 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
 	nextlow_rc = ~nextlow;
 
 	chrpos = store_5mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
-	ptr -= 3;
+	ptr += 3;
       }
+
     } else {
       abort();
     }
 
+
+    /* End block */
+    assert(ptr == endptr);
 
 #ifdef WORDS_BIGENDIAN
     high = Bigendian_convert_uint(ref_blocks[ptr]);
@@ -16813,16 +26089,17 @@ store_positions_rev_std (Chrpos_T **pointers, Chrpos_T **positions, Count_T *cou
     high_rc = ~high;
     nextlow_rc = ~nextlow;
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    if (indexsize == 9) {
+      chrpos = store_9mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else {
-      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
   }
@@ -16837,64 +26114,68 @@ store_positions_rev_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *co
 			  Univcoord_T left, Univcoord_T left_plus_length, Chrpos_T chrpos,
 			  int genestrand) {
   int startdiscard, enddiscard;
-  Genomecomp_T ptr, startptr, endptr, low_rc, high_rc, nextlow_rc,
-    low, high, nextlow;
-  Genomecomp_T low1_rc, high1_rc, low0, high0, low1, high1;
-  __m128i current, next;
+  Genomecomp_T ptr, startptr, endptr, nextlow_rc, nextlow;
+  Genomecomp_T low1_rc, high1_rc, high0, low1, high1;
+  __m128i current, next, invert3;
   __m128i array[16];
 #ifdef HAVE_SSE4_1
   __m128i temp;
+#else
+  Genomecomp_T low0_rc, high0_rc;
 #endif
 
 
-#if 0
-  /* No.  This extends past the query */
-  if (left != 0U) {
-    left -= 1;	/* Needed to get last oligomer to match */
+  if (left_plus_length < indexsize) {
+    left_plus_length = 0;
+  } else {
+    left_plus_length -= indexsize;
   }
-#endif
-  left_plus_length -= indexsize;
+  chrpos += (left_plus_length - left); /* We are starting from the right */
 
-  startptr = left/32U*3;
-  ptr = endptr = left_plus_length/32U*3;
+  ptr = startptr = left/32U*3;
+  endptr = left_plus_length/32U*3;
   startdiscard = left % 32; /* (left+pos5) % 32 */
   enddiscard = left_plus_length % 32; /* (left+pos3) % 32 */
   
+  invert3 = _mm_set_epi32(0x00000000,0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF);
+
   if (left_plus_length <= left) {
     /* Skip */
 
   } else if (startptr == endptr) {
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low1 = Bigendian_convert_uint(ref_blocks[ptr+1]);
     nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
+    high1 = ref_blocks[ptr];
+    low1 = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1); nextlow = Cmet_reduce_ga(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1); nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1); nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    low_rc = ~low;
-    high_rc = ~high;
+    low1_rc = ~low1;
+    high1_rc = ~high1;
     nextlow_rc = ~nextlow;
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+    if (indexsize == 9) {
+      chrpos = store_9mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,enddiscard);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,enddiscard);
     } else {
       fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
@@ -16903,375 +26184,466 @@ store_positions_rev_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *co
   } else {
     /* Genome_print_blocks(ref_blocks,left,left+16); */
 
+    /* Start block */
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
+    high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+    low1 = Bigendian_convert_uint(ref_blocks[ptr+1]);
     nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
+    high1 = ref_blocks[ptr];
+    low1 = ref_blocks[ptr+1];
     nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+      high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1); nextlow = Cmet_reduce_ga(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); nextlow = Cmet_reduce_ct(nextlow);
+	high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1); nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); nextlow = Cmet_reduce_ga(nextlow);
+	high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1); nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    low_rc = ~low;
-    high_rc = ~high;
     nextlow_rc = ~nextlow;
+    low1_rc = ~low1;
+    high1_rc = ~high1;
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    if (indexsize == 9) {
+      chrpos = store_9mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
     } else {
+      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
 
-    if (indexsize == 8) {
-      while (ptr > startptr + 6) {
-	ptr -= 6;
+    ptr += 3;
 
+    /* Middle blocks */
+    if (indexsize == 9) {
+      while (ptr + 6 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
 	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
 	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
 #else
 	high0 = ref_blocks[ptr];
-	low0 = ref_blocks[ptr+1];
+	/* low0 = ref_blocks[ptr+1]; */
 	high1 = ref_blocks[ptr+3];
 	low1 = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
+	nextlow = ref_blocks[ptr+7];
 #endif
 	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
 	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	  nextlow = Cmet_reduce_ga(nextlow);
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
 	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	    nextlow = Cmet_reduce_ct(nextlow);
 	  } else {
-	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
 	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	    nextlow = Cmet_reduce_ga(nextlow);
 	  }
 	}
 
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low0;
-	high_rc = ~high0;
-	low1_rc = ~low1;
-	high1_rc = ~high1;
-
-	/* Use _set_ and not _setr_ */
-	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
 #ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
 	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
 	next = _mm_shuffle_epi32(temp,0x93);
 #else
-	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
+#endif
+
+	extract_9mers_rev_simd(array,current,next);
+	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
+      }
+
+      if (ptr + 3 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
+#else
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
+
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	chrpos = store_9mers_rev(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
+      }
+
+    } else if (indexsize == 8) {
+      while (ptr + 6 <= endptr) {
+#ifdef WORDS_BIGENDIAN
+	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
+	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
+#else
+	high0 = ref_blocks[ptr];
+	/* low0 = ref_blocks[ptr+1]; */
+	high1 = ref_blocks[ptr+3];
+	low1 = ref_blocks[ptr+4];
+	nextlow = ref_blocks[ptr+7];
+#endif
+	if (mode == CMET_STRANDED) {
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	  nextlow = Cmet_reduce_ga(nextlow);
+	} else if (mode == CMET_NONSTRANDED) {
+	  if (genestrand > 0) {
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
+	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
+	    nextlow = Cmet_reduce_ct(nextlow);
+	  } else {
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
+	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
+	    nextlow = Cmet_reduce_ga(nextlow);
+	  }
+	}
+
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
+#ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
+	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
+	next = _mm_shuffle_epi32(temp,0x93);
+#else
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
 #endif
 
 	extract_8mers_rev_simd(array,current,next);
 	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
       }
 
-      if (ptr == startptr + 3) {
-	ptr = startptr; /* ptr -= 3; */ 		/* ptr is now startptr */
-      } else {
-	ptr = startptr; /* ptr -= 6; */
-
+      if (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-	high = ref_blocks[ptr+3];
-	low = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
 #endif
 	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
 	  } else {
-	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
 	  }
 	}
 
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low;
-	high_rc = ~high;
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
 
-	chrpos = store_8mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
-	/* ptr already at startptr */
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	chrpos = store_8mers_rev(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
       }
 
     } else if (indexsize == 7) {
-      while (ptr > startptr + 6) {
-	ptr -= 6;
-
+      while (ptr + 6 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
 	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
 	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
 #else
 	high0 = ref_blocks[ptr];
-	low0 = ref_blocks[ptr+1];
+	/* low0 = ref_blocks[ptr+1]; */
 	high1 = ref_blocks[ptr+3];
 	low1 = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
+	nextlow = ref_blocks[ptr+7];
 #endif
 	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
 	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	  nextlow = Cmet_reduce_ga(nextlow);
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
 	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	    nextlow = Cmet_reduce_ct(nextlow);
 	  } else {
-	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
 	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	    nextlow = Cmet_reduce_ga(nextlow);
 	  }
 	}
 
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low0;
-	high_rc = ~high0;
-	low1_rc = ~low1;
-	high1_rc = ~high1;
-
-	/* Use _set_ and not _setr_ */
-	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
 #ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
 	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
 	next = _mm_shuffle_epi32(temp,0x93);
 #else
-	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
 #endif
 
 	extract_7mers_rev_simd(array,current,next);
 	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
       }
 
-      if (ptr == startptr + 3) {
-	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
-      } else {
-	ptr = startptr; /* ptr -= 6; */
-
+      if (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]);*/
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-	high = ref_blocks[ptr+3];
-	low = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
 #endif
 	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
 	  } else {
-	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
 	  }
 	}
 
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low;
-	high_rc = ~high;
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
 
-	chrpos = store_7mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
-	/* ptr already at startptr */
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	chrpos = store_7mers_rev(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
       }
 
     } else if (indexsize == 6) {
-      while (ptr > startptr + 6) {
-	ptr -= 6;
-
+      while (ptr + 6 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
 	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
 	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
 #else
 	high0 = ref_blocks[ptr];
-	low0 = ref_blocks[ptr+1];
+	/* low0 = ref_blocks[ptr+1]; */
 	high1 = ref_blocks[ptr+3];
 	low1 = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
+	nextlow = ref_blocks[ptr+7];
 #endif
 	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
 	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	  nextlow = Cmet_reduce_ga(nextlow);
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
 	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	    nextlow = Cmet_reduce_ct(nextlow);
 	  } else {
-	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
 	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	    nextlow = Cmet_reduce_ga(nextlow);
 	  }
 	}
 
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low0;
-	high_rc = ~high0;
-	low1_rc = ~low1;
-	high1_rc = ~high1;
-
-	/* Use _set_ and not _setr_ */
-	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
 #ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
 	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
 	next = _mm_shuffle_epi32(temp,0x93);
 #else
-	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
 #endif
 
 	extract_6mers_rev_simd(array,current,next);
 	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
       }
 
-      if (ptr == startptr + 3) {
-	ptr = startptr; /* ptr -= 3; */		/* ptr is now startptr */
-      } else {
-	ptr = startptr; /* ptr -= 6; */
-
+      if (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-	high = ref_blocks[ptr+3];
-	low = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
 #endif
 	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
 	  } else {
-	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
 	  }
 	}
 
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low;
-	high_rc = ~high;
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
 
-	chrpos = store_6mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
-	/* ptr already at startptr */
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	chrpos = store_6mers_rev(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
       }
 
     } else if (indexsize == 5) {
-      while (ptr > startptr + 6) {
-	ptr -= 6;
-
+      while (ptr + 6 <= endptr) {
 #ifdef WORDS_BIGENDIAN
 	high0 = Bigendian_convert_uint(ref_blocks[ptr]);
-	low0 = Bigendian_convert_uint(ref_blocks[ptr+1]);
+	/* low0 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
 	high1 = Bigendian_convert_uint(ref_blocks[ptr+3]);
 	low1 = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]);
 #else
 	high0 = ref_blocks[ptr];
-	low0 = ref_blocks[ptr+1];
+	/* low0 = ref_blocks[ptr+1]; */
 	high1 = ref_blocks[ptr+3];
 	low1 = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
+	nextlow = ref_blocks[ptr+7];
 #endif
 	if (mode == CMET_STRANDED) {
-	  high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	  high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
 	  high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	  /* nextlow = Cmet_reduce_ga(nextlow); */
+	  nextlow = Cmet_reduce_ga(nextlow);
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high0 = Cmet_reduce_ct(high0); low0 = Cmet_reduce_ct(low0);
+	    high0 = Cmet_reduce_ct(high0); /* low0 = Cmet_reduce_ct(low0); */
 	    high1 = Cmet_reduce_ct(high1); low1 = Cmet_reduce_ct(low1);
-	    /* nextlow = Cmet_reduce_ct(nextlow); */
+	    nextlow = Cmet_reduce_ct(nextlow);
 	  } else {
-	    high0 = Cmet_reduce_ga(high0); low0 = Cmet_reduce_ga(low0);
+	    high0 = Cmet_reduce_ga(high0); /* low0 = Cmet_reduce_ga(low0); */
 	    high1 = Cmet_reduce_ga(high1); low1 = Cmet_reduce_ga(low1);
-	    /* nextlow = Cmet_reduce_ga(nextlow); */
+	    nextlow = Cmet_reduce_ga(nextlow);
 	  }
 	}
 
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low0;
-	high_rc = ~high0;
-	low1_rc = ~low1;
-	high1_rc = ~high1;
-
-	/* Use _set_ and not _setr_ */
-	current = _mm_set_epi32(low_rc,high_rc,low1_rc,high1_rc);
+	current = _mm_set_epi32(nextlow_rc,high0,low1,high1);
+	current = _mm_xor_si128(current,invert3);
+	nextlow_rc = ~nextlow;
 #ifdef HAVE_SSE4_1
+	/* high0_rc = _mm_extract_epi32(current,2); */
+	/* low1_rc = _mm_extract_epi32(current,1); */
+	/* high1_rc = _mm_extract_epi32(current,0); */
+
 	temp = _mm_insert_epi32(current,nextlow_rc,0x03);
 	next = _mm_shuffle_epi32(temp,0x93);
 #else
-	next = _mm_set_epi32(high_rc,low1_rc,high1_rc,nextlow_rc);
+	high0_rc = ~high0;
+	low1_rc = ~low1;
+	high1_rc = ~high1;
+
+	next = _mm_set_epi32(high0_rc,low1_rc,high1_rc,nextlow_rc);
 #endif
 
 	extract_5mers_rev_simd(array,current,next);
 	chrpos = store_fwdrev_simd(chrpos,pointers,positions,counts,(Genomecomp_T *) array);
+	ptr += 6;
       }
 
-      if (ptr == startptr + 3) {
-	ptr = startptr;  /* ptr -= 3; */		/* ptr is now startptr */
-      } else {
-	ptr = startptr;  /* ptr -= 6; */
-
+      if (ptr + 3 <= endptr) {
 #ifdef WORDS_BIGENDIAN
-	high = Bigendian_convert_uint(ref_blocks[ptr+3]);
-	low = Bigendian_convert_uint(ref_blocks[ptr+4]);
-	/* nextlow = Bigendian_convert_uint(ref_blocks[ptr+7]); */
+	high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+	/* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+	nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-	high = ref_blocks[ptr+3];
-	low = ref_blocks[ptr+4];
-	/* nextlow = ref_blocks[ptr+7]; */
+	high1 = ref_blocks[ptr];
+	/* low1 = ref_blocks[ptr+1]; */
+	nextlow = ref_blocks[ptr+4];
 #endif
 	if (mode == CMET_STRANDED) {
-	  high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	  high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
 	} else if (mode == CMET_NONSTRANDED) {
 	  if (genestrand > 0) {
-	    high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	    high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
 	  } else {
-	    high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	    high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
 	  }
 	}
 
-	nextlow_rc = low_rc;	/* depended on nextlow */
-	low_rc = ~low;
-	high_rc = ~high;
+	/* low1_rc = ~low1; */
+	low1_rc = nextlow_rc;
 
-	chrpos = store_5mers_rev(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc);
-	/* ptr already at startptr */
+	nextlow_rc = ~nextlow;
+	high1_rc = ~high1;
+
+	chrpos = store_5mers_rev(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc);
+	ptr += 3;
       }
 
     } else {
@@ -17279,39 +26651,45 @@ store_positions_rev_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *co
     }
 
 
+    /* End block */
+    assert(ptr == endptr);
+
 #ifdef WORDS_BIGENDIAN
-    high = Bigendian_convert_uint(ref_blocks[ptr]);
-    low = Bigendian_convert_uint(ref_blocks[ptr+1]);
-    /* nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]); */
+    high1 = Bigendian_convert_uint(ref_blocks[ptr]);
+    /* low1 = Bigendian_convert_uint(ref_blocks[ptr+1]); */
+    nextlow = Bigendian_convert_uint(ref_blocks[ptr+4]);
 #else
-    high = ref_blocks[ptr];
-    low = ref_blocks[ptr+1];
-    /* nextlow = ref_blocks[ptr+4]; */
+    high1 = ref_blocks[ptr];
+    /* low1 = ref_blocks[ptr+1]; */
+    nextlow = ref_blocks[ptr+4];
 #endif
     if (mode == CMET_STRANDED) {
-      high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+      high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
     } else if (mode == CMET_NONSTRANDED) {
       if (genestrand > 0) {
-	high = Cmet_reduce_ct(high); low = Cmet_reduce_ct(low); /* nextlow = Cmet_reduce_ct(nextlow); */
+	high1 = Cmet_reduce_ct(high1); /* low1 = Cmet_reduce_ct(low1); */ nextlow = Cmet_reduce_ct(nextlow);
       } else {
-	high = Cmet_reduce_ga(high); low = Cmet_reduce_ga(low); /* nextlow = Cmet_reduce_ga(nextlow); */
+	high1 = Cmet_reduce_ga(high1); /* low1 = Cmet_reduce_ga(low1); */ nextlow = Cmet_reduce_ga(nextlow);
       }
     }
 
-    nextlow_rc = low_rc;	/* depended on nextlow */
-    low_rc = ~low;
-    high_rc = ~high;
+    /* low1_rc = ~low1; */
+    low1_rc = nextlow_rc;
 
-    if (indexsize == 8) {
-      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+    nextlow_rc = ~nextlow;
+    high1_rc = ~high1;
+
+    if (indexsize == 9) {
+      chrpos = store_9mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
+    } else if (indexsize == 8) {
+      chrpos = store_8mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 7) {
-      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_7mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 6) {
-      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_6mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else if (indexsize == 5) {
-      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low_rc,high_rc,nextlow_rc,startdiscard,/*enddiscard*/31);
+      chrpos = store_5mers_rev_partial(chrpos,pointers,positions,counts,low1_rc,high1_rc,nextlow_rc,/*startdiscard*/0,enddiscard);
     } else {
-      fprintf(stderr,"indexsize %d not supported\n",indexsize);
       abort();
     }
   }
@@ -17322,128 +26700,71 @@ store_positions_rev_simd (Chrpos_T **pointers, Chrpos_T **positions, Count_T *co
 
 
 
-#if 0
-/* Checks for overabundance */
-static int
-allocate_positions_check (Chrpos_T **pointers, Chrpos_T **positions,
-			  bool *overabundant, bool *inquery, Count_T *counts, int *relevant_counts,
-			  int oligospace) {
-  int totalcounts;
-  Chrpos_T *p;
-  int overabundance_threshold;
-  int n, i;
-
-  n = 0;
-  for (i = 0; i < oligospace; i++) {
-    if (overabundant[i] == true) {
-      counts[i] = 0;
-    } else if (inquery[i] == false) {
-      counts[i] = 0;
-    } else if (counts[i] > 0) {
-      relevant_counts[n++] = counts[i];
-    }
-  }
-
-  totalcounts = 0;
-  if (n < OVERABUNDANCE_CHECK) {
-    for (i = 0; i < oligospace; i++) {
-      totalcounts += counts[i];
-    }
-
-  } else {
-    overabundance_threshold = Orderstat_int_pct_inplace(relevant_counts,n,OVERABUNDANCE_PCT);
-    debug1(printf("overabundance threshold is %d\n",overabundance_threshold));
-    if (overabundance_threshold < OVERABUNDANCE_MIN) {
-      overabundance_threshold = OVERABUNDANCE_MIN;
-      debug1(printf("  => resetting to %d\n",overabundance_threshold));
-    }
-
-    for (i = 0; i < oligospace; i++) {
-      if (counts[i] > overabundance_threshold) {
-	overabundant[i] = true;
-	counts[i] = 0;
-      } else {
-	totalcounts += counts[i];
-      }
-    }
-  }
-
-  if (totalcounts == 0) {
-    positions[0] = (Chrpos_T *) NULL;
-  } else {
-    p = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
-    for (i = 0; i < oligospace; i++) {
-      positions[i] = p;
-      p += counts[i];
-    }
-    memcpy((void *) pointers,positions,oligospace*sizeof(Chrpos_T *));
-  }
-
-  return totalcounts;
-}
-#endif
-
-
 #define POLY_A 0x0000
 #define POLY_C 0x5555
 #define POLY_G 0xAAAA
 #define POLY_T 0xFFFF
 
 
-#define ONE_CHAR 1
-#define TWO_CHARS 2
-#define SIMD_NCHARS 16
-
-#define ONE_INT 4
-#define TWO_INTS 8
 #define SIMD_NINTS 4
 
 
 #ifdef HAVE_SSE2
-static int
+static Chrpos_T *
 allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
 		    Count_T *inquery, Count_T *counts, int oligospace,
-		    Shortoligomer_T mask) {
-  /* int totalcounts_old; */
+		    Shortoligomer_T mask, int indexsize) {
+  Chrpos_T *positions_space, **pointers_end, *p;
   int totalcounts = 0;
-  Chrpos_T *p;
-  int i;
-  __m128i *inquery_ptr, *counts_ptr, *end_ptr, zero, vec;
+  int i, j;
+  __m128i *inquery_ptr, *counts_ptr, *end_ptr, qcounts;
   __m128i terms_ptr[1];
   Count_T *terms;
-  /* __m128i result_allocated[1]; */
-  /* int *result; */
   int *nskip, *nskip_ptr;
+#ifndef HAVE_SSE4_1
+  __m128i zero;
+#endif
 
+#if 0
+  /* Causes problems with new algorithm */
+  inquery[POLY_A & mask] = INQUERY_FALSE;
+  inquery[POLY_C & mask] = INQUERY_FALSE;
+  inquery[POLY_G & mask] = INQUERY_FALSE;
+  inquery[POLY_T & mask] = INQUERY_FALSE;
+#endif
 
-  counts[POLY_A & mask] = 0;
-  counts[POLY_C & mask] = 0;
-  counts[POLY_G & mask] = 0;
-  counts[POLY_T & mask] = 0;
-
-  nskip_ptr = nskip = (int *) MALLOCA((oligospace/SIMD_NCHARS + 1) * sizeof(int));
+  /* nskip is a run-length of zero counts, which allows faster processing the second time through */
+  nskip_ptr = nskip = (int *) MALLOCA((oligospace/SIMD_NELTS + 1) * sizeof(int));
   *nskip_ptr = 0;
 
   inquery_ptr = (__m128i *) inquery;
   counts_ptr = (__m128i *) counts;
-  end_ptr = &(counts_ptr[oligospace/SIMD_NCHARS]);
+  end_ptr = &(counts_ptr[oligospace/SIMD_NELTS]);
   terms = (Count_T *) terms_ptr;
+#ifndef HAVE_SSE4_1
   zero = _mm_set1_epi8(0);
+#endif
+
+  debug(i = 0);
   while (counts_ptr < end_ptr) {
-    vec = _mm_and_si128(*counts_ptr,*inquery_ptr++);
-    _mm_store_si128(counts_ptr++,vec);
+    debug(printf("%d\n",i));
+    debug(i += 16);
+    debug(print_counts(*counts_ptr,"counts"));
+    qcounts = _mm_and_si128(*counts_ptr,*inquery_ptr++); /* counts in query */
+    _mm_store_si128(counts_ptr++,qcounts); /* and store back, so we don't need inquery or overabundant any more */
     if (
 #ifdef HAVE_SSE4_1
-	_mm_testz_si128(vec,vec)
+	_mm_testz_si128(qcounts,qcounts)
 #else
-	/*cmp*/_mm_movemask_epi8(_mm_cmpeq_epi8(vec,zero)) == 0xFFFF
+	/*cmp*/_mm_movemask_epi8(_mm_cmpeq_epi8(qcounts,zero)) == 0xFFFF
 #endif
 	) {
       /* All counts are zero, so incrementing nskip */
-      (*nskip_ptr) += SIMD_NCHARS;
+      (*nskip_ptr) += 1;
+
     } else {
-      /* Non-zero count found */
-      _mm_store_si128(terms_ptr,vec);
+      /* A valid count found */
+      _mm_store_si128(terms_ptr,qcounts);
       totalcounts += terms[0] + terms[1] + terms[2] + terms[3] + terms[4] + terms[5] + terms[6] + terms[7] +
 	terms[8] + terms[9] + terms[10] + terms[11] + terms[12] + terms[13] + terms[14] + terms[15];
       *(++nskip_ptr) = 0;	/* Advance ptr and initialize */
@@ -17454,7 +26775,7 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
   /* For debugging */
   totalcounts_old = 0;
   for (i = 0; i < oligospace; i++) {
-    if (inquery[i] == /*true*/0xFF) {
+    if (inquery[i] == INQUERY_TRUE) {
       totalcounts_old += counts[i];
     }
   }
@@ -17465,83 +26786,128 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
   }
 #endif
 
+  debug(printf("totalcounts is %d\n",totalcounts));
   if (totalcounts == 0) {
-    positions[0] = (Chrpos_T *) NULL;
+    positions_space = (Chrpos_T *) NULL;
   } else {
     /* Need to assign positions[0] so we can free the space */
-    /* pointers[0] = */ positions[0] = p = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
+    pointers_end = &(pointers[-1]);	/* or pointers_allocated[0] */
+    p = positions_space = (Chrpos_T *) MALLOC(totalcounts * sizeof(Chrpos_T));
 
+    i = 0;
     nskip_ptr = nskip;
-    i = *nskip_ptr++;
-    while (i < oligospace) {
-      /* starti = i; */
-      pointers[i] = positions[i] = p;	/* 0 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 1 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 2 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 3 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 4 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 5 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 6 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 7 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 8 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 9 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 10 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 11 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 12 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 13 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 14 */
-      p += counts[i++];
-      pointers[i] = positions[i] = p;	/* 15 */
-      p += counts[i++];
-      positions[i] = p;	/* 16, used for indicating if pointer hits next position.  Do not need to copy to pointers[i] */
-
+    j = *nskip_ptr++;
+    while (i + j*SIMD_NELTS < oligospace) {
 #if 0
-      /* Incremental call.  Turns out to be slightly slower than the individual assignments above. */
-      memcpy((void *) &(pointers[starti]),&(positions[starti]),16*sizeof(Chrpos_T *));
+      while (--j >= 0) {
+	positions[i++] = p; positions[i++] = p; positions[i++] = p; positions[i++] = p;
+	positions[i++] = p; positions[i++] = p; positions[i++] = p; positions[i++] = p;
+	positions[i++] = p; positions[i++] = p; positions[i++] = p; positions[i++] = p;
+	positions[i++] = p; positions[i++] = p; positions[i++] = p; positions[i++] = p;
+      }
+#else
+      /* Not necessary to assign since we check for counts[i] == 0 */
+      pointers_end[i] = /* positions[i] = */ p;
+      i += j*16;
 #endif
 
-      i += *nskip_ptr++;
+      pointers_end[i] = positions[i] = p;		/* 0 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 1 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 2 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 3 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 4 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 5 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 6 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 7 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 8 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 9 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 10 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 11 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 12 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 13 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 14 */
+      p += counts[i++];
+
+      pointers_end[i] = positions[i] = p;		/* 15 */
+      p += counts[i++];
+
+      j = *nskip_ptr++;
     }
+
 #if 0
-    /* Single call replaced by incremental calls above */
-    /* Does not copy position[oligospace] */
-    memcpy((void *) pointers,positions,oligospace*sizeof(Chrpos_T *));
+    while (--j >= 0) {
+      /* Not necessary to assign since we check for counts[i] == 0 */
+      positions[i++] = p; positions[i++] = p; positions[i++] = p; positions[i++] = p;
+      positions[i++] = p; positions[i++] = p; positions[i++] = p; positions[i++] = p;
+      positions[i++] = p; positions[i++] = p; positions[i++] = p; positions[i++] = p;
+      positions[i++] = p; positions[i++] = p; positions[i++] = p; positions[i++] = p;
+    }
+#else
+    if (j > 0) {
+      pointers_end[i] = /* positions[i] = */ p;
+      /* i += j*16; */
+    }
 #endif
   }
+  
+#if 0
+  /* Faster to assign each individual pointer above */
+  memcpy((void *) pointers,&(positions[1]),(oligospace-1)*sizeof(Chrpos_T *));
+#endif
+  pointers[oligospace-1] = p;	/* or pointers_end[oligospace] or pointers_allocated[oligospace+1] */
+
+  /* dump_allocations(positions,counts,oligospace,indexsize,positions_space); */
 
   FREEA(nskip);
 
-  return totalcounts;
+  return positions_space;
 }
 
 #else
 
-static int
+static Chrpos_T *
 allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
 		    bool *inquery, Count_T *counts, int oligospace,
-		    Shortoligomer_T mask) {
+		    Shortoligomer_T mask, int indexsize) {
+  Chrpos_T *positions_space, *p;
   int totalcounts;
-  Chrpos_T *p;
   int i;
 
-  counts[POLY_A & mask] = 0;
-  counts[POLY_C & mask] = 0;
-  counts[POLY_G & mask] = 0;
-  counts[POLY_T & mask] = 0;
+#if 0
+  /* Causes problems with new algorithm */
+  inquery[POLY_A & mask] = false;
+  inquery[POLY_C & mask] = false;
+  inquery[POLY_G & mask] = false;
+  inquery[POLY_T & mask] = false;
+#endif
 
   for (i = 0; i < oligospace; i++) {
     if (inquery[i] == false) {
@@ -17558,20 +26924,19 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
 
 
   if (totalcounts == 0) {
-    positions[0] = (Chrpos_T *) NULL;
+    positions_space = (Chrpos_T *) NULL;
   } else {
-    p = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
-    /* First iteration sets positions[0] so we can free the memory */
+    p = positions_space = (Chrpos_T *) CALLOC(totalcounts,sizeof(Chrpos_T));
+
     for (i = 0; i < oligospace; i++) {
       positions[i] = p;
       p += counts[i];
     }
-    positions[i] = p;		/* For positions[oligospace], used for indicating if pointer hits next position */
-    /* Does not copy positions[oligospace] */
-    memcpy((void *) pointers,positions,oligospace*sizeof(Chrpos_T *));
+    memcpy((void *) pointers,&(positions[1]),(oligospace-1)*sizeof(Chrpos_T *));
+    pointers[oligospace-1] = p;
   }
 
-  return totalcounts;
+  return positions_space;
 }
 
 #endif
@@ -17579,7 +26944,7 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
 
 #ifdef DEBUG14
 static void
-counts_compare (Count_T *counts1, Count_T *counts2, Oligospace_T oligospace) {
+counts_compare (Count_T *counts1, Count0_T *counts2, Oligospace_T oligospace) {
   Oligospace_T i;
 
   for (i = 0; i < oligospace; i++) {
@@ -17592,20 +26957,49 @@ counts_compare (Count_T *counts1, Count_T *counts2, Oligospace_T oligospace) {
 }
 
 static void
-positions_compare (Chrpos_T **positions1, Chrpos_T **positions2, Count_T *counts, int oligospace) {
+positions_compare (Chrpos_T **positions1, Count_T *counts1, Count_T *inquery1,
+		   Chrpos_T **positions2, Count0_T *counts2, Oligospace_T oligospace,
+		   int indexsize, Shortoligomer_T mask) {
   Oligospace_T i;
-  int hit;
+  Count_T hit;
+  char *nt;
 
+  /* printf("Start of positions_compare\n"); */
   for (i = 0; i < oligospace; i++) {
     /* nt = shortoligo_nt(i,indexsize); */
-    for (hit = 0; hit < counts[i]; hit++) {
-      if (positions1[i][hit] != positions2[i][hit]) {
-	printf("At oligo %llu, hit %d, positions1 %u != positions2 %u\n",
-	       (unsigned long long) i,hit,positions1[i][hit],positions2[i][hit]);
+    if (inquery1[i] == INQUERY_FALSE) {
+      /* Skip */
+    } else if (counts1[i] != (Count_T) counts2[i]) {
+      /* Can happen if count > 127 */
+      if (i == (POLY_A & mask) || i == (POLY_C & mask) || i == (POLY_G & mask) || i == (POLY_T & mask)) {
+	/* Ignore */
+      } else {
+	nt = shortoligo_nt(i,indexsize);
+	printf("At oligo %s (%llu), counts1 %d != counts2 %d, inquery1 %hd\n",
+	       nt,i,counts1[i],counts2[i],inquery1[i]);
+	FREE(nt);
 	abort();
       }
+    } else {
+      for (hit = 0; hit < counts1[i]; hit++) {
+	if (positions1[i][hit] != positions2[i][hit]) {
+	  nt = shortoligo_nt(i,indexsize);
+	  printf("At oligo %s (%llu), hit %d/%d, positions1 %u != positions2 %u\n",
+		 nt,(unsigned long long) i,hit,counts1[i],positions1[i][hit],positions2[i][hit]);
+	  FREE(nt);
+	  abort();
+	}
+      }
+
+#if 0
+      nt = shortoligo_nt(i,indexsize);
+      printf("At oligo %s, %d positions are equal\n",nt,counts1[i]);
+      FREE(nt);
+#endif
+
     }
   }
+  /* printf("End of positions_compare\n"); */
 
   return;
 }
@@ -17635,7 +27029,6 @@ edge_detect (int *edge, int *sumx, int *sumxx, int length) {
   sumx_pseudo = NPSEUDO * theta;
   min_rss_sep = sumxx_right - sumx_right*theta;
   debug1(printf("theta: %d/%d = %f\n",sumx_right,length,theta));
-  debug1(printf("rss: %f\n",rss)); 
 
   debug1(printf("%s %s %s %s %s %s %s %s %s %s %s\n",
 		"pos","x","sumx.left","n.left","sumx.right","n.right",
@@ -17655,6 +27048,7 @@ edge_detect (int *edge, int *sumx, int *sumxx, int length) {
     rss_right = sumxx_right - sumx_right*theta_right;
     rss_sep = rss_left + rss_right;
 
+#if 0
     debug1(
 	   if (rss_sep > 0.0) {
 	     fscore = ((double) (length - 2))*(rss - rss_sep)/rss_sep;
@@ -17666,6 +27060,7 @@ edge_detect (int *edge, int *sumx, int *sumxx, int length) {
 		    pos,sumx[pos]-sumx[pos-1],sumx_left,n_left,sumx_right,n_right,
 		    theta_left,theta_right,rss_left,rss_right);
 	   });
+#endif
     /* fscore = (n-2)*(rss - rss_sep)/rss_sep = (n-2)*(rss/rss_sep -
        1) is maximized when rss_sep is minimized */
 
@@ -17736,6 +27131,7 @@ trim_start_detect (int start, int end, int *sumx, int *sumxx) {
     rss_right = sumxx_right - sumx_right*theta_right;
     rss_sep = rss_left + rss_right;
 
+#if 0
     debug1(
 	   if (rss_sep > 0.0) {
 	     fscore = ((double) (end - start - 2))*(rss - rss_sep)/rss_sep;
@@ -17747,6 +27143,7 @@ trim_start_detect (int start, int end, int *sumx, int *sumxx) {
 		    pos,sumx_left,n_left,sumx_right,n_right,
 		    theta_left,theta_right,rss_left,rss_right);
 	   });
+#endif
     /* fscore = (n-2)*(rss - rss_sep)/rss_sep = (n-2)*(rss/rss_sep -
        1) is maximized when rss_sep is minimized */
 
@@ -17811,6 +27208,7 @@ trim_end_detect (int start, int end, int *sumx, int *sumxx) {
     rss_right = sumxx_right - sumx_right*theta_right;
     rss_sep = rss_left + rss_right;
 
+#if 0
     debug1(
 	   if (rss_sep == 0) {
 	     printf("%d %d %d %d %d %f %f %f %f NA\n",
@@ -17822,6 +27220,7 @@ trim_end_detect (int start, int end, int *sumx, int *sumxx) {
 		    pos,sumx_left,n_left,sumx_right,n_right,
 		    theta_left,theta_right,rss_left,rss_right,fscore);
 	   });
+#endif
     /* fscore = (n-2)*(rss - rss_sep)/rss_sep = (n-2)*(rss/rss_sep -
        1) is maximized when rss_sep is minimized */
 
@@ -17853,7 +27252,8 @@ trim_end_detect (int start, int end, int *sumx, int *sumxx) {
 
 double
 Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *trim_start, int *trim_end,
-			T this, char *queryuc_ptr, int querylength, bool trimp) {
+			T this, char *queryuc_ptr, int querystart, int queryend, bool trimp) {
+  int querylength;
   double oligodepth;
   int ngoodoligos, nrepoligos, x, *sumx, *sumxx, sumx0 = 0, sumxx0 = 0;
   int edge, side;
@@ -17873,20 +27273,25 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
   char *nt;
 #endif
 
-  if (this->query_evaluated_p == true) {
-    return 1.0;
-  } else {
-    this->query_evaluated_p = true; /* Set this flag so we don't redo this part */
-  }
+  querylength = queryend - querystart;
 
   if (querylength <= indexsize) {
     *badoligos = 0;
+    *repoligos = 0;
+    *trimoligos = 0;
     *trim_start = 0;
     *trim_end = querylength;
     return 1.0;
+
+  } else {
+#ifdef HAVE_SSE2
+    memset(this->inquery,/*INQUERY_FALSE*/0,this->oligospace * sizeof(Count_T));
+#else
+    memset(this->inquery,/*false*/0,this->oligospace * sizeof(bool));
+#endif
   }
-    
-  for (i = 0, p = queryuc_ptr; i < querylength; i++, p++) {
+
+  for (i = querystart, p = &(queryuc_ptr[querystart]); i < queryend; i++, p++) {
     in_counter++;
 
     switch (*p) {
@@ -17904,11 +27309,11 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
 	    printf("At querypos %d, oligo %s seen\n",i,nt);
 	    FREE(nt));
 
-      this->counts[masked] += 1;
+      this->counts[masked] += 1; /* For determination of trimming */
 #ifdef HAVE_SSE2
-      if (this->inquery[masked] == /*false*/0x00) {
+      if (this->inquery[masked] == INQUERY_FALSE) {
 	nunique += 1;
-	this->inquery[masked] = /*true*/0xFF;
+	this->inquery[masked] = INQUERY_TRUE;
       }
 #else
       if (this->inquery[masked] == false) {
@@ -17922,10 +27327,17 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
 
   if (trimp == false) {
     *badoligos = (querylength + 1 - indexsize) - noligos;
+    *repoligos = 0;
+    *trimoligos = 0;
     *trim_start = 0;
     *trim_end = querylength;
     return 1.0;
+
   } else {
+    /* Not designed to handle trimming on a subset of the query */
+    assert(querystart == 0);
+    assert(queryend == querylength);
+
     /* Determine where to trim using a changepoint analysis */
 #ifdef GSNAP
     sumx = (int *) CALLOCA(querylength - indexsize + 1,sizeof(int));
@@ -18096,7 +27508,7 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions, bool *overabundan
 	      FREE(nt));
 
 #ifdef HAVE_SSE2
-      } else if (inquery[masked] == /*false*/0x00) {
+      } else if (inquery[masked] == INQUERY_FALSE) {
 	/* Don't bother, because it's not in the query sequence */
 	debug(nt = shortoligo_nt(masked,indexsize);
 	      printf("At genomicpos %u, oligo %s wasn't seen in querypos\n",sequencepos,nt);
@@ -18220,7 +27632,7 @@ store_positions (Chrpos_T **pointers, bool *overabundant,
 	/* Don't bother */
 
 #ifdef HAVE_SSE2
-      } else if (inquery[masked] == /*false*/0x00) {
+      } else if (inquery[masked] == INQUERY_FALSE) {
 	/* Don't bother, because it's not in the query sequence */
 #else
       } else if (inquery[masked] == false) {
@@ -18256,143 +27668,121 @@ store_positions (Chrpos_T **pointers, bool *overabundant,
 /* chrpos is sequencepos */
 void
 Oligoindex_hr_tally (T this, Univcoord_T mappingstart, Univcoord_T mappingend, bool plusp,
-		     char *queryuc_ptr, int querylength, Chrpos_T chrpos, int genestrand) {
+		     char *queryuc_ptr, int querystart, int queryend, Chrpos_T chrpos, int genestrand) {
   int badoligos, repoligos, trimoligos, trim_start, trim_end;
 #ifdef DEBUG14
-  Count_T *counts_std;
-  Chrpos_T **pointers_std;
-  Chrpos_T **positions_std;
+  Count0_T *counts_old;
+  Chrpos_T **positions_old;
 #endif
+  Oligospace_T oligo;
 
+
+  /* Sets counts for trimming when trimp is true */
   Oligoindex_set_inquery(&badoligos,&repoligos,&trimoligos,&trim_start,&trim_end,this,
-			 queryuc_ptr,querylength,/*trimp*/false);
-
+			 queryuc_ptr,querystart,queryend,/*trimp*/false);
   memset((void *) this->counts,0,this->oligospace*sizeof(Count_T));
-#if 0
-  memset((void *) this->overabundant,false,this->oligospace*sizeof(bool));
-  /* Test for thread safety */
-  for (i = 0; i < this->oligospace; i++) {
-    if (this->counts[i] != 0) {
-      abort();
-    }
-  }
-  for (i = 0; i < this->oligospace; i++) {
-    if (this->overabundant[i] != false) {
-      abort();
-    }
-  }
-
-  /* These values will prevent oligoindex from getting mappings later */
-  this->overabundant[POLY_A & this->mask] = true;
-  this->overabundant[POLY_C & this->mask] = true;
-  this->overabundant[POLY_G & this->mask] = true;
-  this->overabundant[POLY_T & this->mask] = true;
-#endif
 
   debug0(printf("called with mapping %u..%u\n",mappingstart,mappingend));
 
   if (plusp == true) {
-    debug0(printf("plus, first sequencepos is %u\n",chrpos));
+    debug0(printf("plus, origin is %u\n",chrpos));
 
 #ifdef USE_SIMD_FOR_COUNTS
     count_positions_fwd_simd(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
-#ifdef DEBUG14
-    counts_std = (Count_T *) CALLOC(this->oligospace,sizeof(Count_T));
-    count_positions_fwd_std(counts_std,this->indexsize,mappingstart,mappingend,genestrand);
-    counts_compare(this->counts,counts_std,this->oligospace);
-#endif
 #else
     count_positions_fwd_std(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
 #endif
+    
+    if ((this->positions_space = allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
+						    this->oligospace,this->mask,this->indexsize)) != NULL) {
 
-    if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
-			   this->oligospace,this->mask) > 0) {
-      /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
 #ifdef USE_SIMD_FOR_COUNTS
-      store_positions_fwd_simd(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
+      store_positions_fwd_simd(this->pointers,this->positions,this->counts,this->indexsize,mappingstart,mappingend,
 			       chrpos,genestrand);
-#ifdef DEBUG14
-      pointers_std = (Chrpos_T **) CALLOC(this->oligospace,sizeof(Chrpos_T *));
-      positions_std = (Chrpos_T **) CALLOC(this->oligospace+1,sizeof(Chrpos_T *));
-      allocate_positions(pointers_std,positions_std,this->inquery,counts_std,
-			 this->oligospace,this->mask);
-      store_positions_fwd_std(pointers_std,&(positions_std[1]),counts_std,this->indexsize,mappingstart,mappingend,
+#else
+      store_positions_fwd_std(this->pointers,this->positions,this->counts,this->indexsize,mappingstart,mappingend,
 			      chrpos,genestrand);
-      positions_compare(this->positions,positions_std,counts_std,this->oligospace);
-      FREE(positions_std);
-      FREE(pointers_std);
 #endif
 
-#else
-      store_positions_fwd_std(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
-			      chrpos,genestrand);
+      debug9(printf("plus, origin is %u\n",chrpos));
+      debug9(dump_positions(this->positions,this->counts,this->inquery,this->oligospace,this->indexsize));
+  
+#ifdef DEBUG14
+      positions_old = Oligoindex_old_tally(&counts_old,mappingstart,mappingend,plusp,
+					   queryuc_ptr,querylength,chrpos,genestrand,
+					   this->oligospace,this->indexsize,this->mask);
+      positions_compare(this->positions,this->counts,this->inquery,
+			positions_old,counts_old,this->oligospace,this->indexsize,this->mask);
+      FREE(counts_old);
+      FREE(positions_old[0]);
+      FREE(positions_old);
 #endif
     }
 
-#ifdef DEBUG14
-    FREE(counts_std);
-#endif
-
   } else {
-    debug0(printf("minus, first sequencepos is %u\n",chrpos));
+    debug0(printf("minus, origin is %u\n",chrpos));
 
 #ifdef USE_SIMD_FOR_COUNTS
     count_positions_rev_simd(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
-#ifdef DEBUG14
-    counts_std = (Count_T *) CALLOC(this->oligospace,sizeof(Count_T));
-    count_positions_rev_std(counts_std,this->indexsize,mappingstart,mappingend,genestrand);
-    counts_compare(this->counts,counts_std,this->oligospace);
-#endif
 #else
     count_positions_rev_std(this->counts,this->indexsize,mappingstart,mappingend,genestrand);
 #endif
-
-    if (allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
-			   this->oligospace,this->mask) > 0) {
-      /* Shift positions array by 1 so we can use positions[masked] instead of positions[masked+1] */
+    
+    if ((this->positions_space = allocate_positions(this->pointers,this->positions,this->inquery,this->counts,
+						    this->oligospace,this->mask,this->indexsize)) != NULL) {
 #ifdef USE_SIMD_FOR_COUNTS
-      store_positions_rev_simd(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
+      store_positions_rev_simd(this->pointers,this->positions,this->counts,this->indexsize,mappingstart,mappingend,
 			       chrpos,genestrand);
-#ifdef DEBUG14
-      pointers_std = (Chrpos_T **) CALLOC(this->oligospace,sizeof(Chrpos_T *));
-      positions_std = (Chrpos_T **) CALLOC(this->oligospace+1,sizeof(Chrpos_T *));
-      allocate_positions(pointers_std,positions_std,this->inquery,counts_std,
-			 this->oligospace,this->mask);
-      store_positions_rev_std(pointers_std,&(positions_std[1]),counts_std,this->indexsize,mappingstart,mappingend,
-			      chrpos,genestrand);
-      positions_compare(this->positions,positions_std,counts_std,this->oligospace);
-      FREE(positions_std);
-      FREE(pointers_std);
-#endif
-
 #else
-      store_positions_rev_std(this->pointers,&(this->positions[1]),this->counts,this->indexsize,mappingstart,mappingend,
+      store_positions_rev_std(this->pointers,this->positions,this->counts,this->indexsize,mappingstart,mappingend,
 			      chrpos,genestrand);
 #endif
-    }
 
+      debug9(printf("minus, origin is %u\n",chrpos));
+      debug9(dump_positions(this->positions,this->counts,this->inquery,this->oligospace,this->indexsize));
+  
 #ifdef DEBUG14
-    FREE(counts_std);
+      positions_old = Oligoindex_old_tally(&counts_old,mappingstart,mappingend,plusp,
+					   queryuc_ptr,querylength,chrpos,genestrand,
+					   this->oligospace,this->indexsize,this->mask);
+      positions_compare(this->positions,this->counts,this->inquery,
+			positions_old,counts_old,this->oligospace,this->indexsize,this->mask);
+      FREE(counts_old);
+      FREE(positions_old[0]);
+      FREE(positions_old);
 #endif
 
+    }
   }
 
-  debug9(dump_positions(this->positions,this->counts,this->oligospace,this->indexsize));
+#if 0
+  /* counts already modified by allocate_positions */
+  /* Speed up diagonal and stage 2 algorithms */
+  for (oligo = 0; oligo < this->oligospace; oligo++) {
+    if (this->counts[oligo] > EXCESSIVE_COUNTS) {
+      this->counts[oligo] = 0;
+    }
+  }
+#endif
 
   return;
 }
+
   
 
 void
-Oligoindex_clear_inquery (T this, char *queryuc_ptr, int querylength) {
+Oligoindex_clear_inquery (T this, char *queryuc_ptr, int querystart, int queryend) {
   int in_counter = 0, i;
   char *p;
   Shortoligomer_T oligo = 0U;
   Shortoligomer_T masked;
   int indexsize = this->indexsize;
+#ifdef DEBUG
+  char *nt;
+#endif
 
 
-  for (i = 0, p = queryuc_ptr; i < querylength; i++, p++) {
+  for (i = querystart, p = &(queryuc_ptr[querystart]); i < queryend; i++, p++) {
     in_counter++;
 
     switch (*p) {
@@ -18405,13 +27795,15 @@ Oligoindex_clear_inquery (T this, char *queryuc_ptr, int querylength) {
 
     if (in_counter == indexsize) {
       masked = oligo & this->mask;
-      debug(nt = shortoligo_nt(oligo,indexsize);
-	    printf("At querypos %d, oligo %s seen\n",i,nt);
-	    FREE(nt));
+#ifdef DEBUG      
+      nt = shortoligo_nt(oligo,indexsize);
+      printf("At querypos %d, oligo %s seen\n",i,nt);
+      FREE(nt);
+#endif
 
       this->counts[masked] = 0;
 #ifdef HAVE_SSE2
-      this->inquery[masked] = /*false*/0x00;
+      this->inquery[masked] = INQUERY_FALSE;
 #else
       this->inquery[masked] = false;
 #endif
@@ -18419,7 +27811,7 @@ Oligoindex_clear_inquery (T this, char *queryuc_ptr, int querylength) {
     }
   }
 
-  this->query_evaluated_p = false;
+  /* this->query_evaluated_p = false; */
 
   return;
 }
@@ -18427,14 +27819,16 @@ Oligoindex_clear_inquery (T this, char *queryuc_ptr, int querylength) {
 void
 Oligoindex_untally (T this, char *queryuc_ptr, int querylength) {
 
+#if 0
+
   if (this->query_evaluated_p == true) {
 #ifdef GSNAP
     Oligoindex_clear_inquery(this,queryuc_ptr,querylength);
 #else
-    if (querylength > this->oligospace) {
+    if ((Oligospace_T) querylength > this->oligospace) {
       /* For very long sequences, it may be better to just clear all oligos directly */
 #ifdef HAVE_SSE2
-      memset((void *) this->inquery,/*false*/0x00,this->oligospace*sizeof(Count_T));
+      memset((void *) this->inquery,INQUERY_FALSE,this->oligospace*sizeof(Count_T));
 #else
       memset((void *) this->inquery,false,this->oligospace*sizeof(bool));
 #endif
@@ -18446,11 +27840,12 @@ Oligoindex_untally (T this, char *queryuc_ptr, int querylength) {
 #endif
 
     /* This statement is critical to avoid interactions between queryseqs */
-    this->query_evaluated_p = false;
+    /* this->query_evaluated_p = false; */
   }
+#endif
 
-  if (this->positions[0] != NULL) {
-    FREE(this->positions[0]);
+  if (this->positions_space != NULL) {
+    FREE(this->positions_space);
   }
 
   return;
@@ -18461,7 +27856,7 @@ Oligoindex_untally (T this, char *queryuc_ptr, int querylength) {
 static void
 Oligoindex_free (T *old) {
   if (*old) {
-    FREE((*old)->pointers);
+    FREE((*old)->pointers_allocated);
     FREE((*old)->positions);
 #ifdef HAVE_SSE2
     _mm_free((*old)->counts_allocated);
@@ -18500,8 +27895,8 @@ lookup (int *nhits, T this, Shortoligomer_T masked) {
 
   if ((*nhits = this->counts[masked]) >= 1) {
     debug(nt = shortoligo_nt(masked,this->indexsize);
-	  printf("masked %s => %d entries: %u...%u\n",
-		 nt,*nhits,this->positions[masked][0],this->positions[masked][*nhits-1]);
+	  printf("masked is %s (%u) => %d entries: %u...%u\n",
+		 nt,masked,*nhits,this->positions[masked][0],this->positions[masked][*nhits-1]);
 	  FREE(nt));
     return this->positions[masked];
   } else {
@@ -18547,8 +27942,8 @@ consecutivep (int prev_querypos, unsigned int *prev_mappings, int prev_nhits,
 List_T
 Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, int *npositions,
 			 int *totalpositions, bool *oned_matrix_p, int *maxnconsecutive, 
-			 Oligoindex_array_T array, T this, char *queryuc_ptr, int querylength,
-			 Chrpos_T chrstart, Chrpos_T chrend,
+			 Oligoindex_array_T array, T this, char *queryuc_ptr,
+			 int querystart, int queryend, int querylength, Chrpos_T chrstart, Chrpos_T chrend,
 			 Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 			 Diagpool_T diagpool) {
   int nhits, hit, diagi_adjustment, i;
@@ -18574,6 +27969,8 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
   List_T good_genomicdiags = NULL;
 
   int indexsize = this->indexsize;
+
+  debug3(printf("Starting Oligoindex_get_mappings\n"));
 
   diag_lookback = this->diag_lookback;
   suffnconsecutive = this->suffnconsecutive;
@@ -18617,9 +28014,9 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
 #endif
 
 
-  querypos = -indexsize;
+  querypos = querystart - indexsize;
   *oned_matrix_p = true;
-  for (i = 0, p = queryuc_ptr; i < querylength; i++, p++) {
+  for (i = querystart, p = &(queryuc_ptr[querystart]); i < queryend; i++, p++) {
     in_counter++;
     querypos++;
     
@@ -18644,6 +28041,12 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
 	debug3(printf("querypos %d, masked %u, nhits %d\n",querypos,masked,nhits));
 	if (nhits <= 0) {
 	  cum_nohits[querypos] += 1;
+#if 0
+	} else if (nhits > EXCESSIVE_COUNTS) {
+	  /* Already covered by setting counts > EXCESSIVE_COUNTS to be 0 */
+	  /* Skip, because otherwise too slow */
+	  cum_nohits[querypos] += 1;
+#endif
 	} else {
 	  *totalpositions += nhits;
 	  if (*totalpositions < 0) {
@@ -18673,7 +28076,7 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
 	    }
 
 	    /* Must use >= here, so querypos 0 - (-diag_lookback) will fail */
-	    if (ptr->querypos < 0) {
+	    if (ptr->querypos < querystart) {
 	      debug3(printf("At diagi %d (checking querypos %d to %d), no consecutive\n",diagi,ptr->querypos,querypos));
 	      ptr->nconsecutive = 0;
 	      ptr->consecutive_start = querypos;
@@ -18747,7 +28150,10 @@ Oligoindex_get_mappings (List_T diagonals, bool *coveredp, Chrpos_T **mappings, 
     FREE(genomicdiag_init_p);
   }
 
+  debug3(printf("Ending Oligoindex_get_mappings\n"));
+
   return diagonals;
 }
+
 
 

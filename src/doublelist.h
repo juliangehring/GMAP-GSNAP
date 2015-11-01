@@ -1,4 +1,4 @@
-/* $Id: doublelist.h 154778 2014-12-06 03:32:33Z twu $ */
+/* $Id: doublelist.h 166641 2015-05-29 21:13:04Z twu $ */
 #ifndef DOUBLELIST_INCLUDED
 #define DOUBLELIST_INCLUDED
 
@@ -25,6 +25,8 @@ extern double
 Doublelist_max (T this);
 extern double
 Doublelist_min (T this);
+extern void
+Doublelist_print (T this);
 
 #undef T
 #endif

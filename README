@@ -89,15 +89,6 @@ However, to disable this feature, you can add "--disable-bzlib" to the
 "disable_bzlib".
 
 
-Note 6: GSNAP optionally supports the Goby input and output file
-formats.  To implement this functionality, you need to obtain and
-compile the libraries from http://campagnelab.org/software/goby.  If
-the resulting header files are located in /path/to/goby/include and
-the library files are in /path/to/goby/lib, you can then add the flag
-"--with-goby=/path/to/goby" to your ./configure command or edit your
-config.site file to have this directory as the value for "with_goby".
-
-
 2.  Possible issues during compilation
 ======================================
 
@@ -122,13 +113,13 @@ instructions work, but popcnt is so widely implemented that they
 generally do not cause any problems.)
 
 In that case, you may need to compile your program for the lowest
-common denominator by disabling SSE2 instructions by providing
---disable-sse4.1 or --disable-sse2 to ./configure as necessary.
-Alternatively, your computer cluster may have the ability to detect
-the capabilities of each computer when it receives a job.  Then, you
-may want to create different compiled versions of GMAP and GSNAP, and
-call the appropriate binary for that particular job.  You will have to
-work with your system administrator if you want to accomplish this.
+common denominator by by providing --disable-avx, --disable-sse4.1, or
+--disable-sse2 to ./configure as necessary.  Alternatively, your
+computer cluster may have the ability to detect the capabilities of
+each computer when it receives a job.  Then, you may want to create
+different compiled versions of GMAP and GSNAP, and call the
+appropriate binary for that particular job.  You will have to work
+with your system administrator if you want to accomplish this.
 
 
 Compiler issue 2.  The most recent versions of GSNAP (starting with
@@ -288,7 +279,7 @@ all other chromosomes in numeric/alphabetical order.  If you don't
 want this sort, provide the "-s none" flag to gmap_build.  Other sort
 options besides "none" and "chrom" are "alpha" and "numeric-alpha".
 
-You can type "gmap_setup --help" to see the full set of options.  We
+You can type "gmap_build --help" to see the full set of options.  We
 discuss some specific situations below.
 
 
@@ -815,6 +806,10 @@ XH: Prints the part of the query sequence that was hard-clipped.
 Sequence is printed in plus-genomic order and replaces the "H" part of
 the CIGAR string.
 
+XI: Prints the part of the quality string that was hard-clipped.
+Sequence is printed in plus-genomic order and replaces the "H" part of
+the CIGAR string.
+
 XS: Prints the strand orientation (+ or -) for a splice.  Appears only
 if splicing is allowed (-N or -s flag provided), and only for reads
 containing a splice.  The value "+" means the expected GT-AG, GC-AG,
@@ -859,11 +854,12 @@ genome, and with the exception of indels, should equal the value of
 NM.
 
 XG: Indicates which method within GSNAP generated the alignment.  A:
-suffix array method, T: terminal alignment, M: GMAP method, O: merging
-of overlaps.  Absence of XG flag indicates the standard GSNAP hash
-table method.  (Note: older versions of GSNAP used "PG:", but some
-downstream software required all PG methods to be listed in the header
-section, so we changed the field name to "XG:")
+suffix array method, B: GMAP alignment produced from suffix array, M:
+GMAP alignment produced from GSNAP hash table method, T: terminal
+alignment, O: merging of overlaps.  Absence of XG flag indicates the
+standard GSNAP hash table method.  (Note: older versions of GSNAP used
+"PG:", but some downstream software required all PG methods to be
+listed in the header section, so we changed the field name to "XG:")
 
 
 

@@ -1,4 +1,4 @@
-/* $Id: uint8list.h 148721 2014-09-24 00:45:45Z twu $ */
+/* $Id: uint8list.h 166641 2015-05-29 21:13:04Z twu $ */
 #ifndef UINT8LIST_INCLUDED
 #define UINT8LIST_INCLUDED
 
@@ -25,6 +25,10 @@ extern T
 Uint8list_reverse (T list);
 extern int 
 Uint8list_length (T list);
+extern UINT8
+Uint8list_max (T list);
+extern UINT8
+Uint8list_min (T list);
 extern UINT8 *
 Uint8list_to_array (int *n, T list);
 extern UINT8 *

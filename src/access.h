@@ -1,9 +1,8 @@
-/* $Id: access.h 77636 2012-10-26 00:14:01Z twu $ */
+/* $Id: access.h 161940 2015-03-25 20:36:59Z twu $ */
 #ifndef ACCESS_INCLUDED
 #define ACCESS_INCLUDED
-
 #ifdef HAVE_CONFIG_H
-#include <config.h>
+#include <config.h>		/* For HAVE_UNISTD_H, HAVE_SYS_TYPES_H, HAVE_CADDR_T */
 #endif
 
 #ifdef HAVE_UNISTD_H
@@ -13,11 +12,13 @@
 #include <sys/types.h>		/* For size_t, and for mmap and off_t */
 #endif
 
+#include <sys/ipc.h>		/* For key_t */
+
 #include "bool.h"
 
 /* ALLOCATED implies bigendian conversion already done */
 typedef enum {USE_ALLOCATE, USE_MMAP_ONLY, USE_MMAP_PRELOAD, USE_FILEIO} Access_mode_T;
-typedef enum {ALLOCATED, MMAPPED, FILEIO} Access_T;
+typedef enum {ALLOCATED_PRIVATE, ALLOCATED_SHARED, MMAPPED, FILEIO} Access_T;
 #define MAX32BIT 4294967295U	/* 2^32 - 1 */
 
 extern bool
@@ -38,8 +39,20 @@ Access_fileio (char *filename);
 extern int
 Access_fileio_rw (char *filename);
 
+extern void
+Access_controlled_cleanup ();
+
+extern void
+Access_emergency_cleanup ();
+
+extern void
+Access_shmem_remove (char *filename);
+
+extern void
+Access_deallocate (void *memory, int shmid);
+
 extern void *
-Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize);
+Access_allocate (int *shmid, size_t *len, double *seconds, char *filename, size_t eltsize, bool sharedp);
 
 #ifdef HAVE_CADDR_T
 extern caddr_t

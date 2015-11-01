@@ -1,8 +1,8 @@
-/* $Id: types.h 148721 2014-09-24 00:45:45Z twu $ */
+/* $Id: types.h 168395 2015-06-26 17:13:13Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
-#include <config.h>
+#include <config.h>		/* For SIZEOF_UNSIGNED_LONG_LONG, SIZEOF_UNSIGNED_LONG, HAVE_64_BIT */
 #endif
 
 /* Number of bits, such as index1part or basesize.  Need to allow for negative values. */
@@ -34,15 +34,18 @@ typedef UINT4 Genomecomp_T;
 #define MAXIMUM_KMER 16
 typedef unsigned long long UINT8;
 typedef unsigned long long Oligospace_T;
+
 #elif (SIZEOF_UNSIGNED_LONG == 8)
 #define HAVE_64_BIT 1
 #define MAXIMUM_KMER 16
 typedef unsigned long UINT8;
 typedef unsigned long Oligospace_T;
+
 #else
 #define MAXIMUM_KMER 15
 #define OLIGOSPACE_NOT_LONG
 typedef unsigned int Oligospace_T;
+
 #endif
 
 /* Contents of compressed offsets file.  Storing as UINT4, even for
@@ -84,7 +87,7 @@ typedef UINT4 Positionsptr_T;
 #endif
 
 
-/* For definition of Univcoord_T and Chrpos_T, see genomicpos.h */
+/* For definition of Chrpos_T, see genomicpos.h */
 
 /* For intervals and IIT files */
 #ifdef HAVE_64_BIT
@@ -93,20 +96,31 @@ typedef UINT4 Positionsptr_T;
 #include "uint8list.h"
 typedef UINT8 Univcoord_T;
 typedef Uint8list_T Univcoordlist_T;
+
 #elif defined(LARGE_GENOMES)
 #include "uint8list.h"
 typedef UINT8 Univcoord_T;
 typedef Uint8list_T Univcoordlist_T;
+
 #else
 #include "uintlist.h"
 typedef UINT4 Univcoord_T;
 typedef Uintlist_T Univcoordlist_T;
+
 #endif
 
 #else
 #include "uintlist.h"
 typedef UINT4 Univcoord_T;
 typedef Uintlist_T Univcoordlist_T;
+
+#endif
+
+/* For univintervals and Univ_IIT (chromosome_iit) files.  Use the largest word size allowable on the machine.  */
+#ifdef HAVE_64_BIT
+typedef UINT8 Univ_IIT_coord_T;
+#else
+typedef UINT4 Univ_IIT_coord_T;
 #endif
 
 /* For splicetrie */

@@ -1,5 +1,5 @@
 
-SUBDIRS = src util tests
+SUBDIRS = src mpi util tests
 
 EXTRA_DIST = VERSION NOTICE config.site
 

@@ -1,4 +1,4 @@
-/* $Id: popcount.h 157232 2015-01-22 18:55:31Z twu $ */
+/* $Id: popcount.h 157225 2015-01-22 18:47:23Z twu $ */
 #ifndef POPCOUNT_INCLUDED
 #define POPCOUNT_INCLUDED
 #ifdef HAVE_CONFIG_H

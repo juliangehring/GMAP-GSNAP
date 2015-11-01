@@ -1,6 +1,7 @@
-/* $Id: bzip2.h 83593 2013-01-16 22:59:40Z twu $ */
+/* $Id: bzip2.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef BZIP2_INCLUDED
 #define BZIP2_INCLUDED
+
 #include "bool.h"
 
 #define T Bzip2_T

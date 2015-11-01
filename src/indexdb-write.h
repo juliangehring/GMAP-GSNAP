@@ -1,4 +1,4 @@
-/* $Id: indexdb-write.h 157232 2015-01-22 18:55:31Z twu $ */
+/* $Id: indexdb-write.h 165969 2015-05-20 00:18:07Z twu $ */
 #ifndef INDEXDB_WRITE_INCLUDED
 #define INDEXDB_WRITE_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -63,7 +63,7 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
 #else
 			 Width_T index1part,
 #endif
-			 Width_T index1interval, bool genome_lc_p, bool writefilep,
+			 Width_T index1interval, Univcoord_T genomelength, bool genome_lc_p, bool writefilep,
 			 char *fileroot, bool mask_lowercase_p, int compression_type,
 			 bool coord_values_8p);
 
@@ -77,7 +77,7 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 #else
 			      int index1part,
 #endif
-			      int index1interval, bool genome_lc_p, bool writefilep,
+			      int index1interval, Univcoord_T genomelength, bool genome_lc_p, bool writefilep,
 			      char *fileroot, bool mask_lowercase_p, int compression_type,
 			      bool coord_values_8p);
 #endif

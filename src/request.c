@@ -1,9 +1,10 @@
-static char rcsid[] = "$Id: request.c 40330 2011-05-30 17:40:46Z twu $";
+static char rcsid[] = "$Id: request.c 155282 2014-12-12 19:42:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "request.h"
+#include "assert.h"
 #include "mem.h"
 
 #define T Request_T
@@ -58,7 +59,8 @@ Request_free (T *old) {
   return;
 }
 
-#else
+
+#else  /* not GSNAP */
 
 Sequence_T
 Request_queryseq (T this) {
@@ -83,5 +85,4 @@ Request_free (T *old) {
   return;
 }
 
-#endif
-
+#endif	/* not GSNAP */

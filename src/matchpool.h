@@ -1,6 +1,7 @@
-/* $Id: matchpool.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: matchpool.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef MATCHPOOL_INCLUDED
 #define MATCHPOOL_INCLUDED
+
 #include "bool.h"
 #include "iit-read-univ.h"
 #include "genomicpos.h"

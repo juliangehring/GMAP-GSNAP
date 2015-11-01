@@ -1,4 +1,4 @@
-/* $Id: compress.h 157232 2015-01-22 18:55:31Z twu $ */
+/* $Id: compress.h 168395 2015-06-26 17:13:13Z twu $ */
 #ifndef COMPRESS_INCLUDED
 #define COMPRESS_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -19,10 +19,10 @@
    SIMD in Compress_shift, so COMPRESS_BLOCKSIZE can be 3.  */
 
 
-#ifdef HAVE_SSE2
-#define COMPRESS_BLOCKSIZE 12	/* 12 unsigned ints per block */
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
 #define COMPRESS_BLOCKSIZE 3	/* 3 unsigned ints per block */
+#else
+#define COMPRESS_BLOCKSIZE 12	/* 12 unsigned ints per block */
 #endif
 
 

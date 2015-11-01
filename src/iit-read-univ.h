@@ -1,8 +1,12 @@
-/* $Id: iit-read-univ.h 149319 2014-09-30 02:15:42Z twu $ */
+/* $Id: iit-read-univ.h 157228 2015-01-22 18:49:11Z twu $ */
 #ifndef IIT_READ_UNIV_INCLUDED
 #define IIT_READ_UNIV_INCLUDED
 
 typedef struct Univ_IIT_T *Univ_IIT_T;
+
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
 
 #include <stdio.h>
 #include "bool.h"
@@ -25,7 +29,7 @@ Univ_IIT_length (T this, int index);
 extern Univcoord_T
 Univ_IIT_genomelength (T chromosome_iit, bool with_circular_alias_p);
 extern bool *
-Univ_IIT_circularp (T chromosome_iit);
+Univ_IIT_circularp (bool *any_circular_p, T chromosome_iit);
 extern Univinterval_T
 Univ_IIT_interval (T this, int index);
 extern Univcoord_T
@@ -64,9 +68,23 @@ extern void
 Univ_IIT_dump_table (T this, bool zerobasedp);
 extern void
 Univ_IIT_dump_fai (T this);
+
 extern void
-Univ_IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name,
+Univ_IIT_dump_sam (
+#ifdef USE_MPI
+		   MPI_File fp,
+#else
+		   FILE *fp,
+#endif
+		   T this, char *sam_read_group_id, char *sam_read_group_name,
 		   char *sam_read_group_library, char *sam_read_group_platform);
+
+#ifdef USE_MPI
+extern int
+Univ_IIT_reserve_sam (T this, char *sam_read_group_id, char *sam_read_group_name,
+		      char *sam_read_group_library, char *sam_read_group_platform);
+#endif
+
 extern Chrpos_T *
 Univ_IIT_chrlengths (T this);
 extern void

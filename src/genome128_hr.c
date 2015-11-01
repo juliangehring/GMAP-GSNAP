@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome128_hr.c 165782 2015-05-15 18:16:30Z twu $";
+static char rcsid[] = "$Id: genome128_hr.c 168395 2015-06-26 17:13:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,7 +24,15 @@ static char rcsid[] = "$Id: genome128_hr.c 165782 2015-05-15 18:16:30Z twu $";
 #include "compress.h"
 #include "popcount.h"
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+#include "bigendian.h"
+#else
+#include "littleendian.h"
+#endif
+
+#ifdef WORDS_BIGENDIAN
+/* Do not use SIMD */
+#elif defined(HAVE_SSE2)
 #include <emmintrin.h>
 #endif
 #ifdef HAVE_SSE4_1
@@ -39,13 +47,6 @@ static char rcsid[] = "$Id: genome128_hr.c 165782 2015-05-15 18:16:30Z twu $";
 #if defined(HAVE_LZCNT) || defined(HAVE_TZCNT)
 #include <immintrin.h>
 #endif
-
-#ifdef WORDS_BIGENDIAN
-#include "bigendian.h"
-#else
-#include "littleendian.h"
-#endif
-
 
 #ifdef DEBUG
 #define debug(x) x
@@ -79,6 +80,13 @@ static char rcsid[] = "$Id: genome128_hr.c 165782 2015-05-15 18:16:30Z twu $";
 #define debug4(x) x
 #else
 #define debug4(x)
+#endif
+
+/* mark mismatches */
+#ifdef DEBUG5
+#define debug5(x) x
+#else
+#define debug5(x)
 #endif
 
 /* 32-bit shortcuts */
@@ -16485,7 +16493,7 @@ static const int score_high[] =
 
 /* Genome_hr code starts here */
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(DEBUG5)
 #ifdef HAVE_SSE4_1
 static void
 print_vector_hex (__m128i x) {
@@ -16546,7 +16554,7 @@ reduce_nt_unshuffle (UINT4 xhigh, UINT4 xlow) {
 #endif
 
 
-#if defined(DEBUG) || defined(DEBUG2)
+#if defined(DEBUG) || defined(DEBUG2) || defined(DEBUG5)
 static void
 write_chars (Genomecomp_T high, Genomecomp_T low, Genomecomp_T flags) {
   char Buffer[33];
@@ -16583,7 +16591,7 @@ write_chars (Genomecomp_T high, Genomecomp_T low, Genomecomp_T flags) {
 
 
 
-#if defined(DEBUG) || defined(DEBUG2)
+#if defined(DEBUG) || defined(DEBUG2) || defined(DEBUG5)
 static void
 Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T endpos) {
   /* Chrpos_T length = endpos - startpos; */
@@ -16596,18 +16604,18 @@ Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T end
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
-#ifdef HAVE_SSE2
-  startcolumni = (startpos % 128) / 32;
-  endcolumni = (endpos % 128) / 32;
-
-  startblocki = startpos/128U*12;
-  endblocki = endpos/128U*12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   startcolumni = (startpos % 128) / 32;
   startblocki = startpos/128U*12 + startcolumni;
 
   endcolumni = (endpos % 128) / 32;
   endblocki = endpos/128U*12 + endcolumni;
+#else
+  startcolumni = (startpos % 128) / 32;
+  endcolumni = (endpos % 128) / 32;
+
+  startblocki = startpos/128U*12;
+  endblocki = endpos/128U*12;
 #endif
 
   startdiscard32 = startpos % 32;
@@ -16616,7 +16624,24 @@ Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T end
 
   ptr = &(blocks[startblocki]);
   while (ptr <= &(blocks[endblocki])) {
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN)
+    high = Bigendian_convert_uint(ptr[0]);
+    low = Bigendian_convert_uint(ptr[4]);
+    flags = Bigendian_convert_uint(ptr[8]);
+    printf("high: %08X  low: %08X  flags: %08X\t",high,low,flags);
+    write_chars(high,low,flags);
+    printf("\n");
+
+    ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#elif !defined(HAVE_SSE2)
+    high = ptr[0]; low = ptr[4]; flags = ptr[8];
+    printf("high: %08X  low: %08X  flags: %08X\t",high,low,flags);
+    write_chars(high,low,flags);
+    printf("\n");
+
+    ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+
+#else
     if (startcolumni == 0) {
       /*      high: 9F61B62A  low: 6D68A157  flags: 00000000 */
       printf("                                              \t");
@@ -16740,13 +16765,6 @@ Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T end
 
     printf("\n");
     ptr += 12;
-#else
-    high = ptr[0]; low = ptr[4]; flags = ptr[8];
-    printf("high: %08X  low: %08X  flags: %08X\t",high,low,flags);
-    write_chars(high,low,flags);
-    printf("\n");
-
-    ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
 #endif
   }
 
@@ -16754,7 +16772,7 @@ Genome_print_blocks (Genomecomp_T *blocks, Univcoord_T startpos, Univcoord_T end
 }
 #endif
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(DEBUG5)
 static void
 Genome_print_blocks_snp (Genomecomp_T *blocks, Genomecomp_T *snp_blocks, Univcoord_T startpos, Univcoord_T endpos) {
   /* Chrpos_T length = endpos - startpos; */
@@ -16766,15 +16784,15 @@ Genome_print_blocks_snp (Genomecomp_T *blocks, Genomecomp_T *snp_blocks, Univcoo
 
   /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
 
-#ifdef HAVE_SSE2
-  startblocki = startpos/128U*12;
-  endblocki = endpos/128U*12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   startcolumni = (startpos % 128) / 32;
   startblocki = startpos/128U*12 + startcolumni;
 
   endcolumni = (endpos % 128) / 32;
   endblocki = endpos/128U*12 + endcolumni;
+#else
+  startblocki = startpos/128U*12;
+  endblocki = endpos/128U*12;
 #endif
 
   startdiscard32 = startpos % 32;
@@ -16783,7 +16801,11 @@ Genome_print_blocks_snp (Genomecomp_T *blocks, Genomecomp_T *snp_blocks, Univcoo
   ref_ptr = &(blocks[startblocki]);
   snp_ptr = &(snp_blocks[startblocki]);
   while (ref_ptr <= &(blocks[endblocki])) {
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    high = ref_ptr[0]; low = ref_ptr[4]; flags = ref_ptr[8]; snpmask = snp_ptr[8];
+    printf("high: %08X  low: %08X  flags: %08X  snpmask: %08X\n",high,low,flags,snpmask);
+    ref_ptr += 1; snp_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; snp_ptr += 8; startcolumni = 0;}
+#else
     high = ref_ptr[0]; low = ref_ptr[4]; flags = ref_ptr[8]; snpmask = snp_ptr[8];
     printf("high: %08X  low: %08X  flags: %08X  snpmask: %08X\n",high,low,flags,snpmask);
 
@@ -16797,11 +16819,6 @@ Genome_print_blocks_snp (Genomecomp_T *blocks, Genomecomp_T *snp_blocks, Univcoo
     printf("high: %08X  low: %08X  flags: %08X  snpmask: %08X\n",high,low,flags,snpmask);
 
     ref_ptr += 12; snp_ptr += 12;
-
-#else
-    high = ref_ptr[0]; low = ref_ptr[4]; flags = ref_ptr[8]; snpmask = snp_ptr[8];
-    printf("high: %08X  low: %08X  flags: %08X  snpmask: %08X\n",high,low,flags,snpmask);
-    ref_ptr += 1; snp_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; snp_ptr += 8; startcolumni = 0;}
 #endif
   }
 
@@ -16822,12 +16839,12 @@ static Genomecomp_T *snp_blocks;
 static bool query_unk_mismatch_p = false;
 static bool genome_unk_mismatch_p = true;
 
-#ifdef HAVE_SSE2
-typedef __m128i Genomediff_T;
-#define STEP_SIZE 128
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
 typedef UINT4 Genomediff_T;
 #define STEP_SIZE 32
+#else
+typedef __m128i Genomediff_T;
+#define STEP_SIZE 128
 #endif
 
 
@@ -16837,34 +16854,35 @@ block_diff_standard_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   UINT4 diff;
 
   debug(printf("Comparing high: query %08X with genome %08X ",query_shifted[0],ref_ptr[0]));
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   debug(printf("Comparing low: query %08X with genome %08X ",query_shifted[4],ref_ptr[4]));
 #endif
 
-#ifdef HAVE_SSE2
-  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[4] ^ ref_ptr[4]);
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
   diff = (query_shifted[0] ^ Bigendian_convert_uint(ref_ptr[0])) | (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
   diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[1] ^ ref_ptr[4]);
+#else
+  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[4] ^ ref_ptr[4]);
 #endif
 
   /* Query Ns */
-#ifdef HAVE_SSE2
-  if (query_unk_mismatch_local_p) {
-    /* Query: Considering N as a mismatch */
-    diff |= query_shifted[8];
-  } else {
-    /* Query: Considering N as a wildcard */
-    diff &= ~(query_shifted[8]);
-  }
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   if (query_unk_mismatch_local_p) {
     /* Query: Considering N as a mismatch */
     diff |= query_shifted[2];
   } else {
     /* Query: Considering N as a wildcard */
     diff &= ~(query_shifted[2]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    /* Query: Considering N as a mismatch */
+    diff |= query_shifted[8];
+  } else {
+    /* Query: Considering N as a wildcard */
+    diff &= ~(query_shifted[8]);
   }
 #endif
 
@@ -16894,33 +16912,7 @@ block_diff_standard_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 static Genomediff_T
 block_diff_standard (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 		     bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
-#ifdef HAVE_SSE2
-  __m128i _diff, _query_high, _query_low, _query_flags, _ref_high, _ref_low, _ref_flags;
-
-  _query_high = _mm_load_si128((__m128i *) query_shifted);
-  _ref_high = _mm_load_si128((__m128i *) ref_ptr);
-  _query_low = _mm_load_si128((__m128i *) &(query_shifted[4]));
-  _ref_low = _mm_load_si128((__m128i *) &(ref_ptr[4]));
-
-  _diff = _mm_or_si128(_mm_xor_si128(_query_high, _ref_high), _mm_xor_si128(_query_low, _ref_low));
-
-  _query_flags = _mm_load_si128((__m128i *) &(query_shifted[8]));
-  if (query_unk_mismatch_local_p) {
-    _diff = _mm_or_si128(_query_flags, _diff);
-  } else {
-    _diff = _mm_andnot_si128(_query_flags, _diff);
-  }
-
-  _ref_flags = _mm_load_si128((__m128i *) &(ref_ptr[8]));
-  if (genome_unk_mismatch_p) {
-    _diff = _mm_or_si128(_ref_flags, _diff);
-  } else {
-    _diff = _mm_andnot_si128(_ref_flags, _diff);
-  }
-
-  return _diff;
-
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   UINT4 diff;
 
   debug(printf("Comparing high: query %08X with genome %08X ",query_shifted[0],ref_ptr[0]));
@@ -16961,8 +16953,33 @@ block_diff_standard (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   debug(printf(" => diff %08X\n",diff));
 
   return diff;
-#endif
 
+#else
+  __m128i _diff, _query_high, _query_low, _query_flags, _ref_high, _ref_low, _ref_flags;
+
+  _query_high = _mm_load_si128((__m128i *) query_shifted);
+  _ref_high = _mm_load_si128((__m128i *) ref_ptr);
+  _query_low = _mm_load_si128((__m128i *) &(query_shifted[4]));
+  _ref_low = _mm_load_si128((__m128i *) &(ref_ptr[4]));
+
+  _diff = _mm_or_si128(_mm_xor_si128(_query_high, _ref_high), _mm_xor_si128(_query_low, _ref_low));
+
+  _query_flags = _mm_load_si128((__m128i *) &(query_shifted[8]));
+  if (query_unk_mismatch_local_p) {
+    _diff = _mm_or_si128(_query_flags, _diff);
+  } else {
+    _diff = _mm_andnot_si128(_query_flags, _diff);
+  }
+
+  _ref_flags = _mm_load_si128((__m128i *) &(ref_ptr[8]));
+  if (genome_unk_mismatch_p) {
+    _diff = _mm_or_si128(_ref_flags, _diff);
+  } else {
+    _diff = _mm_andnot_si128(_ref_flags, _diff);
+  }
+
+  return _diff;
+#endif
 }
 
 
@@ -16973,28 +16990,30 @@ block_diff_standard_wildcard_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_
   UINT4 diff, non_wildcard;
 
   /* Taken from block_diff_standard */
-#ifdef HAVE_SSE2
-  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[4] ^ ref_ptr[4]);
-#else
+#ifdef WORDS_BIGENDIAN
+  diff = (query_shifted[0] ^ Bigendian_convert_uint(ref_ptr[0])) | (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#elif !defined(HAVE_SSE2)
   diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[1] ^ ref_ptr[4]);
+#else
+  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[4] ^ ref_ptr[4]);
 #endif
 
   /* Query Ns */
-#ifdef HAVE_SSE2
-  if (query_unk_mismatch_local_p) {
-    /* Query: Considering N as a mismatch */
-    diff |= query_shifted[8];
-  } else {
-    /* Query: Considering N as a wildcard */
-    diff &= ~(query_shifted[8]);
-  }
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   if (query_unk_mismatch_local_p) {
     /* Query: Considering N as a mismatch */
     diff |= query_shifted[2];
   } else {
     /* Query: Considering N as a wildcard */
     diff &= ~(query_shifted[2]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    /* Query: Considering N as a mismatch */
+    diff |= query_shifted[8];
+  } else {
+    /* Query: Considering N as a wildcard */
+    diff &= ~(query_shifted[8]);
   }
 #endif
 
@@ -17016,10 +17035,12 @@ block_diff_standard_wildcard_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_
   }
 
   /* Add difference relative to SNP */
-#ifdef HAVE_SSE2
-  diff &= (query_shifted[0] ^ snp_ptr[0]) | (query_shifted[4] ^ snp_ptr[4]);
-#else
+#ifdef WORDS_BIGENDIAN
+  diff &= (query_shifted[0] ^ Bigendian_convert_uint(snp_ptr[0])) | (query_shifted[1] ^ Bigendian_convert_uint(snp_ptr[4]));
+#elif !defined(HAVE_SSE2)
   diff &= (query_shifted[0] ^ snp_ptr[0]) | (query_shifted[1] ^ snp_ptr[4]);
+#else
+  diff &= (query_shifted[0] ^ snp_ptr[0]) | (query_shifted[4] ^ snp_ptr[4]);
 #endif
 
   /* Test for equality of ref and alt */
@@ -17060,7 +17081,80 @@ block_diff_standard_wildcard_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_
 static Genomediff_T
 block_diff_standard_wildcard (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
 			      bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+  UINT4 diff, non_wildcard;
+
+  /* Taken from block_diff_standard */
+#ifdef WORDS_BIGENDIAN
+  diff = (query_shifted[0] ^ Bigendian_convert_uint(ref_ptr[0])) | (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[1] ^ ref_ptr[4]);
+#endif
+
+  /* Query Ns */
+  if (query_unk_mismatch_local_p) {
+    /* Query: Considering N as a mismatch */
+    diff |= query_shifted[2];
+  } else {
+    /* Query: Considering N as a wildcard */
+    diff &= ~(query_shifted[2]);
+  }
+
+  /* Genome Ns */
+  if (genome_unk_mismatch_p) {
+    /* Genome: Considering N as a mismatch */
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= ref_ptr[8];
+#endif
+  } else {
+    /* Genome: Considering N as a wildcard */
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+
+  /* Add difference relative to SNP */
+#ifdef WORDS_BIGENDIAN
+  diff &= (query_shifted[0] ^ Bigendian_convert_uint(snp_ptr[0])) | (query_shifted[1] ^ Bigendian_convert_uint(snp_ptr[4]));
+#else
+  diff &= (query_shifted[0] ^ snp_ptr[0]) | (query_shifted[1] ^ snp_ptr[4]);
+#endif
+
+  /* Test for equality of ref and alt */
+  debug(printf("Equality high: ref genome %08X with alt genome %08X ",ref_ptr[0],snp_ptr[0]));
+#ifdef WORDS_BIGENDIAN
+  non_wildcard = (Bigendian_convert_uint(ref_ptr[0]) ^ Bigendian_convert_uint(snp_ptr[0])) |
+    (Bigendian_convert_uint(ref_ptr[4]) ^ Bigendian_convert_uint(snp_ptr[4]));
+#else
+  non_wildcard = (ref_ptr[0] ^ snp_ptr[0]) | (ref_ptr[4] ^ snp_ptr[4]);
+#endif
+  debug(printf(" => diff %08X\n",non_wildcard));
+  
+  /* Ref flags */
+  debug(printf("Wildcard add ref flags: ref genome %08X and alt genome %08X ",ref_ptr[8],snp_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+  non_wildcard |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+  non_wildcard |= ref_ptr[8];
+#endif
+
+  /* Alt flags */
+  debug(printf("Wildcard add alt flags: ref genome %08X and alt genome %08X ",ref_ptr[8],snp_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+  non_wildcard |= ~(Bigendian_convert_uint(snp_ptr[8]));
+#else
+  non_wildcard |= ~(snp_ptr[8]);
+#endif
+  debug(printf(" => non_wildcard %08X\n",non_wildcard));
+
+  return diff & non_wildcard;
+
+#else
   __m128i _diff, _wildcard, _query_high, _query_low, _query_flags,
     _ref_high, _ref_low, _ref_flags, _snp_high, _snp_low, _snp_flags;
 
@@ -17102,70 +17196,6 @@ block_diff_standard_wildcard (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr
   _diff = _mm_andnot_si128(_wildcard, _diff);
 
   return _diff;
-
-#else
-  UINT4 diff, non_wildcard;
-
-  /* Taken from block_diff_standard */
-  diff = (query_shifted[0] ^ ref_ptr[0]) | (query_shifted[1] ^ ref_ptr[4]);
-
-  /* Query Ns */
-  if (query_unk_mismatch_local_p) {
-    /* Query: Considering N as a mismatch */
-    diff |= query_shifted[2];
-  } else {
-    /* Query: Considering N as a wildcard */
-    diff &= ~(query_shifted[2]);
-  }
-
-  /* Genome Ns */
-  if (genome_unk_mismatch_p) {
-    /* Genome: Considering N as a mismatch */
-#ifdef WORDS_BIGENDIAN
-    diff |= Bigendian_convert_uint(ref_ptr[8]);
-#else
-    diff |= ref_ptr[8];
-#endif
-  } else {
-    /* Genome: Considering N as a wildcard */
-#ifdef WORDS_BIGENDIAN
-    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
-#else
-    diff &= ~(ref_ptr[8]);
-#endif
-  }
-
-  /* Add difference relative to SNP */
-  diff &= (query_shifted[0] ^ snp_ptr[0]) | (query_shifted[1] ^ snp_ptr[4]);
-
-  /* Test for equality of ref and alt */
-  debug(printf("Equality high: ref genome %08X with alt genome %08X ",ref_ptr[0],snp_ptr[0]));
-#ifdef WORDS_BIGENDIAN
-  non_wildcard = (Bigendian_convert_uint(ref_ptr[0]) ^ Bigendian_convert_uint(snp_ptr[0])) |
-    (Bigendian_convert_uint(ref_ptr[4]) ^ Bigendian_convert_uint(snp_ptr[4]));
-#else
-  non_wildcard = (ref_ptr[0] ^ snp_ptr[0]) | (ref_ptr[4] ^ snp_ptr[4]);
-#endif
-  debug(printf(" => diff %08X\n",non_wildcard));
-  
-  /* Ref flags */
-  debug(printf("Wildcard add ref flags: ref genome %08X and alt genome %08X ",ref_ptr[8],snp_ptr[8]));
-#ifdef WORDS_BIGENDIAN
-  non_wildcard |= Bigendian_convert_uint(ref_ptr[8]);
-#else
-  non_wildcard |= ref_ptr[8];
-#endif
-
-  /* Alt flags */
-  debug(printf("Wildcard add alt flags: ref genome %08X and alt genome %08X ",ref_ptr[8],snp_ptr[8]));
-#ifdef WORDS_BIGENDIAN
-  non_wildcard |= ~(Bigendian_convert_uint(snp_ptr[8]));
-#else
-  non_wildcard |= ~(snp_ptr[8]);
-#endif
-  debug(printf(" => non_wildcard %08X\n",non_wildcard));
-
-  return diff & non_wildcard;
 #endif
 }
 
@@ -17185,31 +17215,31 @@ block_diff_metct_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
     diff = 0U;
   } else {
     /* Mark genome-T to query-C mismatches */
-#ifdef HAVE_SSE2
-    diff = (~(query_shifted[0]) & query_shifted[4]) & (ref_ptr[0] & ref_ptr[4]);
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
     diff = (~(query_shifted[0]) & query_shifted[1]) &
       (Bigendian_convert_uint(ref_ptr[0]) & Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
     diff = (~(query_shifted[0]) & query_shifted[1]) & (ref_ptr[0] & ref_ptr[4]);
+#else
+    diff = (~(query_shifted[0]) & query_shifted[4]) & (ref_ptr[0] & ref_ptr[4]);
 #endif
     debug(printf(" => diff %08X\n",diff));
   }
 
   /* Compare reduced C->T nts  */
-#ifdef HAVE_SSE2
-  diff |= ((query_shifted[0] | query_shifted[4]) ^ (ref_ptr[0] | ref_ptr[4])) | (query_shifted[4] ^ ref_ptr[4]);
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
   diff |= ((query_shifted[0] | query_shifted[1]) ^ (Bigendian_convert_uint(ref_ptr[0]) | Bigendian_convert_uint(ref_ptr[4]))) |
     (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
   diff |= ((query_shifted[0] | query_shifted[1]) ^ (ref_ptr[0] | ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
+#else
+  diff |= ((query_shifted[0] | query_shifted[4]) ^ (ref_ptr[0] | ref_ptr[4])) | (query_shifted[4] ^ ref_ptr[4]);
 #endif
   debug(printf(" => diff %08X\n",diff));
 
 
   /* Flags: Considering N as a mismatch */
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   if (query_unk_mismatch_local_p) {
     debug(printf("Marking query flags: query %08X ",query_shifted[8]));
     diff |= query_shifted[8];
@@ -17253,43 +17283,8 @@ block_diff_metct_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 static Genomediff_T
 block_diff_metct (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 		  bool query_unk_mismatch_local_p, bool sarrayp) {
-#ifdef HAVE_SSE2
-  __m128i _diff, _query_high, _query_low, _query_flags, _ref_high, _ref_low, _ref_flags;
 
-  _query_high = _mm_load_si128((__m128i *) query_shifted);
-  _ref_high = _mm_load_si128((__m128i *) ref_ptr);
-  _query_low = _mm_load_si128((__m128i *) &(query_shifted[4]));
-  _ref_low = _mm_load_si128((__m128i *) &(ref_ptr[4]));
-
-  if (sarrayp == true) {
-    /* Ignore genome-T to query-C mismatches.  Convert everything to 3-nucleotide space */
-    _diff = _mm_setzero_si128();
-  } else {
-    /* Mark genome-T to query-C mismatches */
-    _diff = _mm_and_si128(_mm_andnot_si128(_query_high, _query_low), _mm_and_si128(_ref_high, _ref_low));
-  }
-
-  /* Compare reduced C->T nts  */
-  _diff = _mm_or_si128(_diff, _mm_xor_si128(_mm_or_si128(_query_high, _query_low), _mm_or_si128(_ref_high, _ref_low)));
-  _diff = _mm_or_si128(_diff, _mm_xor_si128(_query_low, _ref_low));
-
-  _query_flags = _mm_load_si128((__m128i *) &(query_shifted[8]));
-  if (query_unk_mismatch_local_p) {
-    _diff = _mm_or_si128(_query_flags, _diff);
-  } else {
-    _diff = _mm_andnot_si128(_query_flags, _diff);
-  }
-
-  _ref_flags = _mm_load_si128((__m128i *) &(ref_ptr[8]));
-  if (genome_unk_mismatch_p) {
-    _diff = _mm_or_si128(_ref_flags, _diff);
-  } else {
-    _diff = _mm_andnot_si128(_ref_flags, _diff);
-  }
-
-  return _diff;
-
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   UINT4 diff;
 
   if (sarrayp == true) {
@@ -17343,6 +17338,42 @@ block_diff_metct (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   debug(printf(" => diff %08X\n",diff));
 
   return diff;
+
+#else
+  __m128i _diff, _query_high, _query_low, _query_flags, _ref_high, _ref_low, _ref_flags;
+
+  _query_high = _mm_load_si128((__m128i *) query_shifted);
+  _ref_high = _mm_load_si128((__m128i *) ref_ptr);
+  _query_low = _mm_load_si128((__m128i *) &(query_shifted[4]));
+  _ref_low = _mm_load_si128((__m128i *) &(ref_ptr[4]));
+
+  if (sarrayp == true) {
+    /* Ignore genome-T to query-C mismatches.  Convert everything to 3-nucleotide space */
+    _diff = _mm_setzero_si128();
+  } else {
+    /* Mark genome-T to query-C mismatches */
+    _diff = _mm_and_si128(_mm_andnot_si128(_query_high, _query_low), _mm_and_si128(_ref_high, _ref_low));
+  }
+
+  /* Compare reduced C->T nts  */
+  _diff = _mm_or_si128(_diff, _mm_xor_si128(_mm_or_si128(_query_high, _query_low), _mm_or_si128(_ref_high, _ref_low)));
+  _diff = _mm_or_si128(_diff, _mm_xor_si128(_query_low, _ref_low));
+
+  _query_flags = _mm_load_si128((__m128i *) &(query_shifted[8]));
+  if (query_unk_mismatch_local_p) {
+    _diff = _mm_or_si128(_query_flags, _diff);
+  } else {
+    _diff = _mm_andnot_si128(_query_flags, _diff);
+  }
+
+  _ref_flags = _mm_load_si128((__m128i *) &(ref_ptr[8]));
+  if (genome_unk_mismatch_p) {
+    _diff = _mm_or_si128(_ref_flags, _diff);
+  } else {
+    _diff = _mm_andnot_si128(_ref_flags, _diff);
+  }
+
+  return _diff;
 #endif
 }
 
@@ -17357,45 +17388,45 @@ block_diff_metga_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
     diff = 0U;
   } else {
     /* Mark genome-A to query-G mismatches */
-#ifdef HAVE_SSE2
-    diff = (query_shifted[0] & ~(query_shifted[4])) & ~(ref_ptr[0] | ref_ptr[4]);
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
     diff = (query_shifted[0] & ~(query_shifted[1])) &
       ~(Bigendian_convert_uint(ref_ptr[0]) | Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
     diff = (query_shifted[0] & ~(query_shifted[1])) & ~(ref_ptr[0] | ref_ptr[4]);
+#else
+    diff = (query_shifted[0] & ~(query_shifted[4])) & ~(ref_ptr[0] | ref_ptr[4]);
 #endif
     debug(printf(" => diff %08X\n",diff));
   }
 
   /* Compare reduced G->A nts  */
-#ifdef HAVE_SSE2
-  diff |= ((query_shifted[0] & query_shifted[4]) ^ (ref_ptr[0] & ref_ptr[4])) | (query_shifted[4] ^ ref_ptr[4]);
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
   diff |= ((query_shifted[0] & query_shifted[1]) ^ (Bigendian_convert_uint(ref_ptr[0]) & Bigendian_convert_uint(ref_ptr[4]))) |
     (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
   diff |= ((query_shifted[0] & query_shifted[1]) ^ (ref_ptr[0] & ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
+#else
+  diff |= ((query_shifted[0] & query_shifted[4]) ^ (ref_ptr[0] & ref_ptr[4])) | (query_shifted[4] ^ ref_ptr[4]);
 #endif
   debug(printf(" => diff %08X\n",diff));
 
 
   /* Flags: Considering N as a mismatch */
-#ifdef HAVE_SSE2
-  if (query_unk_mismatch_local_p) {
-    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
-    diff |= query_shifted[8];
-  } else {
-    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
-    diff &= ~(query_shifted[8]);
-  }
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   if (query_unk_mismatch_local_p) {
     debug(printf("Marking query flags: query %08X ",query_shifted[2]));
     diff |= query_shifted[2];
   } else {
     debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
     diff &= ~(query_shifted[2]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
+    diff |= query_shifted[8];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
+    diff &= ~(query_shifted[8]);
   }
 #endif
 
@@ -17425,7 +17456,63 @@ block_diff_metga_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 static Genomediff_T
 block_diff_metga (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 		  bool query_unk_mismatch_local_p, bool sarrayp) {
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+  UINT4 diff;
+
+  if (sarrayp == true) {
+    /* Ignore genome-A to query-G mismatches.  Convert everything to 3-nucleotide space. */
+    diff = 0U;
+  } else {
+    /* Mark genome-A to query-G mismatches */
+#ifdef WORDS_BIGENDIAN
+    diff = (query_shifted[0] & ~(query_shifted[1])) &
+      ~(Bigendian_convert_uint(ref_ptr[0]) | Bigendian_convert_uint(ref_ptr[4]));
+#else
+    diff = (query_shifted[0] & ~(query_shifted[1])) & ~(ref_ptr[0] | ref_ptr[4]);
+#endif
+    debug(printf(" => diff %08X\n",diff));
+  }
+
+  /* Compare reduced G->A nts  */
+#ifdef WORDS_BIGENDIAN
+  diff |= ((query_shifted[0] & query_shifted[1]) ^ (Bigendian_convert_uint(ref_ptr[0]) & Bigendian_convert_uint(ref_ptr[4]))) |
+    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff |= ((query_shifted[0] & query_shifted[1]) ^ (ref_ptr[0] & ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
+#endif
+  debug(printf(" => diff %08X\n",diff));
+
+
+  /* Flags: Considering N as a mismatch */
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
+    diff |= query_shifted[2];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
+    diff &= ~(query_shifted[2]);
+  }
+
+  if (genome_unk_mismatch_p) {
+    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= (ref_ptr[8]);
+#endif
+  } else {
+    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+  debug(printf(" => diff %08X\n",diff));
+
+  return diff;
+
+#else
   __m128i _diff, _query_high, _query_low, _query_flags, _ref_high, _ref_low, _ref_flags;
 
   _query_high = _mm_load_si128((__m128i *) query_shifted);
@@ -17462,61 +17549,6 @@ block_diff_metga (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   }
 
   return _diff;
-
-#else
-  UINT4 diff;
-
-  if (sarrayp == true) {
-    /* Ignore genome-A to query-G mismatches.  Convert everything to 3-nucleotide space. */
-    diff = 0U;
-  } else {
-    /* Mark genome-A to query-G mismatches */
-#ifdef WORDS_BIGENDIAN
-    diff = (query_shifted[0] & ~(query_shifted[1])) &
-      ~(Bigendian_convert_uint(ref_ptr[0]) | Bigendian_convert_uint(ref_ptr[4]));
-#else
-    diff = (query_shifted[0] & ~(query_shifted[1])) & ~(ref_ptr[0] | ref_ptr[4]);
-#endif
-    debug(printf(" => diff %08X\n",diff));
-  }
-
-  /* Compare reduced G->A nts  */
-#ifdef WORDS_BIGENDIAN
-  diff |= ((query_shifted[0] & query_shifted[1]) ^ (Bigendian_convert_uint(ref_ptr[0]) & Bigendian_convert_uint(ref_ptr[4]))) |
-    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
-#else
-  diff |= ((query_shifted[0] & query_shifted[1]) ^ (ref_ptr[0] & ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
-#endif
-  debug(printf(" => diff %08X\n",diff));
-
-
-  /* Flags: Considering N as a mismatch */
-  if (query_unk_mismatch_local_p) {
-    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
-    diff |= query_shifted[2];
-  } else {
-    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
-    diff &= ~(query_shifted[2]);
-  }
-
-  if (genome_unk_mismatch_p) {
-    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
-#ifdef WORDS_BIGENDIAN
-    diff |= Bigendian_convert_uint(ref_ptr[8]);
-#else
-    diff |= (ref_ptr[8]);
-#endif
-  } else {
-    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
-#ifdef WORDS_BIGENDIAN
-    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
-#else
-    diff &= ~(ref_ptr[8]);
-#endif
-  }
-  debug(printf(" => diff %08X\n",diff));
-
-  return diff;
 #endif
 }
 
@@ -17647,47 +17679,47 @@ block_diff_a2iag_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
     diff = 0U;
   } else {
     /* Mark genome-G to query-A mismatches */
-#ifdef HAVE_SSE2
-    diff = ~(query_shifted[0] | query_shifted[4]) & (ref_ptr[0] & ~(ref_ptr[4]));
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
     diff = ~(query_shifted[0] | query_shifted[1]) &
       (Bigendian_convert_uint(ref_ptr[0]) & ~Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
     diff = ~(query_shifted[0] | query_shifted[1]) & (ref_ptr[0] & ~(ref_ptr[4]));
+#else
+    diff = ~(query_shifted[0] | query_shifted[4]) & (ref_ptr[0] & ~(ref_ptr[4]));
 #endif
     debug(printf(" => diff %08X\n",diff));
   }
 
   /* Compare reduced A->G nts  */
-#ifdef HAVE_SSE2
-  diff |= ((query_shifted[0] | ~(query_shifted[4])) ^ (ref_ptr[0] | ~(ref_ptr[4]))) | (query_shifted[4] ^ ref_ptr[4]);
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
   diff |= ((query_shifted[0] | ~(query_shifted[1])) ^ (Bigendian_convert_uint(ref_ptr[0]) | ~(Bigendian_convert_uint(ref_ptr[4])))) |
     (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
   diff |= ((query_shifted[0] | ~(query_shifted[1])) ^ (ref_ptr[0] | ~(ref_ptr[4]))) | (query_shifted[1] ^ ref_ptr[4]);
   /* Because (a ^ b) = (~a ^ ~b), this is equivalent to 
   diff |= ((~query_shifted[0] & query_shifted[1]) ^ (~ref_ptr[0] & ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
   */
+#else
+  diff |= ((query_shifted[0] | ~(query_shifted[4])) ^ (ref_ptr[0] | ~(ref_ptr[4]))) | (query_shifted[4] ^ ref_ptr[4]);
 #endif
   debug(printf(" => diff %08X\n",diff));
 
   /* Flags: Considering N as a mismatch */
-#ifdef HAVE_SSE2
-  if (query_unk_mismatch_local_p) {
-    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
-    diff |= query_shifted[8];
-  } else {
-    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
-    diff &= ~(query_shifted[8]);
-  }
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   if (query_unk_mismatch_local_p) {
     debug(printf("Marking query flags: query %08X ",query_shifted[2]));
     diff |= query_shifted[2];
   } else {
     debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
     diff &= ~(query_shifted[2]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[8]));
+    diff |= query_shifted[8];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
+    diff &= ~(query_shifted[8]);
   }
 #endif
 
@@ -17716,7 +17748,65 @@ block_diff_a2iag_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 static Genomediff_T
 block_diff_a2iag (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 		  bool query_unk_mismatch_local_p, bool sarrayp) {
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+  UINT4 diff;
+
+  if (sarrayp == true) {
+    /* Ignore genome-G to query-A mismatches.  Convert everything to 3-nucleotide space. */
+    diff = 0U;
+  } else {
+    /* Mark genome-G to query-A mismatches */
+#ifdef WORDS_BIGENDIAN
+    diff = ~(query_shifted[0] | query_shifted[1]) &
+      (Bigendian_convert_uint(ref_ptr[0]) & ~Bigendian_convert_uint(ref_ptr[4]));
+#else
+    diff = ~(query_shifted[0] | query_shifted[1]) & (ref_ptr[0] & ~(ref_ptr[4]));
+#endif
+    debug(printf(" => diff %08X\n",diff));
+  }
+
+  /* Compare reduced A->G nts  */
+#ifdef WORDS_BIGENDIAN
+  diff |= ((query_shifted[0] | ~(query_shifted[1])) ^ (Bigendian_convert_uint(ref_ptr[0]) | ~(Bigendian_convert_uint(ref_ptr[4])))) |
+    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff |= ((query_shifted[0] | ~(query_shifted[1])) ^ (ref_ptr[0] | ~(ref_ptr[4]))) | (query_shifted[1] ^ ref_ptr[4]);
+  /* Because (a ^ b) = (~a ^ ~b), this is equivalent to 
+  diff |= ((~query_shifted[0] & query_shifted[1]) ^ (~ref_ptr[0] & ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
+  */
+#endif
+  debug(printf(" => diff %08X\n",diff));
+
+  /* Flags: Considering N as a mismatch */
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
+    diff |= query_shifted[2];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
+    diff &= ~(query_shifted[2]);
+  }
+
+  if (genome_unk_mismatch_p) {
+    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= (ref_ptr[8]);
+#endif
+  } else {
+    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+  debug(printf(" => diff %08X\n",diff));
+
+  return diff;
+
+#else
   __m128i _diff, _query_high, _query_low, _query_flags, _ref_high, _ref_low, _ref_flags;
 
   _query_high = _mm_load_si128((__m128i *) query_shifted);
@@ -17751,63 +17841,6 @@ block_diff_a2iag (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   }
 
   return _diff;
-
-#else
-  UINT4 diff;
-
-  if (sarrayp == true) {
-    /* Ignore genome-G to query-A mismatches.  Convert everything to 3-nucleotide space. */
-    diff = 0U;
-  } else {
-    /* Mark genome-G to query-A mismatches */
-#ifdef WORDS_BIGENDIAN
-    diff = ~(query_shifted[0] | query_shifted[1]) &
-      (Bigendian_convert_uint(ref_ptr[0]) & ~Bigendian_convert_uint(ref_ptr[4]));
-#else
-    diff = ~(query_shifted[0] | query_shifted[1]) & (ref_ptr[0] & ~(ref_ptr[4]));
-#endif
-    debug(printf(" => diff %08X\n",diff));
-  }
-
-  /* Compare reduced A->G nts  */
-#ifdef WORDS_BIGENDIAN
-  diff |= ((query_shifted[0] | ~(query_shifted[1])) ^ (Bigendian_convert_uint(ref_ptr[0]) | ~(Bigendian_convert_uint(ref_ptr[4])))) |
-    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
-#else
-  diff |= ((query_shifted[0] | ~(query_shifted[1])) ^ (ref_ptr[0] | ~(ref_ptr[4]))) | (query_shifted[1] ^ ref_ptr[4]);
-  /* Because (a ^ b) = (~a ^ ~b), this is equivalent to 
-  diff |= ((~query_shifted[0] & query_shifted[1]) ^ (~ref_ptr[0] & ref_ptr[4])) | (query_shifted[1] ^ ref_ptr[4]);
-  */
-#endif
-  debug(printf(" => diff %08X\n",diff));
-
-  /* Flags: Considering N as a mismatch */
-  if (query_unk_mismatch_local_p) {
-    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
-    diff |= query_shifted[2];
-  } else {
-    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
-    diff &= ~(query_shifted[2]);
-  }
-
-  if (genome_unk_mismatch_p) {
-    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
-#ifdef WORDS_BIGENDIAN
-    diff |= Bigendian_convert_uint(ref_ptr[8]);
-#else
-    diff |= (ref_ptr[8]);
-#endif
-  } else {
-    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
-#ifdef WORDS_BIGENDIAN
-    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
-#else
-    diff &= ~(ref_ptr[8]);
-#endif
-  }
-  debug(printf(" => diff %08X\n",diff));
-
-  return diff;
 #endif
 }
 
@@ -17822,44 +17855,44 @@ block_diff_a2itc_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
     diff = 0U;
   } else {
     /* Mark genome-C to query-T mismatches */
-#ifdef HAVE_SSE2
-    diff = (query_shifted[0] & query_shifted[4]) & (~(ref_ptr[0]) & ref_ptr[4]);
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
     diff = (query_shifted[0] & query_shifted[1]) &
       (~(Bigendian_convert_uint(ref_ptr[0])) & Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
     diff = (query_shifted[0] & query_shifted[1]) & (~(ref_ptr[0]) & ref_ptr[4]);
+#else
+    diff = (query_shifted[0] & query_shifted[4]) & (~(ref_ptr[0]) & ref_ptr[4]);
 #endif
     debug(printf(" => diff %08X\n",diff));
   }
 
   /* Compare reduced T->C nts  */
-#ifdef HAVE_SSE2
-  diff |= ((query_shifted[0] & ~(query_shifted[4])) ^ (ref_ptr[0] & ~(ref_ptr[4]))) | (query_shifted[4] ^ ref_ptr[4]);
-#elif defined(WORDS_BIGENDIAN)
+#ifdef WORDS_BIGENDIAN
   diff |= ((query_shifted[0] & ~(query_shifted[1])) ^ (Bigendian_convert_uint(ref_ptr[0]) & ~(Bigendian_convert_uint(ref_ptr[4])))) |
     (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
-#else
+#elif !defined(HAVE_SSE2)
   diff |= ((query_shifted[0] & ~(query_shifted[1])) ^ (ref_ptr[0] & ~(ref_ptr[4]))) | (query_shifted[1] ^ ref_ptr[4]);
+#else
+  diff |= ((query_shifted[0] & ~(query_shifted[4])) ^ (ref_ptr[0] & ~(ref_ptr[4]))) | (query_shifted[4] ^ ref_ptr[4]);
 #endif
   debug(printf(" => diff %08X\n",diff));
 
   /* Flags: Considering N as a mismatch */
-#ifdef HAVE_SSE2
-  if (query_unk_mismatch_local_p) {
-    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
-    diff |= query_shifted[2];
-  } else {
-    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
-    diff &= ~(query_shifted[2]);
-  }
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   if (query_unk_mismatch_local_p) {
     debug(printf("Marking query flags: query %08X ",query_shifted[8]));
     diff |= query_shifted[8];
   } else {
     debug(printf("Clearing query flags: query %08X ",query_shifted[8]));
     diff &= ~(query_shifted[8]);
+  }
+#else
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
+    diff |= query_shifted[2];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
+    diff &= ~(query_shifted[2]);
   }
 #endif
 
@@ -17888,7 +17921,62 @@ block_diff_a2itc_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 static Genomediff_T
 block_diff_a2itc (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
                   bool query_unk_mismatch_local_p, bool sarrayp) {
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+  UINT4 diff;
+
+  if (sarrayp == true) {
+    /* Ignore genome-C to query-T mismatches */
+    diff = 0U;
+  } else {
+    /* Mark genome-C to query-T mismatches */
+#ifdef WORDS_BIGENDIAN
+    diff = (query_shifted[0] & query_shifted[1]) &
+      (~(Bigendian_convert_uint(ref_ptr[0])) & Bigendian_convert_uint(ref_ptr[4]));
+#else
+    diff = (query_shifted[0] & query_shifted[1]) & (~(ref_ptr[0]) & ref_ptr[4]);
+#endif
+    debug(printf(" => diff %08X\n",diff));
+  }
+
+  /* Compare reduced T->C nts  */
+#ifdef WORDS_BIGENDIAN
+  diff |= ((query_shifted[0] & ~(query_shifted[1])) ^ (Bigendian_convert_uint(ref_ptr[0]) & ~(Bigendian_convert_uint(ref_ptr[4])))) |
+    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
+#else
+  diff |= ((query_shifted[0] & ~(query_shifted[1])) ^ (ref_ptr[0] & ~(ref_ptr[4]))) | (query_shifted[1] ^ ref_ptr[4]);
+#endif
+  debug(printf(" => diff %08X\n",diff));
+
+  /* Flags: Considering N as a mismatch */
+  if (query_unk_mismatch_local_p) {
+    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
+    diff |= query_shifted[2];
+  } else {
+    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
+    diff &= ~(query_shifted[2]);
+  }
+
+  if (genome_unk_mismatch_p) {
+    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff |= Bigendian_convert_uint(ref_ptr[8]);
+#else
+    diff |= (ref_ptr[8]);
+#endif
+  } else {
+    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
+#ifdef WORDS_BIGENDIAN
+    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
+#else
+    diff &= ~(ref_ptr[8]);
+#endif
+  }
+  debug(printf(" => diff %08X\n",diff));
+
+  return diff;
+
+#else
   __m128i _diff, _query_high, _query_low, _query_flags, _ref_high, _ref_low, _ref_flags;
 
   _query_high = _mm_load_si128((__m128i *) query_shifted);
@@ -17923,60 +18011,6 @@ block_diff_a2itc (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   }
 
   return _diff;
-
-#else
-  UINT4 diff;
-
-  if (sarrayp == true) {
-    /* Ignore genome-C to query-T mismatches */
-    diff = 0U;
-  } else {
-    /* Mark genome-C to query-T mismatches */
-#ifdef WORDS_BIGENDIAN
-    diff = (query_shifted[0] & query_shifted[1]) &
-      (~(Bigendian_convert_uint(ref_ptr[0])) & Bigendian_convert_uint(ref_ptr[4]));
-#else
-    diff = (query_shifted[0] & query_shifted[1]) & (~(ref_ptr[0]) & ref_ptr[4]);
-#endif
-    debug(printf(" => diff %08X\n",diff));
-  }
-
-  /* Compare reduced T->C nts  */
-#ifdef WORDS_BIGENDIAN
-  diff |= ((query_shifted[0] & ~(query_shifted[1])) ^ (Bigendian_convert_uint(ref_ptr[0]) & ~(Bigendian_convert_uint(ref_ptr[4])))) |
-    (query_shifted[1] ^ Bigendian_convert_uint(ref_ptr[4]));
-#else
-  diff |= ((query_shifted[0] & ~(query_shifted[1])) ^ (ref_ptr[0] & ~(ref_ptr[4]))) | (query_shifted[1] ^ ref_ptr[4]);
-#endif
-  debug(printf(" => diff %08X\n",diff));
-
-  /* Flags: Considering N as a mismatch */
-  if (query_unk_mismatch_local_p) {
-    debug(printf("Marking query flags: query %08X ",query_shifted[2]));
-    diff |= query_shifted[2];
-  } else {
-    debug(printf("Clearing query flags: query %08X ",query_shifted[2]));
-    diff &= ~(query_shifted[2]);
-  }
-
-  if (genome_unk_mismatch_p) {
-    debug(printf("Marking genome flags: genome %08X ",ref_ptr[8]));
-#ifdef WORDS_BIGENDIAN
-    diff |= Bigendian_convert_uint(ref_ptr[8]);
-#else
-    diff |= (ref_ptr[8]);
-#endif
-  } else {
-    debug(printf("Clearing genome flags: genome %08X ",ref_ptr[8]));
-#ifdef WORDS_BIGENDIAN
-    diff &= ~(Bigendian_convert_uint(ref_ptr[8]));
-#else
-    diff &= ~(ref_ptr[8]);
-#endif
-  }
-  debug(printf(" => diff %08X\n",diff));
-
-  return diff;
 #endif
 }
 
@@ -18226,7 +18260,9 @@ static Diffproc_snp_32_T block_diff_snp_32;
 static Diffproc_T block_diff_sarray; 
 static Diffproc_32_T block_diff_sarray_32; 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+/* Skip */
+#else
 static __m128i _BOUND_HIGH;
 static __m128i _BOUND_LOW;
 #endif
@@ -18235,7 +18271,9 @@ void
 Genome_hr_setup (Genomecomp_T *ref_blocks_in, Genomecomp_T *snp_blocks_in,
 		 bool query_unk_mismatch_p_in, bool genome_unk_mismatch_p_in,
 		 Mode_T mode) {
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+/* Skip */
+#else
   _BOUND_HIGH = _mm_set_epi32(128,96,64,32);
   _BOUND_LOW = _mm_set_epi32(96,64,32,0);
 #endif
@@ -18378,7 +18416,72 @@ Genome_hr_user_setup (UINT4 *ref_blocks_in,
 #define set_end_mask(enddiscard) (~0U << enddiscard)
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+
+#define nonzero_p(diff) diff
+
+#define clear_start(diff,startdiscard) (diff & (~0U << (startdiscard)))
+#define clear_end(diff,enddiscard) (diff & ~(~0U << (enddiscard)))
+
+/* Same speed: clear_highbit(diff,relpos) (diff - (HIGH_BIT >> relpos)) */
+/* Note: xor assumes that bit at relpos was on */
+#define clear_highbit(diff,relpos) (diff ^ (HIGH_BIT >> relpos))
+
+/* Slower: clear_lowbit(diff,relpos) diff -= (1 << relpos) */
+#define clear_lowbit(diff,relpos) (diff & (diff - 1));
+
+
+#ifdef HAVE_POPCNT
+#define popcount_ones(diff) (_popcnt32(diff))
+#elif defined(HAVE_MM_POPCNT)
+#define popcount_ones(diff) (_mm_popcnt_u32(diff))
+#elif defined(HAVE_BUILTIN_POPCOUNT)
+#define popcount_ones(diff) (__builtin_popcount(diff))
+#else
+#define popcount_ones(diff) (count_bits[diff & 0x0000FFFF] + count_bits[diff >> 16])
+#endif
+
+
+#ifdef HAVE_LZCNT
+#define count_leading_zeroes(diff) _lzcnt_u32(diff)
+#elif defined(HAVE_BUILTIN_CLZ)
+#define count_leading_zeroes(diff) __builtin_clz(diff)
+#else
+#define count_leading_zeroes(diff) ((diff >> 16) ? clz_table[diff >> 16] : 16 + clz_table[diff])
+#endif
+
+#ifdef HAVE_TZCNT
+#define count_trailing_zeroes(diff) _tzcnt_u32(diff)
+#elif defined(HAVE_BUILTIN_CTZ)
+#define count_trailing_zeroes(diff) __builtin_ctz(diff)
+#else
+/* lowbit = -diff & diff */
+#define count_trailing_zeroes(diff) mod_37_bit_position[(-diff & diff) % 37]
+#endif
+
+/* For trimming */
+#define set_start(diff,startdiscard) (diff | ~(~0U << startdiscard))
+#define set_end(diff,enddiscard) (diff | (~0U << enddiscard))
+
+static void
+print_diff_popcount (UINT4 diff) {
+  printf("diff: %08X => nmismatches %d\n",diff,popcount_ones(diff));
+  return;
+}
+
+static void
+print_diff_trailing_zeroes (UINT4 diff, int offset) {
+  printf("diff: %08X => offset %d + trailing zeroes %d\n",diff,offset,count_trailing_zeroes(diff));
+  return;
+}
+
+static void
+print_diff_leading_zeroes (UINT4 diff, int offset) {
+  printf("diff: %08X => offset %d - leading zeroes %d\n",diff,offset,count_leading_zeroes(diff));
+  return;
+}
+
+#else  /* littleendian and SSE2 */
 
 #ifdef HAVE_SSE4_1
 #define nonzero_p(diff) !_mm_testz_si128(diff,diff)
@@ -18726,7 +18829,7 @@ set_end (__m128i _diff, int enddiscard) {
   return _mm_or_si128(_mask, _diff);
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(DEBUG5)
 static void
 print_diff_popcount (__m128i _diff) {
   printf("diff: ");
@@ -18752,72 +18855,7 @@ print_diff_leading_zeroes (__m128i _diff, int offset) {
 }
 #endif
 
-#else
-
-#define nonzero_p(diff) diff
-
-#define clear_start(diff,startdiscard) (diff & (~0U << (startdiscard)))
-#define clear_end(diff,enddiscard) (diff & ~(~0U << (enddiscard)))
-
-/* Same speed: clear_highbit(diff,relpos) (diff - (HIGH_BIT >> relpos)) */
-/* Note: xor assumes that bit at relpos was on */
-#define clear_highbit(diff,relpos) (diff ^ (HIGH_BIT >> relpos))
-
-/* Slower: clear_lowbit(diff,relpos) diff -= (1 << relpos) */
-#define clear_lowbit(diff,relpos) (diff & (diff - 1));
-
-
-#ifdef HAVE_POPCNT
-#define popcount_ones(diff) (_popcnt32(diff))
-#elif defined(HAVE_MM_POPCNT)
-#define popcount_ones(diff) (_mm_popcnt_u32(diff))
-#elif defined(HAVE_BUILTIN_POPCOUNT)
-#define popcount_ones(diff) (__builtin_popcount(diff))
-#else
-#define popcount_ones(diff) (count_bits[diff & 0x0000FFFF] + count_bits[diff >> 16])
-#endif
-
-
-#ifdef HAVE_LZCNT
-#define count_leading_zeroes(diff) _lzcnt_u32(diff)
-#elif defined(HAVE_BUILTIN_CLZ)
-#define count_leading_zeroes(diff) __builtin_clz(diff)
-#else
-#define count_leading_zeroes(diff) ((diff >> 16) ? clz_table[diff >> 16] : 16 + clz_table[diff])
-#endif
-
-#ifdef HAVE_TZCNT
-#define count_trailing_zeroes(diff) _tzcnt_u32(diff)
-#elif defined(HAVE_BUILTIN_CTZ)
-#define count_trailing_zeroes(diff) __builtin_ctz(diff)
-#else
-/* lowbit = -diff & diff */
-#define count_trailing_zeroes(diff) mod_37_bit_position[(-diff & diff) % 37]
-#endif
-
-/* For trimming */
-#define set_start(diff,startdiscard) (diff | ~(~0U << startdiscard))
-#define set_end(diff,enddiscard) (diff | (~0U << enddiscard))
-
-static void
-print_diff_popcount (UINT4 diff) {
-  printf("diff: %08X => nmismatches %d\n",diff,popcount_ones(diff));
-  return;
-}
-
-static void
-print_diff_trailing_zeroes (UINT4 diff, int offset) {
-  printf("diff: %08X => offset %d + trailing zeroes %d\n",diff,offset,count_trailing_zeroes(diff));
-  return;
-}
-
-static void
-print_diff_leading_zeroes (UINT4 diff, int offset) {
-  printf("diff: %08X => offset %d - leading zeroes %d\n",diff,offset,count_leading_zeroes(diff));
-  return;
-}
-
-#endif
+#endif	/* littleendian and SSE2 */
 
 
 #define nonzero_p_32(diff) diff
@@ -18914,12 +18952,13 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
 
-    diff_32 = (block_diff_sarray_32)(query_shifted
-#ifdef HAVE_SSE2
-				     + startcolumni
-#endif
-				     ,&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_sarray_32)(query_shifted,&(ref_blocks[startblocki_32]),
                                      plusp,genestrand,/*query_unk_mismatch_local_p*/true);
+#else
+    diff_32 = (block_diff_sarray_32)(query_shifted + startcolumni,&(ref_blocks[startblocki_32]),
+                                     plusp,genestrand,/*query_unk_mismatch_local_p*/true);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -18945,8 +18984,7 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -18962,7 +19000,8 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[startblocki]),
 			       plusp,genestrand,/*query_unk_mismatch_local_p*/true);
@@ -18996,11 +19035,11 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
     }
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[startblocki]);
     ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+    ptr = &(ref_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
@@ -19015,10 +19054,10 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
       }
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+      ptr += 12;
 #endif
       offset += STEP_SIZE; /* 128 or 32 */
     }
@@ -19038,7 +19077,8 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
       return (pos3 - pos5);
     }
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -19093,13 +19133,13 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
     offset = (pos3 - 1) - enddiscard + 32;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_sarray_32)(query_shifted
-#ifdef HAVE_SSE2
-				     + endcolumni
-#endif
-				     ,&(ref_blocks[endblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_sarray_32)(query_shifted,&(ref_blocks[endblocki_32]),
 				     plusp,genestrand,/*query_unk_mismatch_local_p*/true);
+#else
+    diff_32 = (block_diff_sarray_32)(query_shifted + endcolumni,&(ref_blocks[endblocki_32]),
+				     plusp,genestrand,/*query_unk_mismatch_local_p*/true);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -19125,8 +19165,7 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -19142,7 +19181,8 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (startblocki == endblocki) {
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[endblocki]),
 			       plusp,genestrand,/*query_unk_mismatch_local_p*/true);
@@ -19176,11 +19216,11 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
     }
 
     query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[endblocki-12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[endblocki]);
     ptr -= 1; if (endcolumni-- == 0) {ptr -= 8; endcolumni = 3;}
+#else
+    ptr = &(ref_blocks[endblocki-12]);
 #endif
     start = &(ref_blocks[startblocki]);
     offset -= STEP_SIZE; /* 128 or 32 */
@@ -19195,10 +19235,10 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
       }
 
       query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr -= 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr -= 1; if (endcolumni-- == 0) {ptr -= 8; endcolumni = 3;}
+#else
+      ptr -= 12;
 #endif
       offset -= STEP_SIZE; /* 128 or 32 */
     }
@@ -19218,7 +19258,8 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
       return (pos3 - pos5);
     }
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -19289,14 +19330,24 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
 
       ptr1 = &(ref_blocks[startblocki_1]);
       ptr2 = &(ref_blocks[startblocki_2]);
+#ifdef WORDS_BIGENDIAN
+      shifted1[0] = Bigendian_convert_uint(ptr1[0]) << nshift;
+      shifted1[1] = Bigendian_convert_uint(ptr1[4]) << nshift;
+      shifted1[2] = Bigendian_convert_uint(ptr1[8]) << nshift;
+#else
       shifted1[0] = ptr1[0] << nshift;
       shifted1[1] = ptr1[4] << nshift;
       shifted1[2] = ptr1[8] << nshift;
+#endif
       debug2(Compress_print_one_block(ptr1));
       debug2(Compress_print_one_block(ptr2));
       debug2(Compress_print_one_block(shifted1));
 
+#ifdef WORDS_BIGENDIAN
+      diff = (shifted1[0] ^ Bigendian_convert_uint(ptr2[0])) | (shifted1[1] ^ Bigendian_convert_uint(ptr2[4])) | (shifted1[2] ^ Bigendian_convert_uint(ptr2[8]));
+#else
       diff = (shifted1[0] ^ ptr2[0]) | (shifted1[1] ^ ptr2[4]) | (shifted1[2] ^ ptr2[8]);
+#endif
       diff = clear_start_32(diff,startdiscard);
       diff = clear_end_32(diff,enddiscard);
 
@@ -19322,14 +19373,24 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
       /* Block 1 */
       ptr1 = &(ref_blocks[startblocki_1]);
       ptr2 = &(ref_blocks[startblocki_2]);
+#ifdef WORDS_BIGENDIAN
+      shifted1[0] = Bigendian_convert_uint(ptr1[0]) << nshift;
+      shifted1[1] = Bigendian_convert_uint(ptr1[4]) << nshift;
+      shifted1[2] = Bigendian_convert_uint(ptr1[8]) << nshift;
+#else
       shifted1[0] = ptr1[0] << nshift;
       shifted1[1] = ptr1[4] << nshift;
       shifted1[2] = ptr1[8] << nshift;
+#endif
       debug2(Compress_print_one_block(ptr1));
       debug2(Compress_print_one_block(ptr2));
       debug2(Compress_print_one_block(shifted1));
 
+#ifdef WORDS_BIGENDIAN
+      diff = (shifted1[0] ^ Bigendian_convert_uint(ptr2[0])) | (shifted1[1] ^ Bigendian_convert_uint(ptr2[4])) | (shifted1[2] ^ Bigendian_convert_uint(ptr2[8]));
+#else
       diff = (shifted1[0] ^ ptr2[0]) | (shifted1[1] ^ ptr2[4]) | (shifted1[2] ^ ptr2[8]);
+#endif
       diff = clear_start_32(diff,startdiscard);
 
       if (diff /* != 0U */) {
@@ -19350,17 +19411,31 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
       /* Block 2 */
       if (nshift == 0) {
 	/* rightshift of 32 is a no-op */
+#ifdef WORDS_BIGENDIAN
+	shifted1[0] = Bigendian_convert_uint(ptr1[0]); shifted1[1] = Bigendian_convert_uint(ptr1[4]); shifted1[2] = Bigendian_convert_uint(ptr1[8]);
+#else
 	shifted1[0] = ptr1[0]; shifted1[1] = ptr1[4]; shifted1[2] = ptr1[8];
+#endif
       } else {
+#ifdef WORDS_BIGENDIAN
+	shifted1[0] = (Bigendian_convert_uint(ptr1[0]) << nshift) | (Bigendian_convert_uint(ptr1_prev[0]) >> rightshift);
+	shifted1[1] = (Bigendian_convert_uint(ptr1[4]) << nshift) | (Bigendian_convert_uint(ptr1_prev[4]) >> rightshift);
+	shifted1[2] = (Bigendian_convert_uint(ptr1[8]) << nshift) | (Bigendian_convert_uint(ptr1_prev[8]) >> rightshift);
+#else
 	shifted1[0] = (ptr1[0] << nshift) | (ptr1_prev[0] >> rightshift);
 	shifted1[1] = (ptr1[4] << nshift) | (ptr1_prev[4] >> rightshift);
 	shifted1[2] = (ptr1[8] << nshift) | (ptr1_prev[8] >> rightshift);
+#endif
       }
       debug2(Compress_print_one_block(ptr1));
       debug2(Compress_print_one_block(ptr2));
       debug2(Compress_print_one_block(shifted1));
 
+#ifdef WORDS_BIGENDIAN
+      diff = (shifted1[0] ^ Bigendian_convert_uint(ptr2[0])) | (shifted1[1] ^ Bigendian_convert_uint(ptr2[4])) | (shifted1[2] ^ Bigendian_convert_uint(ptr2[8]));
+#else
       diff = (shifted1[0] ^ ptr2[0]) | (shifted1[1] ^ ptr2[4]) | (shifted1[2] ^ ptr2[8]);
+#endif
       diff = clear_end_32(diff,enddiscard);
 
       if (diff /* != 0U */) {
@@ -19383,14 +19458,24 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
 
     ptr1 = &(ref_blocks[startblocki_1]);
     ptr2 = &(ref_blocks[startblocki_2]);
+#ifdef WORDS_BIGENDIAN
+    shifted1[0] = Bigendian_convert_uint(ptr1[0]) << nshift;
+    shifted1[1] = Bigendian_convert_uint(ptr1[4]) << nshift;
+    shifted1[2] = Bigendian_convert_uint(ptr1[8]) << nshift;
+#else
     shifted1[0] = ptr1[0] << nshift;
     shifted1[1] = ptr1[4] << nshift;
     shifted1[2] = ptr1[8] << nshift;
+#endif
     debug2(Compress_print_one_block(ptr1));
     debug2(Compress_print_one_block(ptr2));
     debug2(Compress_print_one_block(shifted1));
 
+#ifdef WORDS_BIGENDIAN
+    diff = (shifted1[0] ^ Bigendian_convert_uint(ptr2[0])) | (shifted1[1] ^ Bigendian_convert_uint(ptr2[4])) | (shifted1[2] ^ Bigendian_convert_uint(ptr2[8]));
+#else
     diff = (shifted1[0] ^ ptr2[0]) | (shifted1[1] ^ ptr2[4]) | (shifted1[2] ^ ptr2[8]);
+#endif
     diff = clear_start_32(diff,startdiscard);
     diff = clear_end_32(diff,enddiscard);
 
@@ -19412,14 +19497,24 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
     /* Startblock */
     ptr1 = &(ref_blocks[startblocki_1]);
     ptr2 = &(ref_blocks[startblocki_2]);
+#ifdef WORDS_BIGENDIAN
+    shifted1[0] = (Bigendian_convert_uint(ptr1[0]) << nshift);
+    shifted1[1] = (Bigendian_convert_uint(ptr1[4]) << nshift);
+    shifted1[2] = (Bigendian_convert_uint(ptr1[8]) << nshift);
+#else
     shifted1[0] = (ptr1[0] << nshift);
     shifted1[1] = (ptr1[4] << nshift);
     shifted1[2] = (ptr1[8] << nshift);
+#endif
     debug2(Compress_print_one_block(ptr1));
     debug2(Compress_print_one_block(ptr2));
     debug2(Compress_print_one_block(shifted1));
 
+#ifdef WORDS_BIGENDIAN
+    diff = (shifted1[0] ^ Bigendian_convert_uint(ptr2[0])) | (shifted1[1] ^ Bigendian_convert_uint(ptr2[4])) | (shifted1[2] ^ Bigendian_convert_uint(ptr2[8]));
+#else
     diff = (shifted1[0] ^ ptr2[0]) | (shifted1[1] ^ ptr2[4]) | (shifted1[2] ^ ptr2[8]);
+#endif
     diff = clear_start_32(diff,startdiscard);
 
     if (diff /* != 0U */) {
@@ -19440,17 +19535,31 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
     while (ptr1 < end && ptr2 < end) {
       if (nshift == 0) {
 	/* rightshift of 32 is a no-op */
+#ifdef WORDS_BIGENDIAN
+	shifted1[0] = Bigendian_convert_uint(ptr1[0]); shifted1[1] = Bigendian_convert_uint(ptr1[4]); shifted1[2] = Bigendian_convert_uint(ptr1[8]);
+#else
 	shifted1[0] = ptr1[0]; shifted1[1] = ptr1[4]; shifted1[2] = ptr1[8];
+#endif
       } else {
+#ifdef WORDS_BIGENDIAN
+	shifted1[0] = (Bigendian_convert_uint(ptr1[0]) << nshift) | (Bigendian_convert_uint(ptr1_prev[0]) >> rightshift);
+	shifted1[1] = (Bigendian_convert_uint(ptr1[4]) << nshift) | (Bigendian_convert_uint(ptr1_prev[4]) >> rightshift);
+	shifted1[2] = (Bigendian_convert_uint(ptr1[8]) << nshift) | (Bigendian_convert_uint(ptr1_prev[8]) >> rightshift);
+#else
 	shifted1[0] = (ptr1[0] << nshift) | (ptr1_prev[0] >> rightshift);
 	shifted1[1] = (ptr1[4] << nshift) | (ptr1_prev[4] >> rightshift);
 	shifted1[2] = (ptr1[8] << nshift) | (ptr1_prev[8] >> rightshift);
+#endif
       }
       debug2(Compress_print_one_block(ptr1));
       debug2(Compress_print_one_block(ptr2));
       debug2(Compress_print_one_block(shifted1));
 
+#ifdef WORDS_BIGENDIAN
+      diff = (shifted1[0] ^ Bigendian_convert_uint(ptr2[0])) | (shifted1[1] ^ Bigendian_convert_uint(ptr2[4])) | (shifted1[2] ^ Bigendian_convert_uint(ptr2[8]));
+#else
       diff = (shifted1[0] ^ ptr2[0]) | (shifted1[1] ^ ptr2[4]) | (shifted1[2] ^ ptr2[8]);
+#endif
       if (diff /* != 0U */) {
 #ifdef HAVE_BUILTIN_CTZ
 	mismatch_position = offset + (relpos = __builtin_ctz(diff));
@@ -19490,17 +19599,31 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
     /* Block 1 */
     if (nshift == 0) {
       /* rightshift of 32 is a no-op */
+#ifdef WORDS_BIGENDIAN
+      shifted1[0] = Bigendian_convert_uint(ptr1[0]); shifted1[1] = Bigendian_convert_uint(ptr1[4]); shifted1[2] = Bigendian_convert_uint(ptr1[8]);
+#else
       shifted1[0] = ptr1[0]; shifted1[1] = ptr1[4]; shifted1[2] = ptr1[8];
+#endif
     } else {
+#ifdef WORDS_BIGENDIAN
+      shifted1[0] = (Bigendian_convert_uint(ptr1[0]) << nshift) | (Bigendian_convert_uint(ptr1_prev[0]) >> rightshift);
+      shifted1[1] = (Bigendian_convert_uint(ptr1[4]) << nshift) | (Bigendian_convert_uint(ptr1_prev[4]) >> rightshift);
+      shifted1[2] = (Bigendian_convert_uint(ptr1[8]) << nshift) | (Bigendian_convert_uint(ptr1_prev[8]) >> rightshift);
+#else
       shifted1[0] = (ptr1[0] << nshift) | (ptr1_prev[0] >> rightshift);
       shifted1[1] = (ptr1[4] << nshift) | (ptr1_prev[4] >> rightshift);
       shifted1[2] = (ptr1[8] << nshift) | (ptr1_prev[8] >> rightshift);
+#endif
     }
     debug2(Compress_print_one_block(ptr1));
     debug2(Compress_print_one_block(ptr2));
     debug2(Compress_print_one_block(shifted1));
 
+#ifdef WORDS_BIGENDIAN
+    diff = (shifted1[0] ^ Bigendian_convert_uint(ptr2[0])) | (shifted1[1] ^ Bigendian_convert_uint(ptr2[4])) | (shifted1[2] ^ Bigendian_convert_uint(ptr2[8]));
+#else
     diff = (shifted1[0] ^ ptr2[0]) | (shifted1[1] ^ ptr2[4]) | (shifted1[2] ^ ptr2[8]);
+#endif
     if (nblocks == 1) {
       diff = clear_end_32(diff,enddiscard);
     }
@@ -19524,14 +19647,24 @@ Genome_consecutive_matches_pair (UINT4 lefta, UINT4 leftb, UINT4 genomelength) {
     }
 
     /* Block 2 */
+#ifdef WORDS_BIGENDIAN
+    shifted1[0] = (Bigendian_convert_uint(ptr1_prev[0]) >> rightshift);
+    shifted1[1] = (Bigendian_convert_uint(ptr1_prev[4]) >> rightshift);
+    shifted1[2] = (Bigendian_convert_uint(ptr1_prev[8]) >> rightshift);
+#else
     shifted1[0] = (ptr1_prev[0] >> rightshift);
     shifted1[1] = (ptr1_prev[4] >> rightshift);
     shifted1[2] = (ptr1_prev[8] >> rightshift);
+#endif
     debug2(Compress_print_one_block(ptr1));
     debug2(Compress_print_one_block(ptr2));
     debug2(Compress_print_one_block(shifted1));
 
+#ifdef WORDS_BIGENDIAN
+    diff = (shifted1[0] ^ Bigendian_convert_uint(ptr2[0])) | (shifted1[1] ^ Bigendian_convert_uint(ptr2[4])) | (shifted1[2] ^ Bigendian_convert_uint(ptr2[8]));
+#else
     diff = (shifted1[0] ^ ptr2[0]) | (shifted1[1] ^ ptr2[4]) | (shifted1[2] ^ ptr2[8]);
+#endif
     diff = clear_end_32(diff,enddiscard);
 
     if (diff /* != 0U */) {
@@ -19601,12 +19734,13 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
 
-    diff_32 = (block_diff_32)(query_shifted
-#ifdef HAVE_SSE2
-			      + startcolumni
-#endif
-			      ,&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_32)(query_shifted,&(ref_blocks[startblocki_32]),
 			      plusp,genestrand,query_unk_mismatch_p);
+#else
+    diff_32 = (block_diff_32)(query_shifted + startcolumni,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -19621,8 +19755,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -19636,7 +19769,8 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
   }
 #endif
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     debug(printf("** Single block **\n"));
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
@@ -19712,11 +19846,11 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 
     /* 2..(n-1) / n: Check all middle blocks first */
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[startblocki]);
     ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+    ptr = &(ref_blocks[startblocki+12]);
 #endif
     endblock = &(ref_blocks[endblocki]);
     nmismatches = 0;
@@ -19731,10 +19865,10 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       }
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+      ptr += 12;
 #endif
     }
 
@@ -19785,7 +19919,8 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       return nmismatches + popcount_ones(diff);
     }
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -19841,12 +19976,13 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
 
-    diff_32 = (block_diff_snp_32)(query_shifted
-#ifdef HAVE_SSE2
-				  + startcolumni
-#endif
-				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_snp_32)(query_shifted,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
 				  plusp,genestrand,query_unk_mismatch_p);
+#else
+    diff_32 = (block_diff_snp_32)(query_shifted + startcolumni,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -19861,8 +19997,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -19876,7 +20011,8 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
   }
 #endif
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     debug(printf("** Single block **\n"));
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
@@ -19954,13 +20090,13 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
 
     /* 2..(n-1) / n: Check all middle blocks first */
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ref_ptr = &(ref_blocks[startblocki+12]);
-    alt_ptr = &(snp_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ref_ptr = &(ref_blocks[startblocki]);
     alt_ptr = &(snp_blocks[startblocki]);
     ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+    ref_ptr = &(ref_blocks[startblocki+12]);
+    alt_ptr = &(snp_blocks[startblocki+12]);
 #endif
     endblock = &(ref_blocks[endblocki]);
     nmismatches = 0;
@@ -19975,10 +20111,10 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       }
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ref_ptr += 12; alt_ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+      ref_ptr += 12; alt_ptr += 12;
 #endif
     }
 
@@ -20029,7 +20165,8 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       return nmismatches + popcount_ones(diff);
     }
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -20105,13 +20242,13 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
     enddiscard = (left+pos3) % 32;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_32)(query_shifted
-#ifdef HAVE_SSE2
-			      + startcolumni
-#endif
-			      ,&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_32)(query_shifted,&(ref_blocks[startblocki_32]),
 			      plusp,genestrand,query_unk_mismatch_p);
+#else
+    diff_32 = (block_diff_32)(query_shifted + startcolumni,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20126,8 +20263,7 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -20142,7 +20278,8 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,query_unk_mismatch_p);
@@ -20165,11 +20302,11 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
     nmismatches = popcount_ones(diff);
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[startblocki]);
     ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+    ptr = &(ref_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     while (ptr < end) {
@@ -20179,10 +20316,10 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
       nmismatches += popcount_ones(diff);
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+      ptr += 12;
 #endif
     }
 
@@ -20194,7 +20331,8 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
     debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
     return nmismatches + popcount_ones(diff);
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -20246,13 +20384,13 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
     enddiscard = (left+pos3) % 32;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_snp_32)(query_shifted
-#ifdef HAVE_SSE2
-				  + startcolumni
-#endif
-				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_snp_32)(query_shifted,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
 				  plusp,genestrand,query_unk_mismatch_p);
+#else
+    diff_32 = (block_diff_snp_32)(query_shifted + startcolumni,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20267,8 +20405,7 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -20283,7 +20420,8 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,query_unk_mismatch_p);
@@ -20306,13 +20444,13 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
     nmismatches = popcount_ones(diff);
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ref_ptr = &(ref_blocks[startblocki+12]);
-    alt_ptr = &(snp_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ref_ptr = &(ref_blocks[startblocki]);
     alt_ptr = &(snp_blocks[startblocki]);
     ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+    ref_ptr = &(ref_blocks[startblocki+12]);
+    alt_ptr = &(snp_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     while (ref_ptr < end) {
@@ -20322,10 +20460,10 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
       nmismatches += popcount_ones(diff);
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ref_ptr += 12; alt_ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+      ref_ptr += 12; alt_ptr += 12;
 #endif
     }
 
@@ -20337,7 +20475,8 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
     debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches + popcount_ones(diff)));
     return nmismatches + popcount_ones(diff);
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -20506,6 +20645,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
 
   debug(
 	printf("\n\n");
+	printf("Entered mismatches_left with %d max_mismatches\n",max_mismatches);
 	printf("Genome (in mismatches_left):\n");
 	Genome_print_blocks(ref_blocks,left+pos5,left+pos3);
 	printf("\n");
@@ -20535,13 +20675,13 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
     offset = -startdiscard + pos5;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_32)(query_shifted
-#ifdef HAVE_SSE2
-			      + startcolumni
-#endif
-			      ,&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_32)(query_shifted,&(ref_blocks[startblocki_32]),
 			      plusp,genestrand,query_unk_mismatch_local_p);
+#else
+    diff_32 = (block_diff_32)(query_shifted + startcolumni,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,query_unk_mismatch_local_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20562,8 +20702,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -20579,7 +20718,8 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,query_unk_mismatch_local_p);
@@ -20613,11 +20753,11 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
     }
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[startblocki]);
     ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+    ptr = &(ref_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
@@ -20635,10 +20775,10 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
       }
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+      ptr += 12;
 #endif
       offset += STEP_SIZE; /* 128 or 32 */
     }
@@ -20655,7 +20795,8 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
     debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches));
     return nmismatches;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 
@@ -20710,13 +20851,13 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
     offset = -startdiscard + pos5;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_snp_32)(query_shifted
-#ifdef HAVE_SSE2
-				  + startcolumni
-#endif
-				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_snp_32)(query_shifted,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
 				  plusp,genestrand,query_unk_mismatch_local_p);
+#else
+    diff_32 = (block_diff_snp_32)(query_shifted + startcolumni,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,query_unk_mismatch_local_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20736,8 +20877,7 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -20753,7 +20893,8 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,query_unk_mismatch_local_p);
@@ -20787,13 +20928,13 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
     }
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ref_ptr = &(ref_blocks[startblocki+12]);
-    alt_ptr = &(snp_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ref_ptr = &(ref_blocks[startblocki]);
     alt_ptr = &(snp_blocks[startblocki]);
     ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+    ref_ptr = &(ref_blocks[startblocki+12]);
+    alt_ptr = &(snp_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
@@ -20811,10 +20952,10 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
       }
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ref_ptr += 12; alt_ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+      ref_ptr += 12; alt_ptr += 12;
 #endif
       offset += STEP_SIZE; /* 128 or 32 */
     }
@@ -20831,7 +20972,8 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
     debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -20944,6 +21086,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
 
   debug(
 	printf("\n\n");
+	printf("Entered mismatches_right with %d max_mismatches\n",max_mismatches);
 	printf("Genome (in mismatches_right):\n");
 	Genome_print_blocks(ref_blocks,left+pos5,left+pos3);
 	printf("\n");
@@ -20972,13 +21115,13 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
     offset = (pos3 - 1) - enddiscard + 32;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_32)(query_shifted
-#ifdef HAVE_SSE2
-			      + endcolumni
-#endif
-			      ,&(ref_blocks[endblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_32)(query_shifted,&(ref_blocks[endblocki_32]),
 			      plusp,genestrand,query_unk_mismatch_local_p);
+#else
+    diff_32 = (block_diff_32)(query_shifted + endcolumni,&(ref_blocks[endblocki_32]),
+			      plusp,genestrand,query_unk_mismatch_local_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20998,8 +21141,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -21016,7 +21158,8 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (startblocki == endblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
 			plusp,genestrand,query_unk_mismatch_local_p);
@@ -21050,11 +21193,11 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
     }
 
     query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[endblocki-12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[endblocki]);
     ptr -= 1; if (endcolumni-- == 0) {ptr -= 8; endcolumni = 3;}
+#else
+    ptr = &(ref_blocks[endblocki-12]);
 #endif
     start = &(ref_blocks[startblocki]);
     offset -= STEP_SIZE; /* 128 or 32 */
@@ -21072,10 +21215,10 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
       }
 
       query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr -= 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr -= 1; if (endcolumni-- == 0) {ptr -= 8; endcolumni = 3;}
+#else
+      ptr -= 12;
 #endif
       offset -= STEP_SIZE; /* 128 or 32 */
     }
@@ -21093,7 +21236,8 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
     debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches));
     return nmismatches;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -21149,13 +21293,13 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
     offset = (pos3 - 1) - enddiscard + 32;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_snp_32)(query_shifted
-#ifdef HAVE_SSE2
-				  + endcolumni
-#endif
-				  ,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_snp_32)(query_shifted,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
 				  plusp,genestrand,query_unk_mismatch_local_p);
+#else
+    diff_32 = (block_diff_snp_32)(query_shifted + endcolumni,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
+				  plusp,genestrand,query_unk_mismatch_local_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -21175,8 +21319,7 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -21192,7 +21335,8 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (startblocki == endblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
 			    plusp,genestrand,query_unk_mismatch_local_p);
@@ -21226,13 +21370,13 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
     }
 
     query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ref_ptr = &(ref_blocks[endblocki-12]);
-    alt_ptr = &(snp_blocks[endblocki-12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ref_ptr = &(ref_blocks[endblocki]);
     alt_ptr = &(snp_blocks[endblocki]);
     ref_ptr -= 1; alt_ptr -= 1; if (endcolumni-- == 0) {ref_ptr -= 8; alt_ptr -= 8; endcolumni = 3;}
+#else
+    ref_ptr = &(ref_blocks[endblocki-12]);
+    alt_ptr = &(snp_blocks[endblocki-12]);
 #endif
     start = &(ref_blocks[startblocki]);
     offset -= STEP_SIZE; /* 128 or 32 */
@@ -21250,10 +21394,10 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
       }
 
       query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ref_ptr -= 12; alt_ptr -= 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ref_ptr -= 1; alt_ptr -= 1; if (endcolumni-- == 0) {ref_ptr -= 8; alt_ptr -= 8; endcolumni = 3;}
+#else
+      ref_ptr -= 12; alt_ptr -= 12;
 #endif
       offset -= STEP_SIZE; /* 128 or 32 */
     }
@@ -21271,7 +21415,8 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
     debug14(if (startblocki_32 == endblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -21359,7 +21504,7 @@ Genome_mismatches_right_trim (int *mismatch_positions, int max_mismatches, Compr
 /* Derived from mismatches_left() */
 int
 Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_compress,
-			    Univcoord_T left, int pos5, int pos3, int mismatch_offset,
+			    Univcoord_T left, int pos5, int pos3,
 			    bool plusp, int genestrand, bool first_read_p) {
 #ifdef DEBUG14
   int answer;
@@ -21375,7 +21520,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
   int startcolumni, endcolumni;
 
 
-  debug(
+  debug5(
 	printf("\n\n");
 	printf("genomic = %s\n",genomic);
 	printf("Genome (in mark_mismatches_ref):\n");
@@ -21392,32 +21537,37 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
   endcolumni = ((left+pos3) % 128) / 32;
   endblocki_32 = endblocki + endcolumni;
 
-  debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
-	       left,pos5,pos3,startblocki,endblocki));
+  debug5(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u, plusp %d, step_size %d\n",
+		left,pos5,pos3,startblocki,endblocki,plusp,STEP_SIZE));
 
   nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
-  debug(printf("Query shifted %d:\n",nshift));
-  debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
+  debug5(printf("Query shifted %d:\n",nshift));
+  debug5(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
   if (endblocki_32 == startblocki_32) {
     startdiscard = (left+pos5) % 32;
     enddiscard = (left+pos3) % 32;
+#if 0
     if (plusp == true) {
-      offset = -startdiscard + pos5 + mismatch_offset;
+      offset = -startdiscard + pos5 /*+ mismatch_offset*/;
     } else {
-      offset = -startdiscard + pos5 - mismatch_offset;
+      offset = -startdiscard + pos5 /*- mismatch_offset*/;
     }
-    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
-
-
-    diff_32 = (block_diff_32)(query_shifted
-#ifdef HAVE_SSE2
-			      + startcolumni
+#else
+    offset = -startdiscard + pos5;
 #endif
-			      ,&(ref_blocks[startblocki_32]),
+    debug5(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_32)(query_shifted,&(ref_blocks[startblocki_32]),
 			      plusp,genestrand,query_unk_mismatch_p);
+#else
+    diff_32 = (block_diff_32)(query_shifted + startcolumni,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -21430,7 +21580,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
       genomic[mismatch_position] = tolower(genomic[mismatch_position]);
       nmismatches++;
     }
-    debug(printf("genomic = %s\n",genomic));
+    debug5(printf("genomic = %s\n",genomic));
 #ifdef DEBUG14
     answer = nmismatches;
     nmismatches = 0;
@@ -21443,28 +21593,32 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
 
     startdiscard = (left+pos5) % STEP_SIZE;
     enddiscard = (left+pos3) % STEP_SIZE;
+#if 0
     if (plusp == true) {
-      offset = -startdiscard + pos5 + mismatch_offset;
+      offset = -startdiscard + pos5 /*+ mismatch_offset*/;
     } else {
-      offset = -startdiscard + pos5 - mismatch_offset;
+      offset = -startdiscard + pos5 /*- mismatch_offset*/;
     }
+#else
+    offset = -startdiscard + pos5;
+#endif
   
-    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+    debug5(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
 #ifndef DEBUG14
   }
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,query_unk_mismatch_p);
@@ -21473,7 +21627,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 
     while (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
-      debug(print_diff_trailing_zeroes(diff,offset));
+      debug5(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
       if (plusp == false) {
 	mismatch_position = (querylength - 1) - mismatch_position;
@@ -21481,7 +21635,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
       genomic[mismatch_position] = tolower(genomic[mismatch_position]);
       nmismatches++;
     }
-    debug(printf("genomic = %s\n",genomic));
+    debug5(printf("genomic = %s\n",genomic));
     debug14(if (endblocki_32 == startblocki) assert(answer == nmismatches));
     return nmismatches;
 
@@ -21495,7 +21649,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 
     while (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
-      debug(print_diff_trailing_zeroes(diff,offset));
+      debug5(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
       if (plusp == false) {
 	mismatch_position = (querylength - 1) - mismatch_position;
@@ -21505,11 +21659,11 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
     }
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[startblocki]);
     ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+    ptr = &(ref_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
@@ -21518,7 +21672,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 
       while (nonzero_p(diff)) {
 	mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
-	debug(print_diff_trailing_zeroes(diff,offset));
+	debug5(print_diff_trailing_zeroes(diff,offset));
 	diff = clear_lowbit(diff,relpos);
 	if (plusp == false) {
 	  mismatch_position = (querylength - 1) - mismatch_position;
@@ -21528,10 +21682,10 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
       }
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+      ptr += 12;
 #endif
       offset += STEP_SIZE; /* 128 or 32 */
     }
@@ -21542,7 +21696,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 
     while (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
-      debug(print_diff_trailing_zeroes(diff,offset));
+      debug5(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
       if (plusp == false) {
 	mismatch_position = (querylength - 1) - mismatch_position;
@@ -21550,11 +21704,12 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
       genomic[mismatch_position] = tolower(genomic[mismatch_position]);
       nmismatches++;
     }
-    debug(printf("genomic = %s\n",genomic));
+    debug5(printf("genomic = %s\n",genomic));
     debug14(if (endblocki_32 == startblocki) assert(answer == nmismatches));
     return nmismatches;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -21562,7 +21717,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 /* Derived from mismatches_left_snps() */
 static int
 mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
-		      Univcoord_T left, int pos5, int pos3, int mismatch_offset,
+		      Univcoord_T left, int pos5, int pos3,
 		      bool plusp, int genestrand, bool first_read_p) {
 #ifdef DEBUG14
   int answer;
@@ -21578,7 +21733,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
   int startcolumni, endcolumni;
 
 
-  debug(
+  debug5(
 	printf("\n\n");
 	printf("genomic = %s\n",genomic);
 	printf("Genome (in mark_mismatches_snps):\n");
@@ -21595,32 +21750,37 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
   endcolumni = ((left+pos3) % 128) / 32;
   endblocki_32 = endblocki + endcolumni;
 
-  debug(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
+  debug5(printf("left = %u, pos5 = %d, pos3 = %d, startblocki = %u, endblocki = %u\n",
 	       left,pos5,pos3,startblocki,endblocki));
 
   nshift = left % STEP_SIZE;
   query_shifted = Compress_shift(query_compress,nshift);
-  debug(printf("Query shifted %d:\n",nshift));
-  debug(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
+  debug5(printf("Query shifted %d:\n",nshift));
+  debug5(Compress_print_blocks(query_shifted,nshift,pos5,pos3));
   query_shifted += (nshift+pos5)/STEP_SIZE*COMPRESS_BLOCKSIZE;
 
   if (endblocki_32 == startblocki_32) {
     startdiscard = (left+pos5) % 32;
     enddiscard = (left+pos3) % 32;
+#if 0
     if (plusp == true) {
-      offset = -startdiscard + pos5 + mismatch_offset;
+      offset = -startdiscard + pos5 /*+ mismatch_offset*/;
     } else {
-      offset = -startdiscard + pos5 - mismatch_offset;
+      offset = -startdiscard + pos5 /*- mismatch_offset*/;
     }
-    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
-
-
-    diff_32 = (block_diff_snp_32)(query_shifted
-#ifdef HAVE_SSE2
-				  + startcolumni
+#else
+    offset = -startdiscard + pos5;
 #endif
-				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+    debug5(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_snp_32)(query_shifted,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
 				  plusp,genestrand,query_unk_mismatch_p);
+#else
+    diff_32 = (block_diff_snp_32)(query_shifted + startcolumni,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -21633,7 +21793,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
       genomic[mismatch_position] = tolower(genomic[mismatch_position]);
       nmismatches_both++;
     }
-    debug(printf("genomic = %s\n",genomic));
+    debug5(printf("genomic = %s\n",genomic));
 #ifdef DEBUG14
     answer = nmismatches_both;
     nmismatches_both = 0;
@@ -21646,28 +21806,32 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
 
     startdiscard = (left+pos5) % STEP_SIZE;
     enddiscard = (left+pos3) % STEP_SIZE;
+#if 0
     if (plusp == true) {
-      offset = -startdiscard + pos5 + mismatch_offset;
+      offset = -startdiscard + pos5 /*+ mismatch_offset*/;
     } else {
-      offset = -startdiscard + pos5 - mismatch_offset;
+      offset = -startdiscard + pos5 /*- mismatch_offset*/;
     }
+#else
+    offset = -startdiscard + pos5;
+#endif
   
-    debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
+    debug5(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
 #ifndef DEBUG14
   }
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN)|| !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,query_unk_mismatch_p);
@@ -21676,7 +21840,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 
     while (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
-      debug(print_diff_trailing_zeroes(diff,offset));
+      debug5(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
       if (plusp == false) {
 	mismatch_position = (querylength - 1) - mismatch_position;
@@ -21684,7 +21848,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
       genomic[mismatch_position] = tolower(genomic[mismatch_position]);
       nmismatches_both++;
     }
-    debug(printf("genomic = %s\n",genomic));
+    debug5(printf("genomic = %s\n",genomic));
     debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
 
@@ -21698,7 +21862,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 
     while (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
-      debug(print_diff_trailing_zeroes(diff,offset));
+      debug5(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
       if (plusp == false) {
 	mismatch_position = (querylength - 1) - mismatch_position;
@@ -21708,13 +21872,13 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
     }
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ref_ptr = &(ref_blocks[startblocki+12]);
-    alt_ptr = &(snp_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ref_ptr = &(ref_blocks[startblocki]);
     alt_ptr = &(snp_blocks[startblocki]);
     ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+    ref_ptr = &(ref_blocks[startblocki+12]);
+    alt_ptr = &(snp_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
@@ -21723,7 +21887,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 
       while (nonzero_p(diff)) {
 	mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
-	debug(print_diff_trailing_zeroes(diff,offset));
+	debug5(print_diff_trailing_zeroes(diff,offset));
 	diff = clear_lowbit(diff,relpos);
 	if (plusp == false) {
 	  mismatch_position = (querylength - 1) - mismatch_position;
@@ -21733,10 +21897,10 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
       }
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ref_ptr += 12; alt_ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+      ref_ptr += 12; alt_ptr += 12;
 #endif
       offset += STEP_SIZE; /* 128 or 32 */
     }
@@ -21747,7 +21911,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 
     while (nonzero_p(diff)) {
       mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
-      debug(print_diff_trailing_zeroes(diff,offset));
+      debug5(print_diff_trailing_zeroes(diff,offset));
       diff = clear_lowbit(diff,relpos);
       if (plusp == false) {
 	mismatch_position = (querylength - 1) - mismatch_position;
@@ -21755,11 +21919,12 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
       genomic[mismatch_position] = tolower(genomic[mismatch_position]);
       nmismatches_both++;
     }
-    debug(printf("genomic = %s\n",genomic));
+    debug5(printf("genomic = %s\n",genomic));
     debug14(if (endblocki_32 == startblocki_32) assert(answer == nmismatches_both));
     return nmismatches_both;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -21767,14 +21932,14 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 
 int
 Genome_mark_mismatches (char *genomic, int querylength, Compress_T query_compress,
-			Univcoord_T left, int pos5, int pos3, int mismatch_offset,
+			Univcoord_T left, int pos5, int pos3,
 			bool plusp, int genestrand, bool first_read_p) {
 
 #if 0
   if (dibasep) {
     fprintf(stderr,"Not implemented\n");
 #if 0
-    debug(printf("Dibase_mismatches_left from %u+%d to %u+%d:\n",left,pos5,left,pos3));
+    debug5(printf("Dibase_mismatches_left from %u+%d to %u+%d:\n",left,pos5,left,pos3));
 
     nmismatches = Dibase_mismatches_left(&(*mismatch_positions),&(*colordiffs),max_mismatches,query,
 					 pos5,pos3,/*startpos*/left+pos5,/*endpos*/left+pos3);
@@ -21786,10 +21951,10 @@ Genome_mark_mismatches (char *genomic, int querylength, Compress_T query_compres
 
   if (snp_blocks == NULL) {
     return Genome_mark_mismatches_ref(&(*genomic),querylength,query_compress,
-				      left,pos5,pos3,mismatch_offset,plusp,genestrand,first_read_p);
+				      left,pos5,pos3,plusp,genestrand,first_read_p);
   } else {
     return mark_mismatches_snps(&(*genomic),querylength,query_compress,
-				left,pos5,pos3,mismatch_offset,plusp,genestrand,first_read_p);
+				left,pos5,pos3,plusp,genestrand,first_read_p);
   }
 }
 
@@ -21848,13 +22013,13 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     offset = (pos3 - 1) - enddiscard + 32;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_32)(query_shifted
-#ifdef HAVE_SSE2
-			      + endcolumni
-#endif
-			      ,&(ref_blocks[endblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_32)(query_shifted,&(ref_blocks[endblocki_32]),
 			      plusp,genestrand,query_unk_mismatch_p);
+#else
+    diff_32 = (block_diff_32)(query_shifted + endcolumni,&(ref_blocks[endblocki_32]),
+			      plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_end_32(diff_32,enddiscard); /* puts 0 (matches) at end */
     diff_32 = set_start_32(diff_32,startdiscard);  /* puts 1 (mismatches) at start */
 
@@ -21888,8 +22053,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -21906,7 +22070,8 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (startblocki == endblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
 			plusp,genestrand,query_unk_mismatch_p);
@@ -22003,7 +22168,27 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    p = 3*(diff >> 16);
+    bestscore = score_high[p];
+    trimpos = offset - score_high[p+1];
+    totalscore = score_high[p+2];
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*(diff & 0x0000FFFF);
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+#else
     p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     bestscore = score_high[p];
     trimpos = offset - score_high[p+1];
@@ -22081,39 +22266,42 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
-
-#else
-    p = 3*(diff >> 16);
-    bestscore = score_high[p];
-    trimpos = offset - score_high[p+1];
-    totalscore = score_high[p+2];
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(diff & 0x0000FFFF);
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
 #endif
 
     query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[endblocki-12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[endblocki]);
     ptr -= 1; if (endcolumni-- == 0) {ptr -= 8; endcolumni = 3;}
+#else
+    ptr = &(ref_blocks[endblocki-12]);
 #endif
     start = &(ref_blocks[startblocki]);
     while (ptr > start) {
       diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+      p = 3*(diff >> 16);
+      if ((score = score_high[p] + totalscore) > bestscore) {
+	bestscore = score;
+	trimpos = offset - score_high[p+1];
+      }
+      totalscore += score_high[p+2];
+      debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		   diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+      offset -= 16;
+
+      p = 3*(diff & 0x0000FFFF);
+      if ((score = score_high[p] + totalscore) > bestscore) {
+	bestscore = score;
+	trimpos = offset - score_high[p+1];
+      }
+      totalscore += score_high[p+2];
+      debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		   diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+      offset -= 16;
+
+#else
       p = 3*((unsigned short) _mm_extract_epi16(diff,7));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
@@ -22193,34 +22381,13 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		   0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
-
-#else
-      p = 3*(diff >> 16);
-      if ((score = score_high[p] + totalscore) > bestscore) {
-	bestscore = score;
-	trimpos = offset - score_high[p+1];
-      }
-      totalscore += score_high[p+2];
-      debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-      offset -= 16;
-
-      p = 3*(diff & 0x0000FFFF);
-      if ((score = score_high[p] + totalscore) > bestscore) {
-	bestscore = score;
-	trimpos = offset - score_high[p+1];
-      }
-      totalscore += score_high[p+2];
-      debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-      offset -= 16;
 #endif
 
       query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr -= 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr -= 1; if (endcolumni-- == 0) {ptr -= 8; endcolumni = 3;}
+#else
+      ptr -= 12;
 #endif
     }
 
@@ -22228,7 +22395,29 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
     diff = set_start(diff,startdiscard); /* puts 1 (mismatches) at start */
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    p = 3*(diff >> 16);
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*(diff & 0x0000FFFF);
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    /* totalscore += score_high[p+2]; */
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    /* offset -= 16; */
+
+#else
     p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
@@ -22308,33 +22497,13 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
-
-#else
-    p = 3*(diff >> 16);
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(diff & 0x0000FFFF);
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    /* totalscore += score_high[p+2]; */
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    /* offset -= 16; */
 #endif
     
     debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos - 1));
     return (trimpos - 1);	/* trimpos-1 is on side of mismatch */
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -22390,13 +22559,13 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
     offset = (pos3 - 1) - enddiscard + 32;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_snp_32)(query_shifted
-#ifdef HAVE_SSE2
-				  + endcolumni
-#endif
-				  ,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_snp_32)(query_shifted,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
 				  plusp,genestrand,query_unk_mismatch_p);
+#else
+    diff_32 = (block_diff_snp_32)(query_shifted + endcolumni,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
+				  plusp,genestrand,query_unk_mismatch_p);
+#endif
 
     diff_32 = clear_end_32(diff_32,enddiscard); /* puts 0 (matches) at end */
     diff_32 = set_start_32(diff_32,startdiscard);  /* puts 1 (mismatches) at start */
@@ -22431,8 +22600,7 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -22448,7 +22616,8 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (startblocki == endblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
 			plusp,genestrand,query_unk_mismatch_p);
@@ -22546,7 +22715,27 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 			    plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    p = 3*(diff >> 16);
+    bestscore = score_high[p];
+    trimpos = offset - score_high[p+1];
+    totalscore = score_high[p+2];
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*(diff & 0x0000FFFF);
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+#else
     p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     bestscore = score_high[p];
     trimpos = offset - score_high[p+1];
@@ -22624,41 +22813,44 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
-
-#else
-    p = 3*(diff >> 16);
-    bestscore = score_high[p];
-    trimpos = offset - score_high[p+1];
-    totalscore = score_high[p+2];
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(diff & 0x0000FFFF);
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
 #endif
 
     query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ref_ptr = &(ref_blocks[endblocki-12]);
-    alt_ptr = &(snp_blocks[endblocki-12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ref_ptr = &(ref_blocks[endblocki]);
     alt_ptr = &(snp_blocks[endblocki]);
     ref_ptr -= 1; alt_ptr -= 1; if (endcolumni-- == 0) {ref_ptr -= 8; alt_ptr -= 8; endcolumni = 3;}
+#else
+    ref_ptr = &(ref_blocks[endblocki-12]);
+    alt_ptr = &(snp_blocks[endblocki-12]);
 #endif
     start = &(ref_blocks[startblocki]);
     while (ref_ptr > start) {
       diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+      p = 3*(diff >> 16);
+      if ((score = score_high[p] + totalscore) > bestscore) {
+	bestscore = score;
+	trimpos = offset - score_high[p+1];
+      }
+      totalscore += score_high[p+2];
+      debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		   diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+      offset -= 16;
+
+      p = 3*(diff & 0x0000FFFF);
+      if ((score = score_high[p] + totalscore) > bestscore) {
+	bestscore = score;
+	trimpos = offset - score_high[p+1];
+      }
+      totalscore += score_high[p+2];
+      debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		   diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+      offset -= 16;
+
+#else
       p = 3*((unsigned short) _mm_extract_epi16(diff,7));
       if ((score = score_high[p] + totalscore) > bestscore) {
 	bestscore = score;
@@ -22738,34 +22930,13 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		   0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset -= 16;
-
-#else
-      p = 3*(diff >> 16);
-      if ((score = score_high[p] + totalscore) > bestscore) {
-	bestscore = score;
-	trimpos = offset - score_high[p+1];
-      }
-      totalscore += score_high[p+2];
-      debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-      offset -= 16;
-
-      p = 3*(diff & 0x0000FFFF);
-      if ((score = score_high[p] + totalscore) > bestscore) {
-	bestscore = score;
-	trimpos = offset - score_high[p+1];
-      }
-      totalscore += score_high[p+2];
-      debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-      offset -= 16;
 #endif
 
       query_shifted -= COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ref_ptr -= 12; alt_ptr -= 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ref_ptr -= 1; alt_ptr -= 1; if (endcolumni-- == 0) {ref_ptr -= 8; alt_ptr -= 8; endcolumni = 3;}
+#else
+      ref_ptr -= 12; alt_ptr -= 12;
 #endif
     }
 
@@ -22774,7 +22945,29 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 
     diff = set_start(diff,startdiscard); /* puts 1 (mismatches) at start */
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    p = 3*(diff >> 16);
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    totalscore += score_high[p+2];
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset -= 16;
+
+    p = 3*(diff & 0x0000FFFF);
+    if ((score = score_high[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset - score_high[p+1];
+    }
+    /* totalscore += score_high[p+2]; */
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    /* offset -= 16; */
+
+#else
     p = 3*((unsigned short) _mm_extract_epi16(diff,7));
     if ((score = score_high[p] + totalscore) > bestscore) {
       bestscore = score;
@@ -22854,33 +23047,13 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		 0,(unsigned short) _mm_extract_epi16(diff,0),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset -= 16;
-
-#else
-    p = 3*(diff >> 16);
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    totalscore += score_high[p+2];
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset -= 16;
-
-    p = 3*(diff & 0x0000FFFF);
-    if ((score = score_high[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset - score_high[p+1];
-    }
-    /* totalscore += score_high[p+2]; */
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    /* offset -= 16; */
 #endif
 
     debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos - 1));
     return (trimpos - 1);	/* trimpos-1 is on side of mismatch */
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -22937,14 +23110,13 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     offset = -startdiscard + pos5;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_32)(query_shifted
-#ifdef HAVE_SSE2
-			      + startcolumni
-#endif
-			      ,&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_32)(query_shifted,&(ref_blocks[startblocki_32]),
 			      plusp,genestrand,query_unk_mismatch_p);
-
+#else
+    diff_32 = (block_diff_32)(query_shifted + startcolumni,&(ref_blocks[startblocki_32]),
+			      plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard); /* puts 0 (matches) at start */
     diff_32 = set_end_32(diff_32,enddiscard);  /* puts 1 (mismatches) at end */
 
@@ -22978,8 +23150,7 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -22995,7 +23166,8 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
 			plusp,genestrand,query_unk_mismatch_p);
@@ -23093,7 +23265,27 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
     debug(printf("clearing start %08X\n",clear_start_mask(startdiscard)));
 
-#ifdef HAVE_SSE2
+      
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    p = 3*(diff & 0x0000FFFF);
+    bestscore = score_low[p];
+    trimpos = offset + score_low[p+1];
+    totalscore = score_low[p+2];
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*(diff >> 16);
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+#else
     p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     bestscore = score_low[p];
     trimpos = offset + score_low[p+1];
@@ -23171,39 +23363,42 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 	      7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
-      
-#else
-    p = 3*(diff & 0x0000FFFF);
-    bestscore = score_low[p];
-    trimpos = offset + score_low[p+1];
-    totalscore = score_low[p+2];
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(diff >> 16);
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
 #endif
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ptr = &(ref_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ptr = &(ref_blocks[startblocki]);
     ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+    ptr = &(ref_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     while (ptr < end) {
       diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+      p = 3*(diff & 0x0000FFFF);
+      if ((score = score_low[p] + totalscore) > bestscore) {
+	bestscore = score;
+	trimpos = offset + score_low[p+1];
+      }
+      totalscore += score_low[p+2];
+      debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		   diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+      offset += 16;
+
+      p = 3*(diff >> 16);
+      if ((score = score_low[p] + totalscore) > bestscore) {
+	bestscore = score;
+	trimpos = offset + score_low[p+1];
+      }
+      totalscore += score_low[p+2];
+      debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		   diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+      offset += 16;
+
+#else
       p = 3*((unsigned short) _mm_extract_epi16(diff,0));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
@@ -23283,34 +23478,13 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		   7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
-
-#else
-      p = 3*(diff & 0x0000FFFF);
-      if ((score = score_low[p] + totalscore) > bestscore) {
-	bestscore = score;
-	trimpos = offset + score_low[p+1];
-      }
-      totalscore += score_low[p+2];
-      debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-      offset += 16;
-
-      p = 3*(diff >> 16);
-      if ((score = score_low[p] + totalscore) > bestscore) {
-	bestscore = score;
-	trimpos = offset + score_low[p+1];
-      }
-      totalscore += score_low[p+2];
-      debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-      offset += 16;
 #endif
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ptr += 1; if (++startcolumni == 4) {ptr += 8; startcolumni = 0;}
+#else
+      ptr += 12;
 #endif
     }
 
@@ -23318,7 +23492,29 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
     diff = set_end(diff,enddiscard); /* puts 1 (mismatches) at end */
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    p = 3*(diff & 0x0000FFFF);
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*(diff >> 16);
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    /* totalscore += score_low[p+2]; */
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    /* offset += 16; */
+
+#else
     p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
@@ -23398,33 +23594,13 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
-
-#else
-    p = 3*(diff & 0x0000FFFF);
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(diff >> 16);
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    /* totalscore += score_low[p+2]; */
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    /* offset += 16; */
 #endif
     
     debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos + 1));
     return (trimpos + 1);	/* trimpos+1 is on side of mismatch */
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }
@@ -23481,14 +23657,13 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
     offset = -startdiscard + pos5;
     debug(printf("nshift = %d, startdiscard = %u, enddiscard = %u\n",nshift,startdiscard,enddiscard));
 
-
-    diff_32 = (block_diff_snp_32)(query_shifted
-#ifdef HAVE_SSE2
-				  + startcolumni
-#endif
-				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    diff_32 = (block_diff_snp_32)(query_shifted,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
 				  plusp,genestrand,query_unk_mismatch_p);
-
+#else
+    diff_32 = (block_diff_snp_32)(query_shifted + startcolumni,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
+				  plusp,genestrand,query_unk_mismatch_p);
+#endif
     diff_32 = clear_start_32(diff_32,startdiscard); /* puts 0 (matches) at start */
     diff_32 = set_end_32(diff_32,enddiscard);  /* puts 1 (mismatches) at end */
 
@@ -23522,8 +23697,7 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
   else {
 #endif
 
-#ifdef HAVE_SSE2
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     startblocki = startblocki_32;
     endblocki = endblocki_32;
 #endif
@@ -23538,7 +23712,8 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
 #endif  
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
 			    plusp,genestrand,query_unk_mismatch_p);
@@ -23636,7 +23811,27 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
 
     diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    p = 3*(diff & 0x0000FFFF);
+    bestscore = score_low[p];
+    trimpos = offset + score_low[p+1];
+    totalscore = score_low[p+2];
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*(diff >> 16);
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+#else
     p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     bestscore = score_low[p];
     trimpos = offset + score_low[p+1];
@@ -23714,41 +23909,44 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
-
-#else
-    p = 3*(diff & 0x0000FFFF);
-    bestscore = score_low[p];
-    trimpos = offset + score_low[p+1];
-    totalscore = score_low[p+2];
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(diff >> 16);
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
 #endif
 
     query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-    ref_ptr = &(ref_blocks[startblocki+12]);
-    alt_ptr = &(snp_blocks[startblocki+12]);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
     ref_ptr = &(ref_blocks[startblocki]);
     alt_ptr = &(snp_blocks[startblocki]);
     ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+    ref_ptr = &(ref_blocks[startblocki+12]);
+    alt_ptr = &(snp_blocks[startblocki+12]);
 #endif
     end = &(ref_blocks[endblocki]);
     while (ref_ptr < end) {
       diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+      p = 3*(diff & 0x0000FFFF);
+      if ((score = score_low[p] + totalscore) > bestscore) {
+	bestscore = score;
+	trimpos = offset + score_low[p+1];
+      }
+      totalscore += score_low[p+2];
+      debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		   diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+      offset += 16;
+
+      p = 3*(diff >> 16);
+      if ((score = score_low[p] + totalscore) > bestscore) {
+	bestscore = score;
+	trimpos = offset + score_low[p+1];
+      }
+      totalscore += score_low[p+2];
+      debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		   diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+      offset += 16;
+
+#else
       p = 3*((unsigned short) _mm_extract_epi16(diff,0));
       if ((score = score_low[p] + totalscore) > bestscore) {
 	bestscore = score;
@@ -23828,34 +24026,13 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
       debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		   7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
       offset += 16;
-
-#else
-      p = 3*(diff & 0x0000FFFF);
-      if ((score = score_low[p] + totalscore) > bestscore) {
-	bestscore = score;
-	trimpos = offset + score_low[p+1];
-      }
-      totalscore += score_low[p+2];
-      debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-      offset += 16;
-
-      p = 3*(diff >> 16);
-      if ((score = score_low[p] + totalscore) > bestscore) {
-	bestscore = score;
-	trimpos = offset + score_low[p+1];
-      }
-      totalscore += score_low[p+2];
-      debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		   diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-      offset += 16;
 #endif
 
       query_shifted += COMPRESS_BLOCKSIZE;
-#ifdef HAVE_SSE2
-      ref_ptr += 12; alt_ptr += 12;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
       ref_ptr += 1; alt_ptr += 1; if (++startcolumni == 4) {ref_ptr += 8; alt_ptr += 8; startcolumni = 0;}
+#else
+      ref_ptr += 12; alt_ptr += 12;
 #endif
     }
 
@@ -23864,7 +24041,29 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
 
     diff = set_end(diff,enddiscard); /* puts 1 (mismatches) at end */
 
-#ifdef HAVE_SSE2
+
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+    p = 3*(diff & 0x0000FFFF);
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    totalscore += score_low[p+2];
+    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    offset += 16;
+
+    p = 3*(diff >> 16);
+    if ((score = score_low[p] + totalscore) > bestscore) {
+      bestscore = score;
+      trimpos = offset + score_low[p+1];
+    }
+    /* totalscore += score_low[p+2]; */
+    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
+		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
+    /* offset += 16; */
+
+#else
     p = 3*((unsigned short) _mm_extract_epi16(diff,0));
     if ((score = score_low[p] + totalscore) > bestscore) {
       bestscore = score;
@@ -23944,33 +24143,13 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
     debug(printf("diff piece %d %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
 		 7,(unsigned short) _mm_extract_epi16(diff,7),score_high[p],score_high[p+1],offset,trimpos,totalscore));
     offset += 16;
-
-#else
-    p = 3*(diff & 0x0000FFFF);
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    totalscore += score_low[p+2];
-    debug(printf("diff low %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff & 0x0000FFFF,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    offset += 16;
-
-    p = 3*(diff >> 16);
-    if ((score = score_low[p] + totalscore) > bestscore) {
-      bestscore = score;
-      trimpos = offset + score_low[p+1];
-    }
-    /* totalscore += score_low[p+2]; */
-    debug(printf("diff high %04X => bestscore %d at pos %d, offset %d, trimpos %d, totalscore %d\n",
-		 diff >> 16,score_high[p],score_high[p+1],offset,trimpos,totalscore));
-    /* offset += 16; */
 #endif
 
     debug14(if (startblocki_32 == endblocki_32) assert(answer == trimpos + 1));
     return (trimpos + 1);	/* trimpos+1 is on side of mismatch */
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+#else
   }
 #endif
 }

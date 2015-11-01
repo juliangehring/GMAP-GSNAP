@@ -1,6 +1,7 @@
-/* $Id: gregion.h 145990 2014-08-25 21:47:32Z twu $ */
+/* $Id: gregion.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef GREGION_INCLUDED
 #define GREGION_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "types.h"

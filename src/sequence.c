@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sequence.c 132731 2014-04-08 21:19:57Z twu $";
+static char rcsid[] = "$Id: sequence.c 170023 2015-07-17 16:47:21Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,7 +15,7 @@ static char rcsid[] = "$Id: sequence.c 132731 2014-04-08 21:19:57Z twu $";
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>		/* For rindex */
-#include <ctype.h>		/* For iscntrl and isspace */
+#include <ctype.h>		/* For iscntrl, isspace, and toupper */
 
 #ifdef HAVE_ZLIB
 #include <zlib.h>
@@ -58,8 +58,6 @@ static char rcsid[] = "$Id: sequence.c 132731 2014-04-08 21:19:57Z twu $";
  *          ^trimstart
  *   ^contents
  *
- *   Trimming is determined by Oligoindex_set_inquery(), based on
- *   finding unique 8-mers on each end.
  ************************************************************************/
 
 
@@ -1203,7 +1201,7 @@ Sequence_endstream () {
 
 
 T
-Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
+Sequence_read (int *nextchar, FILE *input) {
   T new;
   int fulllength, skiplength;
   char *pointer1, *pointer2a, *pointer2b;
@@ -1253,11 +1251,9 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
   }
 
   if (skiplength > 0) {
-    if (maponlyp == false) {
-      fprintf(stderr,"Warning: cDNA sequence length of %d exceeds maximum length of %d.  Truncating %d chars in middle.\n",
-	      fulllength+skiplength,MAXSEQLEN,skiplength);
-      fprintf(stderr,"  (For long sequences, perhaps you want maponly mode, by providing the '-1' flag.)\n");
-    }
+    fprintf(stderr,"Warning: cDNA sequence length of %d exceeds maximum length of %d.  Truncating %d chars in middle.\n",
+	    fulllength+skiplength,MAXSEQLEN,skiplength);
+    fprintf(stderr,"  (For long sequences, perhaps you want maponly mode, by providing the '-1' flag.)\n");
   }
 
 #ifdef PMAP
@@ -1342,7 +1338,7 @@ Sequence_read (int *nextchar, FILE *input, bool maponlyp) {
 
 
 T
-Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp) {
+Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles) {
   T queryseq;
 
   while (1) {
@@ -1371,7 +1367,7 @@ Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles
 	}
       }
     }
-    if ((queryseq = Sequence_read(&(*nextchar),*input,maponlyp)) != NULL) {
+    if ((queryseq = Sequence_read(&(*nextchar),*input)) != NULL) {
       return queryseq;
     }
   }
@@ -1473,8 +1469,9 @@ Sequence_read_unlimited (int *nextchar, FILE *input) {
   }
 }
 
+
 void
-Sequence_print_digest (FILE *fp, T this) {
+Sequence_print_digest (Filestring_T fp, T this) {
   unsigned char *digest;
 
   digest = MD5_compute((unsigned char *) this->contents,this->fulllength);
@@ -1485,30 +1482,32 @@ Sequence_print_digest (FILE *fp, T this) {
 
 /* Calling procedure needs to print the initial ">", if desired */
 void
-Sequence_print_header (FILE *fp, T this, bool checksump) {
+Sequence_print_header (Filestring_T fp, T this, bool checksump) {
 
   if (this->acc == NULL) {
-    fprintf(fp,"NO_HEADER");
+    FPRINTF(fp,"NO_HEADER");
   } else {
     if (this->restofheader == NULL || this->restofheader[0] == '\0') {
-      fprintf(fp,"%s",this->acc);
+      FPRINTF(fp,"%s",this->acc);
     } else {
-      fprintf(fp,"%s %s",this->acc,this->restofheader);
+      FPRINTF(fp,"%s %s",this->acc,this->restofheader);
     }
 
     if (checksump == true) {
-      fprintf(fp," md5:");
+      FPRINTF(fp," md5:");
       Sequence_print_digest(fp,this);
     }
   }
 
-  fprintf(fp,"\n");
+  FPRINTF(fp,"\n");
 
   return;
 }
 
+#if 0
+/* Used by revcomp.c */
 void
-Sequence_print_header_revcomp (T this) {
+Sequence_stdout_header_revcomp (T this) {
   if (this->restofheader == NULL || this->restofheader[0] == '\0') {
     printf(">%s",this->acc);
   } else {
@@ -1518,11 +1517,11 @@ Sequence_print_header_revcomp (T this) {
   printf("\n");
   return;
 }
-
+#endif
 
 
 void
-Sequence_print (FILE *fp, T this, bool uppercasep, int wraplength, bool trimmedp) {
+Sequence_print (Filestring_T fp, T this, bool uppercasep, int wraplength, bool trimmedp) {
   int i = 0, pos, start, end;
   char uppercaseCode[128] = UPPERCASE_STD;
 
@@ -1536,28 +1535,65 @@ Sequence_print (FILE *fp, T this, bool uppercasep, int wraplength, bool trimmedp
 
   if (uppercasep == true) {
     for (pos = start; pos < end; pos++, i++) {
-      putc(uppercaseCode[(int) this->contents[i]],fp);
+      PUTC(uppercaseCode[(int) this->contents[i]],fp);
       if ((i+1) % wraplength == 0) {
-	putc('\n',fp);
+	PUTC('\n',fp);
       }
     }
   } else {
     for (pos = start; pos < end; pos++, i++) {
-      putc(this->contents[i],fp);
+      PUTC(this->contents[i],fp);
       if ((i+1) % wraplength == 0) {
-	putc('\n',fp);
+	PUTC('\n',fp);
       }
     }
   }
   if (i % wraplength != 0) {
-    putc('\n',fp);
+    PUTC('\n',fp);
   }
+
   return;
 }
 
 
 void
-Sequence_print_alt (T ref, T alt, T snp, bool uppercasep, int wraplength) {
+Sequence_stdout (T this, bool uppercasep, int wraplength, bool trimmedp) {
+  int i = 0, pos, start, end;
+  char uppercaseCode[128] = UPPERCASE_STD;
+
+  if (trimmedp == true) {
+    start = this->trimstart;
+    end = this->trimend;
+  } else {
+    start = 0;
+    end = this->fulllength;
+  }
+
+  if (uppercasep == true) {
+    for (pos = start; pos < end; pos++, i++) {
+      putchar(uppercaseCode[(int) this->contents[i]]);
+      if ((i+1) % wraplength == 0) {
+	putchar('\n');
+      }
+    }
+  } else {
+    for (pos = start; pos < end; pos++, i++) {
+      putchar(this->contents[i]);
+      if ((i+1) % wraplength == 0) {
+	putchar('\n');
+      }
+    }
+  }
+  if (i % wraplength != 0) {
+    putchar('\n');
+  }
+
+  return;
+}
+
+
+void
+Sequence_stdout_alt (T ref, T alt, T snp, bool uppercasep, int wraplength) {
   int i = 0, pos, start, end;
   char uppercaseCode[128] = UPPERCASE_STD;
 
@@ -1603,7 +1639,7 @@ Sequence_print_alt (T ref, T alt, T snp, bool uppercasep, int wraplength) {
 
 
 void
-Sequence_print_two (T ref, T alt, bool uppercasep, int wraplength) {
+Sequence_stdout_two (T ref, T alt, bool uppercasep, int wraplength) {
   int i = 0, pos, pos2, startpos, end;
   char uppercaseCode[128] = UPPERCASE_STD;
 
@@ -1693,7 +1729,7 @@ Sequence_print_two (T ref, T alt, bool uppercasep, int wraplength) {
 
 
 void
-Sequence_print_raw (T this) {
+Sequence_stdout_raw (T this) {
   int i = 0, pos, start, end;
 
   start = 0;
@@ -1701,6 +1737,44 @@ Sequence_print_raw (T this) {
 
   for (pos = start; pos < end; pos++, i++) {
     printf("%d\n",(int) this->contents[i]);
+  }
+  return;
+}
+
+void
+Sequence_stdout_stream_chars (T this) {
+  int i = 0, pos, start, end;
+
+  start = 0;
+  end = this->fulllength;
+
+  for (pos = start; pos < end; pos++, i++) {
+    switch (toupper(this->contents[i])) {
+    case 'A': putchar('A'); break;
+    case 'C': putchar('C'); break;
+    case 'G': putchar('G'); break;
+    case 'T': putchar('T'); break;
+    default: putchar('X');
+    }
+  }
+  return;
+}
+
+void
+Sequence_stdout_stream_ints (T this) {
+  int i = 0, pos, start, end;
+
+  start = 0;
+  end = this->fulllength;
+
+  for (pos = start; pos < end; pos++, i++) {
+    switch (toupper(this->contents[i])) {
+    case 'A': putchar(0); break;
+    case 'C': putchar(1); break;
+    case 'G': putchar(2); break;
+    case 'T': putchar(3); break;
+    default: putchar(4);
+    }
   }
   return;
 }

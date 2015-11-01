@@ -1,4 +1,4 @@
-/* $Id: uintlist.h 148721 2014-09-24 00:45:45Z twu $ */
+/* $Id: uintlist.h 166641 2015-05-29 21:13:04Z twu $ */
 #ifndef UINTLIST_INCLUDED
 #define UINTLIST_INCLUDED
 
@@ -25,6 +25,10 @@ extern T
 Uintlist_reverse (T list);
 extern int 
 Uintlist_length (T list);
+extern UINT4
+Uintlist_max (T list);
+extern UINT4
+Uintlist_min (T list);
 extern UINT4 *
 Uintlist_to_array (int *n, T list);
 extern void

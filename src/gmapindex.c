@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 167265 2015-06-11 00:04:50Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -81,7 +81,7 @@ typedef Tableuint_T Table_chrpos_T;
 
 /* Program variables */
 typedef enum {NONE, AUXFILES, GENOME, UNSHUFFLE, COUNT, OFFSETS, POSITIONS, SUFFIX_ARRAY, LCP_CHILD,
-	      ARRAY_UNCOMPRESS, CHILD_UNCOMPRESS} Action_T;
+	      COMPRESSED_SUFFIX_ARRAY, ARRAY_UNCOMPRESS, CHILD_UNCOMPRESS} Action_T;
 static Action_T action = NONE;
 static char *sourcedir = ".";
 static char *destdir = ".";
@@ -1044,6 +1044,7 @@ int
 main (int argc, char *argv[]) {
   int ncontigs;
   Table_T accsegmentpos_table;
+  int shmid;
 
   FILE *fp;
   char *key, **keys, chrname[1024], chrname_alt[1024], Buffer[1024];
@@ -1060,7 +1061,11 @@ main (int argc, char *argv[]) {
   char *chromosomefile, *iitfile, *positionsfile_high, *positionsfile_low, interval_char;
   char *sarrayfile, *lcpexcfile, *lcpguidefile;
   char *rankfile, *permuted_sarray_file; /* temporary files */
-  char *childbytesfile, *childexcfile, *childguidefile;
+
+  /* For compressed suffix array */
+  char *csaptrfiles[5], *csacompfiles[5], *sasampleqfile, *sasamplesfile, *saindex0file;
+
+  char *childexcfile, *childguidefile;
   char *lcpchilddcfile;
 #ifdef USE_SEPARATE_BUCKETS
   char *indexiptrsfile, *indexicompfile, *indexjptrsfile, *indexjcompfile;
@@ -1096,7 +1101,7 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   char *string;
 
-  while ((c = getopt(argc,argv,"F:D:d:z:k:q:ArlGUNHOPSLXYWw:e:Ss:n:m9")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:z:k:q:ArlGUNHOPSLCXYWw:e:Ss:n:m9")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
@@ -1130,6 +1135,7 @@ main (int argc, char *argv[]) {
     case 'P': action = POSITIONS; break;
     case 'S': action = SUFFIX_ARRAY; break;
     case 'L': action = LCP_CHILD; break;
+    case 'C': action = COMPRESSED_SUFFIX_ARRAY; break;
     case 'X': action = ARRAY_UNCOMPRESS; break;
     case 'Y': action = CHILD_UNCOMPRESS; break;
     case 'W': writefilep = true; break;
@@ -1163,8 +1169,8 @@ main (int argc, char *argv[]) {
 
     }
   }
-  argc -= (optind - 1);
-  argv += (optind - 1);
+  argc -= optind;
+  argv += optind;
 
   if (index1interval == 3) {
     interval_char = '3';
@@ -1365,8 +1371,15 @@ main (int argc, char *argv[]) {
 #endif
 
   } else if (action == OFFSETS) {
-    /* Usage: cat <genomefile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -O
+    /* Usage: gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -O <genomefile>
        Creates <destdir>/<dbname>.idxoffsets */
+
+    if (argc == 0) {
+      fp = stdin;
+    } else if ((fp = fopen(argv[0],"rb")) == NULL) {
+      fprintf(stderr,"Could not open file %s\n",argv[0]);
+      exit(9);
+    }
 
     chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
@@ -1384,7 +1397,7 @@ main (int argc, char *argv[]) {
       }
       fprintf(stderr,"\n");
       
-      Indexdb_write_offsets(destdir,interval_char,stdin,chromosome_iit,
+      Indexdb_write_offsets(destdir,interval_char,fp,chromosome_iit,
 			    index1part,index1interval,
 			    genome_lc_p,fileroot,mask_lowercase_p,compression_types);
     } else {
@@ -1394,17 +1407,28 @@ main (int argc, char *argv[]) {
       }
       fprintf(stderr,"\n");
       
-      Indexdb_write_offsets_huge(destdir,interval_char,stdin,chromosome_iit,
+      Indexdb_write_offsets_huge(destdir,interval_char,fp,chromosome_iit,
 				 index1part,index1interval,
 				 genome_lc_p,fileroot,mask_lowercase_p,compression_types);
+    }
+
+    if (argc > 0) {
+      fclose(fp);
     }
 
     Univ_IIT_free(&chromosome_iit);
 
   } else if (action == POSITIONS) {
-    /* Usage: cat <genomefile> | gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -P
+    /* Usage: gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -P <genomefile>
        Requires <sourcedir>/<dbname>.idxoffsets.
        Creates <destdir>/<dbname>.idxpositions */
+
+    if (argc == 0) {
+      fp = stdin;
+    } else if ((fp = fopen(argv[0],"rb")) == NULL) {
+      fprintf(stderr,"Could not open file %s\n",argv[0]);
+      exit(9);
+    }
 
     chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
@@ -1413,6 +1437,7 @@ main (int argc, char *argv[]) {
       fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
       exit(9);
     }
+    genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
     FREE(chromosomefile);
 
     filenames = Indexdb_get_filenames(&compression_type,&index1part,&index1interval,
@@ -1452,16 +1477,20 @@ main (int argc, char *argv[]) {
 
     if (huge_offsets_p == false) {
       Indexdb_write_positions(positionsfile_high,positionsfile_low,filenames->pointers_filename,
-			      filenames->offsets_filename,stdin,chromosome_iit,
-			      index1part,index1interval,
+			      filenames->offsets_filename,fp,chromosome_iit,
+			      index1part,index1interval,genomelength,
 			      genome_lc_p,writefilep,fileroot,mask_lowercase_p,
 			      compression_type,coord_values_8p);
     } else {
       Indexdb_write_positions_huge(positionsfile_high,positionsfile_low,filenames->pages_filename,filenames->pointers_filename,
-				   filenames->offsets_filename,stdin,chromosome_iit,
-				   index1part,index1interval,
+				   filenames->offsets_filename,fp,chromosome_iit,
+				   index1part,index1interval,genomelength,
 				   genome_lc_p,writefilep,fileroot,mask_lowercase_p,
 				   compression_type,coord_values_8p);
+    }
+
+    if (argc > 0) {
+      fclose(fp);
     }
 
     Filenames_free(&filenames);
@@ -1496,7 +1525,7 @@ main (int argc, char *argv[]) {
       sprintf(sarrayfile,"%s/%s.sarray",destdir,fileroot);
 
       genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
       Sarray_write_array(sarrayfile,genomecomp,genomelength);
       
       /* Bucket array */
@@ -1534,7 +1563,7 @@ main (int argc, char *argv[]) {
 
   } else if (action == LCP_CHILD) {
     /* Usage: gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -L
-       Creates <destdir>/<dbname>.lcp and .saindex */
+       Creates <destdir>/<dbname>.lcp, .saindex, and .rank (needed by COMPRESSED_SUFFIX_ARRAY) */
 
     chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
 				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
@@ -1562,7 +1591,7 @@ main (int argc, char *argv[]) {
 
       /* Required for computing LCP, but uses non-SIMD instructions */
       genomebits = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
-			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
       Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/NULL,
 		      /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/false,
 		      /*mode*/STANDARD);
@@ -1597,17 +1626,17 @@ main (int argc, char *argv[]) {
       /* Assume we have lcp_bytes already in memory.  Don't need to use guide for speed. */
       lcpguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".salcpguide1024")+1,sizeof(char));
       sprintf(lcpguidefile,"%s/%s.salcpguide1024",destdir,fileroot);
-      lcp_guide = (UINT4 *) Access_allocated(&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4));
+      lcp_guide = (UINT4 *) Access_allocate(&shmid,&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4),/*sharedp*/false);
       FREE(lcpguidefile);
 
       lcpexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".salcpexc")+1,sizeof(char));
       sprintf(lcpexcfile,"%s/%s.salcpexc",destdir,fileroot);
-      lcp_exceptions = (UINT4 *) Access_allocated(&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4));
+      lcp_exceptions = (UINT4 *) Access_allocate(&shmid,&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4),/*sharedp*/false);
       n_lcp_exceptions = lcpexc_len/(sizeof(UINT4) + sizeof(UINT4));
       FREE(lcpexcfile);
 
       genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
 
       /* Compute discriminating chars (DC) array */
       discrim_chars = Sarray_discriminating_chars(&nbytes,sarrayfile,genomecomp,lcp_bytes,lcp_guide,
@@ -1642,7 +1671,89 @@ main (int argc, char *argv[]) {
       FREE(lcp_bytes);
     }
 
+  } else if (action == COMPRESSED_SUFFIX_ARRAY) {
+    /* Usage: gmapindex [-F <sourcedir>] [-D <destdir>] -d <dbname> -C
+       Creates <destdir>/<dbname>.lcp and .csa.  Removes .sarray and .inverse_sarray */
 
+    chromosomefile = (char *) CALLOC(strlen(sourcedir)+strlen("/")+
+				     strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(chromosomefile,"%s/%s.chromosome.iit",sourcedir,fileroot);
+    if ((chromosome_iit = Univ_IIT_read(chromosomefile,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
+      fprintf(stderr,"IIT file %s is not valid\n",chromosomefile);
+      exit(9);
+    }
+    FREE(chromosomefile);
+
+    genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias_p*/true);
+    Univ_IIT_free(&chromosome_iit);
+
+    if (genomelength > 4294967295) {
+      /* Warning message already printed for SUFFIX_ARRAY */
+      /* fprintf(stderr,"Suffix arrays not yet supported for large genomes with more than 2^32 bp.  Will use hash table only.\n"); */
+    } else {
+      fprintf(stderr,"Building compressed suffix array\n");
+
+      /* No need to mmap SA anymore */
+      csaptrfiles[0] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaAmeta")+1,sizeof(char));
+      sprintf(csaptrfiles[0],"%s/%s.csaAmeta",destdir,fileroot);
+      csaptrfiles[1] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaCmeta")+1,sizeof(char));
+      sprintf(csaptrfiles[1],"%s/%s.csaCmeta",destdir,fileroot);
+      csaptrfiles[2] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaGmeta")+1,sizeof(char));
+      sprintf(csaptrfiles[2],"%s/%s.csaGmeta",destdir,fileroot);
+      csaptrfiles[3] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaTmeta")+1,sizeof(char));
+      sprintf(csaptrfiles[3],"%s/%s.csaTmeta",destdir,fileroot);
+      csaptrfiles[4] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaXmeta")+1,sizeof(char));
+      sprintf(csaptrfiles[4],"%s/%s.csaXmeta",destdir,fileroot);
+
+      csacompfiles[0] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaAstrm")+1,sizeof(char));
+      sprintf(csacompfiles[0],"%s/%s.csaAstrm",destdir,fileroot);
+      csacompfiles[1] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaCstrm")+1,sizeof(char));
+      sprintf(csacompfiles[1],"%s/%s.csaCstrm",destdir,fileroot);
+      csacompfiles[2] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaGstrm")+1,sizeof(char));
+      sprintf(csacompfiles[2],"%s/%s.csaGstrm",destdir,fileroot);
+      csacompfiles[3] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaTstrm")+1,sizeof(char));
+      sprintf(csacompfiles[3],"%s/%s.csaTstrm",destdir,fileroot);
+      csacompfiles[4] = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csaXstrm")+1,sizeof(char));
+      sprintf(csacompfiles[4],"%s/%s.csaXstrm",destdir,fileroot);
+
+      sasampleqfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sasampleq")+1,sizeof(char));
+      sprintf(sasampleqfile,"%s/%s.sasampleq",destdir,fileroot);
+      sasamplesfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sasamples")+1,sizeof(char));
+      sprintf(sasamplesfile,"%s/%s.sasamples",destdir,fileroot);
+      saindex0file = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".saindex0")+1,sizeof(char));
+      sprintf(saindex0file,"%s/%s.saindex0",destdir,fileroot);
+
+
+#if 0
+      csafile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".csa")+1,sizeof(char));
+      sprintf(csafile,"%s/%s.csa",destdir,fileroot);
+#endif
+
+
+      sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
+      sprintf(sarrayfile,"%s/%s.sarray",destdir,fileroot);
+      rankfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".rank")+1,sizeof(char));
+      sprintf(rankfile,"%s/%s.rank",destdir,fileroot);
+
+      genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
+      Sarray_write_csa(csaptrfiles,csacompfiles,sasampleqfile,sasamplesfile,saindex0file,
+		       sarrayfile,rankfile,genomecomp,genomelength,CHARTABLE);
+      FREE(genomecomp);
+
+      remove(rankfile);		/* Need to delete remove(rankfile) from Sarray_compute_lcp */
+      remove(sarrayfile);
+
+      FREE(rankfile);
+      FREE(sarrayfile);
+      FREE(saindex0file);
+      FREE(sasamplesfile);
+      FREE(sasampleqfile);
+      FREE(csacompfiles[3]); FREE(csaptrfiles[3]);
+      FREE(csacompfiles[2]); FREE(csaptrfiles[2]);
+      FREE(csacompfiles[1]); FREE(csaptrfiles[1]);
+      FREE(csacompfiles[0]); FREE(csaptrfiles[0]);
+    }
 
   } else if (action == ARRAY_UNCOMPRESS) {
     if (argc <= 2) {
@@ -1674,7 +1785,7 @@ main (int argc, char *argv[]) {
     Univ_IIT_free(&chromosome_iit);
 
     genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
 
     sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("sarray")+1,sizeof(char));
     sprintf(sarrayfile,"%s/%s%ssarray",destdir,fileroot,mode_prefix);
@@ -1689,23 +1800,23 @@ main (int argc, char *argv[]) {
 
     lcpguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("salcpguide1024")+1,sizeof(char));
     sprintf(lcpguidefile,"%s/%s%ssalcpguide1024",destdir,fileroot,mode_prefix);
-    lcp_guide = (UINT4 *) Access_allocated(&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4));
+    lcp_guide = (UINT4 *) Access_allocate(&shmid,&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4),/*sharedp*/false);
     FREE(lcpguidefile);
 
     lcpexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("salcpexc")+1,sizeof(char));
     sprintf(lcpexcfile,"%s/%s%ssalcpexc",destdir,fileroot,mode_prefix);
-    lcp_exceptions = (UINT4 *) Access_allocated(&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4));
+    lcp_exceptions = (UINT4 *) Access_allocate(&shmid,&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4),/*sharedp*/false);
     n_lcp_exceptions = lcpexc_len/(sizeof(UINT4) + sizeof(UINT4));
     FREE(lcpexcfile);
 
     childguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("sachildguide1024")+1,sizeof(char));
     sprintf(childguidefile,"%s/%s%ssachildguide1024",destdir,fileroot,mode_prefix);
-    child_guide = (UINT4 *) Access_allocated(&childguide_len,&seconds,childguidefile,sizeof(UINT4));
+    child_guide = (UINT4 *) Access_allocate(&shmid,&childguide_len,&seconds,childguidefile,sizeof(UINT4),/*sharedp*/false);
     FREE(childguidefile);
 
     childexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(mode_prefix)+strlen("sachildexc")+1,sizeof(char));
     sprintf(childexcfile,"%s/%s%ssachildexc",destdir,fileroot,mode_prefix);
-    child_exceptions = (UINT4 *) Access_allocated(&childexc_len,&seconds,childexcfile,sizeof(UINT4));
+    child_exceptions = (UINT4 *) Access_allocate(&shmid,&childexc_len,&seconds,childexcfile,sizeof(UINT4),/*sharedp*/false);
     n_child_exceptions = childexc_len/(sizeof(UINT4) + sizeof(UINT4));
     FREE(childexcfile);
 

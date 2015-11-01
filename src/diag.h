@@ -1,6 +1,7 @@
-/* $Id: diag.h 106198 2013-08-28 23:07:34Z twu $ */
+/* $Id: diag.h 166641 2015-05-29 21:13:04Z twu $ */
 #ifndef DIAG_INCLUDED
 #define DIAG_INCLUDED
+
 #include "bool.h"
 #include "list.h"
 #include "genomicpos.h"
@@ -9,12 +10,13 @@
 #define T Diag_T
 typedef struct T *T;
 
-#ifndef USE_DIAGPOOL
 extern T
-Diag_new (Chrpos_T diagonal, int querystart, int queryend, int nconsecutive);
+Diag_new (int querystart, int queryend, Univcoord_T univdiagonal);
 extern void
 Diag_free (T *old);
-#endif
+extern void
+Diag_gc (List_T *list);
+
 
 extern Chrpos_T
 Diag_diagonal (T this);
@@ -29,9 +31,9 @@ Diag_dominatedp (T this);
 extern void
 Diag_set_dominatedp (T this);
 extern int
-Diag_compare_nconsecutive (const void *x, const void *y);
+Diag_ascending_cmp (const void *a, const void *b);
 extern int
-Diag_compare_diagonal (const void *x, const void *y);
+Diag_descending_cmp (const void *a, const void *b);
 extern double
 Diag_update_coverage (bool *coveredp, int *ncovered, List_T diagonals, int querylength);
 extern int

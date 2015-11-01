@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 165789 2015-05-15 18:45:10Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 173896 2015-09-12 00:11:40Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -94,6 +94,21 @@ static int gmap_allowance = 3;
 static int min_intronlength = 9;
 static int max_deletionlength = 50;
 
+static int sufflookback = 60;
+static int nsufflookback = 5;
+static int maxintronlen = 200000; /* Was used previously in stage 1.  Now used only in stage 2 and Stage3_mergeable. */
+
+static int extraband_single = 6; /* This is in addition to length2 -
+				    length1.  If onesidegap is true in
+				    dynprog.c, then this is equivalent
+				    to extraband_single of 0.  Needs
+				    to be > 0 to handle default
+				    close_indels_mode. */
+static int extraband_end = 6; /* Was 6.  Shouldn't differ from 0, since onesidegapp is true?
+				 This is only on both sides of main diagonal */
+static int extraband_paired = 14; /* This is in addition to length2 - length1 */
+static int ngap = 3;
+
 
 /************************************************************************
  *   Global parameters
@@ -103,6 +118,7 @@ static Univ_IIT_T chromosome_iit = NULL;
 static int circular_typeint = -1;
 static int nchromosomes = 0;
 static bool *circularp = NULL;
+static bool any_circular_p;
 static Indexdb_T indexdb = NULL;
 static Indexdb_T indexdb2 = NULL; /* For cmet or atoi */
 static Genome_T genome = NULL;
@@ -154,6 +170,7 @@ static int subopt_levels = 0;
    1, then treated as a fraction of the querylength.  Else, treated as
    an integer */
 static double user_maxlevel_float = 0.0;
+static double user_mincoverage_float = 0.0;
 
 /* Really have only one indel penalty */
 static int indel_penalty_middle = 2;
@@ -410,10 +427,6 @@ uniqueness_scan (bool from_right_p) {
   Diagpool_T diagpool;
   Cellpool_T cellpool;
 
-#ifdef MEMUSAGE
-  long int memusage_constant = 0;
-#endif
-
   oligoindices_major = Oligoindex_array_new_major(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
   oligoindices_minor = Oligoindex_array_new_minor(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
   dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
@@ -428,11 +441,6 @@ uniqueness_scan (bool from_right_p) {
 
   floors_array = (Floors_T *) CALLOC(MAX_READLENGTH+1,sizeof(Floors_T));
   /* Except_stack_create(); -- requires pthreads */
-
-#ifdef MEMUSAGE
-  memusage_constant += Mem_usage_report();
-  Mem_usage_reset(0);
-#endif
 
   for (i = 0; i < 10; i++) {
     sprintf(&(digit[i]),"%d",i);
@@ -451,7 +459,7 @@ uniqueness_scan (bool from_right_p) {
 			      /*barcode_length*/0,/*invertp*/0,/*copy_acc_p*/false,/*skipp*/false);
     stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 				     queryseq1,indexdb,indexdb2,indexdb_size_threshold,
-				     genome,floors_array,user_maxlevel_float,
+				     floors_array,user_maxlevel_float,user_mincoverage_float,
 				     indel_penalty_middle,indel_penalty_end,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 				     localsplicing_penalty,/*distantsplicing_penalty*/100,min_shortend,
@@ -495,7 +503,7 @@ uniqueness_scan (bool from_right_p) {
 				  /*barcode_length*/0,/*invertp*/0,/*copy_acc_p*/false,/*skipp*/false);
 	stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 					 queryseq1,indexdb,indexdb2,indexdb_size_threshold,
-					 genome,floors_array,user_maxlevel_float,
+					 floors_array,user_maxlevel_float,user_mincoverage_float,
 					 indel_penalty_middle,indel_penalty_end,
 					 allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					 localsplicing_penalty,/*distantsplicing_penalty*/100,min_shortend,
@@ -743,12 +751,6 @@ main (int argc, char *argv[]) {
   int long_option_index = 0;
   const char *long_name;
   char *string;
-
-#ifdef MEMUSAGE
-  Mem_usage_init();
-  Mem_usage_set_threadname("main");
-#endif
-
 
   while ((opt = getopt_long(argc,argv,
 			    "D:d:k:q:GN:M:m:i:y:Y:z:Z:w:e:l:g:S:s:V:v:53",
@@ -1008,14 +1010,14 @@ main (int argc, char *argv[]) {
   } else {
     nchromosomes = Univ_IIT_total_nintervals(chromosome_iit);
     circular_typeint = Univ_IIT_typeint(chromosome_iit,"circular");
-    circularp = Univ_IIT_circularp(chromosome_iit);
+    circularp = Univ_IIT_circularp(&any_circular_p,chromosome_iit);
   }
   FREE(iitfile);
 
 
   if (snps_root == NULL) {
     genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			uncompressedp,genome_access);
+			uncompressedp,genome_access,/*sharedp*/false);
     if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
       if (user_cmetdir == NULL) {
 	modedir = genomesubdir;
@@ -1026,7 +1028,8 @@ main (int argc, char *argv[]) {
       if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"metct",/*snps_root*/NULL,
 					required_index1part,required_interval,
-					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					expand_offsets_p,offsetsstrm_access,positions_access,
+					/*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
 	exit(9);
       }
@@ -1034,7 +1037,8 @@ main (int argc, char *argv[]) {
       if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"metga",/*snps_root*/NULL,
 					 required_index1part,required_interval,
-					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					 expand_offsets_p,offsetsstrm_access,positions_access,
+					 /*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
 	exit(9);
       }
@@ -1049,7 +1053,8 @@ main (int argc, char *argv[]) {
       if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
 					required_index1part,required_interval,
-					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					expand_offsets_p,offsetsstrm_access,positions_access,
+					/*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
@@ -1057,7 +1062,8 @@ main (int argc, char *argv[]) {
       if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
 					 required_index1part,required_interval,
-					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					 expand_offsets_p,offsetsstrm_access,positions_access,
+					 /*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
 	exit(9);
       }
@@ -1072,7 +1078,8 @@ main (int argc, char *argv[]) {
       if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"a2itc",/*snps_root*/NULL,
 					required_index1part,required_interval,
-					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					expand_offsets_p,offsetsstrm_access,positions_access,
+					/*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
 	exit(9);
       }
@@ -1080,7 +1087,8 @@ main (int argc, char *argv[]) {
       if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"a2iag",/*snps_root*/NULL,
 					 required_index1part,required_interval,
-					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					 expand_offsets_p,offsetsstrm_access,positions_access,
+					 /*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
@@ -1090,7 +1098,8 @@ main (int argc, char *argv[]) {
       if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					genomesubdir,fileroot,IDX_FILESUFFIX,/*snps_root*/NULL,
 					required_index1part,required_interval,
-					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					expand_offsets_p,offsetsstrm_access,positions_access,
+					/*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find offsets file %s.%s*offsets, needed for GSNAP\n",fileroot,IDX_FILESUFFIX);
 	exit(9);
       }
@@ -1108,9 +1117,9 @@ main (int argc, char *argv[]) {
 
     /* SNPs */
     genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			uncompressedp,genome_access);
+			uncompressedp,genome_access,/*sharedp*/false);
     genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-			   uncompressedp,genome_access);
+			   uncompressedp,genome_access,/*sharedp*/false);
 
     if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
       if (user_cmetdir == NULL) {
@@ -1122,14 +1131,16 @@ main (int argc, char *argv[]) {
       if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"metct",snps_root,
 					required_index1part,required_interval,
-					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					expand_offsets_p,offsetsstrm_access,positions_access,
+					/*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find metct index file.  Need to run cmetindex first\n");
 	exit(9);
       }
       if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"metga",snps_root,
 					 required_index1part,required_interval,
-					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					 expand_offsets_p,offsetsstrm_access,positions_access,
+					 /*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find metga index file.  Need to run cmetindex first\n");
 	exit(9);
       }
@@ -1144,14 +1155,16 @@ main (int argc, char *argv[]) {
       if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
 					required_index1part,required_interval,
-					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					expand_offsets_p,offsetsstrm_access,positions_access,
+					/*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
       if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
 					 required_index1part,required_interval,
-					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					 expand_offsets_p,offsetsstrm_access,positions_access,
+					 /*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
 	exit(9);
       }
@@ -1166,14 +1179,16 @@ main (int argc, char *argv[]) {
       if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
 					modedir,fileroot,/*idx_filesuffix*/"a2itc",snps_root,
 					required_index1part,required_interval,
-					expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					expand_offsets_p,offsetsstrm_access,positions_access,
+					/*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find a2itc index file.  Need to run atoiindex first\n");
 	exit(9);
       }
       if ((indexdb2 = Indexdb_new_genome(&index1part,&index1interval,
 					 modedir,fileroot,/*idx_filesuffix*/"a2iag",snps_root,
 					 required_index1part,required_interval,
-					 expand_offsets_p,offsetsstrm_access,positions_access)) == NULL) {
+					 expand_offsets_p,offsetsstrm_access,positions_access,
+					 /*sharedp*/false)) == NULL) {
 	fprintf(stderr,"Cannot find a2iag index file.  Need to run atoiindex first\n");
 	exit(9);
       }
@@ -1182,7 +1197,8 @@ main (int argc, char *argv[]) {
       indexdb = Indexdb_new_genome(&index1part,&index1interval,
 				   snpsdir,fileroot,/*idx_filesuffix*/"ref",snps_root,
 				   required_index1part,required_interval,
-				   expand_offsets_p,offsetsstrm_access,positions_access);
+				   expand_offsets_p,offsetsstrm_access,positions_access,
+				   /*sharedp*/false);
       if (indexdb == NULL) {
 	fprintf(stderr,"Cannot find snps index file for %s in directory %s\n",snps_root,snpsdir);
 	exit(9);
@@ -1245,9 +1261,9 @@ main (int argc, char *argv[]) {
   Indel_setup(min_indel_end_matches,indel_penalty_middle);
   Stage1hr_setup(/*use_sarray_p*/false,/*use_only_sarray_p*/false,index1part,index1interval,
 		 spansize,chromosome_iit,nchromosomes,
-		 genomealt,mode,/*maxpaths_search*/10,/*terminal_threshold*/5,/*terminal_output_minlength*/0,
+		 genome,genomealt,mode,/*maxpaths_search*/10,
 		 splicesites,splicetypes,splicedists,nsplicesites,
-		 novelsplicingp,knownsplicingp,distances_observed_p,
+		 novelsplicingp,knownsplicingp,/*find_dna_chimeras_p*/false,distances_observed_p,
 		 subopt_levels,max_middle_insertions,max_middle_deletions,
 		 shortsplicedist,shortsplicedist_known,shortsplicedist_novelend,min_intronlength,
 		 min_distantsplicing_end_matches,min_distantsplicing_identity,
@@ -1261,8 +1277,7 @@ main (int argc, char *argv[]) {
 		  splicing_iit,splicing_divint_crosstable,
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
 		  novelsplicingp,knownsplicingp,/*output_sam_p*/false,mode,
-		  Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false),
-		  /*reject_trimlength*/1000);
+		  Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
   Dynprog_single_setup(/*homopolymerp*/false);
   Dynprog_genome_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
 		       donor_typeint,acceptor_typeint);
@@ -1270,27 +1285,29 @@ main (int argc, char *argv[]) {
 		    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
   Oligoindex_hr_setup(Genome_blocks(genome),/*mode*/STANDARD);
   Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
-	       suboptimal_score_start,suboptimal_score_end,
+	       suboptimal_score_start,suboptimal_score_end,sufflookback,nsufflookback,maxintronlen,
 	       mode,/*snps_p*/snps_iit ? true : false);
   Pair_setup(trim_mismatch_score,trim_indel_score,/*gff3_separators_p*/false,/*sam_insert_0M_p*/false,
 	     /*force_xs_direction_p*/false,/*md_lowercase_variant_p*/false,
-	     /*snps_p*/snps_iit ? true : false,
-	     Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false),
-	     /*cigar_action*/CIGAR_ACTION_IGNORE);
+	     /*snps_p*/snps_iit ? true : false,/*print_nsnpdiffs_p*/snps_iit ? true : false,
+	     Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       /*require_splicedir_p*/false,splicing_iit,splicing_divint_crosstable,
 	       donor_typeint,acceptor_typeint,
 	       splicesites,min_intronlength,max_deletionlength,/*min_indel_end_matches*/6,
-	       /*output_sam_p*/false,/*homopolymerp*/false,/*stage3debug*/NO_STAGE3DEBUG);
-  Stage3hr_setup(/*invert_first_p*/false,/*invert_second_p*/false,genes_iit,genes_divint_crosstable,
+	       maxpeelback_distalmedial,nullgap,extramaterial_end,extramaterial_paired,
+	       extraband_single,extraband_end,extraband_paired,
+	       ngap,maxintronlen,/*output_sam_p*/false,/*homopolymerp*/false,
+	       /*stage3debug*/NO_STAGE3DEBUG);
+  Stage3hr_setup(/*invert_first_p*/false,/*invert_second_p*/false,genome,
+		 chromosome_iit,nchromosomes,circular_typeint,genes_iit,genes_divint_crosstable,
 		 /*tally_iit*/NULL,/*tally_divint_crosstable*/NULL,
-		 /*runlength_iit*/NULL,/*runlength_divint_crosstable*/NULL,/*terminal_output_minlength*/0,
+		 /*runlength_iit*/NULL,/*runlength_divint_crosstable*/NULL,
 		 distances_observed_p,pairmax,expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,
-		 novelsplicingp,/*merge_samechr_p*/false,circularp,
-		 /*fails_as_input_p*/false,/*fastq_format_p*/false,/*print_m8_p*/false,
-		 /*want_random_p*/true);
+		 novelsplicingp,/*merge_samechr_p*/false,circularp,/*failedinput_root*/NULL,
+		 /*print_m8_p*/false,/*want_random_p*/true);
 
   uniqueness_scan(from_right_p);
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-read.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: bitpack64-read.c 168395 2015-06-26 17:13:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8,7 +8,9 @@ static char rcsid[] = "$Id: bitpack64-read.c 153955 2014-11-24 17:54:45Z twu $";
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+#include "bigendian.h"
+#elif defined(HAVE_SSE2)
 #include <emmintrin.h>
 #endif
 
@@ -126,7 +128,19 @@ Bitpack64_read_setup () {
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+static void
+unpack_00 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  int i;
+
+  for (i = 0; i < BLOCKSIZE; i++) {
+    *out++ = 0;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_00 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
   __m128i total = _mm_set1_epi32(0U);
@@ -184,19 +198,8 @@ unpack_00_2 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
   return;
 }
 
-
-#else
-static void
-unpack_00 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  int i;
-
-  for (i = 0; i < BLOCKSIZE; i++) {
-    *out++ = 0;
-  }
-
-  return;
-}
 #endif
+
 
 
 #ifdef ALLOW_ODD_PACKSIZES
@@ -274,7 +277,100 @@ unpack_01 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_02 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  2  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  6  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  10  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  14  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  18  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  22  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  26  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 2 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  30  )   % (1U << 2 ) ;
+    out++;
+  }
+
+  return;
+}
+
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_02 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  2  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  6  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  10  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  14  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  18  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  22  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  26  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 2 ) ;
+    out++;
+    *out = ( (*in) >>  30  )   % (1U << 2 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_02_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -743,52 +839,6 @@ unpack_02_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-
-static void
-unpack_02 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  2  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  6  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  10  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  14  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  18  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  22  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  26  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 2 ) ;
-    out++;
-    *out = ( (*in) >>  30  )   % (1U << 2 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -875,7 +925,50 @@ unpack_03 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_04 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  UINT4 outer, inwordpointer;
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    for (outer = 0; outer < 2 ; outer++) {
+      for (inwordpointer = 0; inwordpointer < 32; inwordpointer +=  4) {
+	*(out++) = ( Bigendian_convert_uint(*in) >> inwordpointer )   % (1U << 4 ) ;
+      }
+      in += 4;
+    }
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_04 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  UINT4 outer, inwordpointer;
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    for (outer = 0; outer < 2 ; outer++) {
+      for (inwordpointer = 0; inwordpointer < 32; inwordpointer +=  4) {
+	*(out++) = ( (*in) >> inwordpointer )   % (1U << 4 ) ;
+      }
+      in += 4;
+    }
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_04_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -1343,26 +1436,6 @@ unpack_04_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_04 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  UINT4 outer, inwordpointer;
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    for (outer = 0; outer < 2 ; outer++) {
-      for (inwordpointer = 0; inwordpointer < 32; inwordpointer +=  4) {
-	*(out++) = ( (*in) >> inwordpointer )   % (1U << 4 ) ;
-      }
-      in += 4;
-    }
-  }
-
-  return;
-}
 #endif
 
 
@@ -1455,7 +1528,107 @@ unpack_05 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_06 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  6  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  18  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  30  )   % (1U << 6 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 6 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  10  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  22  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 6 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 2 ))<<( 6 - 2 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  2  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  14  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 6 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  26  )   % (1U << 6 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_06 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  6  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  18  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  30  )   % (1U << 6 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 6 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  10  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  22  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 6 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 2 ))<<( 6 - 2 );
+    out++;
+    *out = ( (*in) >>  2  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  14  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 6 ) ;
+    out++;
+    *out = ( (*in) >>  26  )   % (1U << 6 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_06_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -1962,55 +2135,6 @@ unpack_06_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_06 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  6  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  18  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  30  )   % (1U << 6 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 6 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  10  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  22  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 6 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 2 ))<<( 6 - 2 );
-    out++;
-    *out = ( (*in) >>  2  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  14  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 6 ) ;
-    out++;
-    *out = ( (*in) >>  26  )   % (1U << 6 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -2111,7 +2235,49 @@ unpack_07 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_08 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  UINT4 outer, inwordpointer;
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    for (outer = 0; outer < 4; outer++) {
+      for (inwordpointer = 0; inwordpointer < 32; inwordpointer += 8) {
+	*(out++) = ( Bigendian_convert_uint(*in) >> inwordpointer )   % (1U << 8 ) ;
+      }
+      in += 4;
+    }
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_08 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  UINT4 outer, inwordpointer;
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    for (outer = 0; outer < 4; outer++) {
+      for (inwordpointer = 0; inwordpointer < 32; inwordpointer += 8) {
+	*(out++) = ( (*in) >> inwordpointer )   % (1U << 8 ) ;
+      }
+      in += 4;
+    }
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_08_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -2599,26 +2765,6 @@ unpack_08_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 }
 
 
-#else
-static void
-unpack_08 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  UINT4 outer, inwordpointer;
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    for (outer = 0; outer < 4; outer++) {
-      for (inwordpointer = 0; inwordpointer < 32; inwordpointer += 8) {
-	*(out++) = ( (*in) >> inwordpointer )   % (1U << 8 ) ;
-      }
-      in += 4;
-    }
-  }
-
-  return;
-}
 #endif
 
 
@@ -2727,7 +2873,115 @@ unpack_09 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_10 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  10  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  30  )   % (1U << 10 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 10 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  18  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 10 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 6 ))<<( 10 - 6 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  6  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  26  )   % (1U << 10 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 10 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  14  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 10 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 2 ))<<( 10 - 2 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  2  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 10 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  22  )   % (1U << 10 ) ;
+    out++;
+
+  }
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_10 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  10  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  30  )   % (1U << 10 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 10 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  18  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 10 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 6 ))<<( 10 - 6 );
+    out++;
+    *out = ( (*in) >>  6  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  26  )   % (1U << 10 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 10 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  14  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 10 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 2 ))<<( 10 - 2 );
+    out++;
+    *out = ( (*in) >>  2  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 10 ) ;
+    out++;
+    *out = ( (*in) >>  22  )   % (1U << 10 ) ;
+    out++;
+
+  }
+  return;
+}
+
+#else
 static void
 unpack_10_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -3274,59 +3528,6 @@ unpack_10_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_10 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  10  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  30  )   % (1U << 10 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 10 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  18  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 10 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 6 ))<<( 10 - 6 );
-    out++;
-    *out = ( (*in) >>  6  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  26  )   % (1U << 10 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 10 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  14  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 10 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 2 ))<<( 10 - 2 );
-    out++;
-    *out = ( (*in) >>  2  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 10 ) ;
-    out++;
-    *out = ( (*in) >>  22  )   % (1U << 10 ) ;
-    out++;
-
-  }
-  return;
-}
 #endif
 
 
@@ -3440,7 +3641,117 @@ unpack_11 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_12 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 12 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 12 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 12 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 12 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 12 ) ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 12 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 12 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 12 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 12 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 12 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 12 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_12 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 12 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 12 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 12 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 12 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 12 ) ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 12 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 12 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 12 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 12 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 12 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 12 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_12_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -3989,60 +4300,6 @@ unpack_12_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_12 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 12 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 12 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 12 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 12 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 12 ) ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 12 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 12 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 12 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 12 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 12 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 12 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -4163,7 +4420,123 @@ unpack_13 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_14 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  14  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 10 ))<<( 14 - 10 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  10  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 6 ))<<( 14 - 6 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  6  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 2 ))<<( 14 - 2 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  2  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  30  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 14 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  26  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 14 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  22  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 14 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 14 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  18  )   % (1U << 14 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_14 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  14  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 10 ))<<( 14 - 10 );
+    out++;
+    *out = ( (*in) >>  10  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 6 ))<<( 14 - 6 );
+    out++;
+    *out = ( (*in) >>  6  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 2 ))<<( 14 - 2 );
+    out++;
+    *out = ( (*in) >>  2  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  30  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 14 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  26  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 14 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  22  )   % (1U << 14 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 14 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 14 ) ;
+    out++;
+    *out = ( (*in) >>  18  )   % (1U << 14 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_14_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -4747,63 +5120,6 @@ unpack_14_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_14 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  14  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 14 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 10 ))<<( 14 - 10 );
-    out++;
-    *out = ( (*in) >>  10  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 14 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 6 ))<<( 14 - 6 );
-    out++;
-    *out = ( (*in) >>  6  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 14 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 2 ))<<( 14 - 2 );
-    out++;
-    *out = ( (*in) >>  2  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  30  )   % (1U << 14 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 14 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  26  )   % (1U << 14 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 14 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  22  )   % (1U << 14 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 14 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 14 ) ;
-    out++;
-    *out = ( (*in) >>  18  )   % (1U << 14 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -4932,7 +5248,49 @@ unpack_15 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_16 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  UINT4 outer, inwordpointer;
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    for (outer = 0; outer < 8; outer++) {
+      for(inwordpointer =  0; inwordpointer <32; inwordpointer += 16) {
+	*(out++) = ( Bigendian_convert_uint(*in) >> inwordpointer )   % (1U << 16 ) ;
+      }
+      in += 4;
+    }
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_16 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  UINT4 outer, inwordpointer;
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    for (outer = 0; outer < 8; outer++) {
+      for(inwordpointer =  0; inwordpointer <32; inwordpointer += 16) {
+	*(out++) = ( (*in) >> inwordpointer )   % (1U << 16 ) ;
+      }
+      in += 4;
+    }
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_16_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -5437,26 +5795,6 @@ unpack_16_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_16 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  UINT4 outer, inwordpointer;
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    for (outer = 0; outer < 8; outer++) {
-      for(inwordpointer =  0; inwordpointer <32; inwordpointer += 16) {
-	*(out++) = ( (*in) >> inwordpointer )   % (1U << 16 ) ;
-      }
-      in += 4;
-    }
-  }
-
-  return;
-}
 #endif
 
 
@@ -5591,7 +5929,131 @@ unpack_17 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_18 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 18 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  18  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 18 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 18 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  22  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 18 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 18 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  26  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 18 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 18 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  30  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 18 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 2 ))<<( 18 - 2 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  2  )   % (1U << 18 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 6 ))<<( 18 - 6 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  6  )   % (1U << 18 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 10 ))<<( 18 - 10 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  10  )   % (1U << 18 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 14 ))<<( 18 - 14 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  14  )   % (1U << 18 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_18 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 18 ) ;
+    out++;
+    *out = ( (*in) >>  18  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 18 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 18 ) ;
+    out++;
+    *out = ( (*in) >>  22  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 18 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 18 ) ;
+    out++;
+    *out = ( (*in) >>  26  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 18 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 18 ) ;
+    out++;
+    *out = ( (*in) >>  30  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 18 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 2 ))<<( 18 - 2 );
+    out++;
+    *out = ( (*in) >>  2  )   % (1U << 18 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 6 ))<<( 18 - 6 );
+    out++;
+    *out = ( (*in) >>  6  )   % (1U << 18 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 10 ))<<( 18 - 10 );
+    out++;
+    *out = ( (*in) >>  10  )   % (1U << 18 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 18 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 14 ))<<( 18 - 14 );
+    out++;
+    *out = ( (*in) >>  14  )   % (1U << 18 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_18_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -6212,67 +6674,6 @@ unpack_18_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_18 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 18 ) ;
-    out++;
-    *out = ( (*in) >>  18  )   % (1U << 18 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 18 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 18 ) ;
-    out++;
-    *out = ( (*in) >>  22  )   % (1U << 18 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 18 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 18 ) ;
-    out++;
-    *out = ( (*in) >>  26  )   % (1U << 18 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 18 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 18 ) ;
-    out++;
-    *out = ( (*in) >>  30  )   % (1U << 18 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 18 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 18 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 2 ))<<( 18 - 2 );
-    out++;
-    *out = ( (*in) >>  2  )   % (1U << 18 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 18 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 6 ))<<( 18 - 6 );
-    out++;
-    *out = ( (*in) >>  6  )   % (1U << 18 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 18 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 10 ))<<( 18 - 10 );
-    out++;
-    *out = ( (*in) >>  10  )   % (1U << 18 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 18 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 14 ))<<( 18 - 14 );
-    out++;
-    *out = ( (*in) >>  14  )   % (1U << 18 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -6414,7 +6815,133 @@ unpack_19 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_20 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 20 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 20 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 20 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 20 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 20 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 20 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 20 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 20 ) ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 20 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 20 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 20 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 20 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 20 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 20 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 20 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 20 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_20 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 20 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 20 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 20 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 20 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 20 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 20 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 20 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 20 ) ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   % (1U << 20 ) ;
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 20 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 20 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 20 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 20 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 20 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 20 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 20 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 20 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_20_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -7037,68 +7564,6 @@ unpack_20_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 }
 
 
-#else
-static void
-unpack_20 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 20 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 20 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 20 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 20 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 20 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 20 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 20 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 20 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 20 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 20 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 20 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 20 ) ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   % (1U << 20 ) ;
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 20 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 20 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 20 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 20 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 20 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 20 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 20 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 20 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 20 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 20 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 20 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -7247,7 +7712,139 @@ unpack_21 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_22 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 22 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  22  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 22 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 2 ))<<( 22 - 2 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  2  )   % (1U << 22 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 14 ))<<( 22 - 14 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  14  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 22 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 22 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  26  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 22 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 6 ))<<( 22 - 6 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  6  )   % (1U << 22 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 18 ))<<( 22 - 18 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  18  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 22 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 22 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  30  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 20 ))<<( 22 - 20 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 10 ))<<( 22 - 10 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  10  )   % (1U << 22 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_22 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 22 ) ;
+    out++;
+    *out = ( (*in) >>  22  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 22 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 2 ))<<( 22 - 2 );
+    out++;
+    *out = ( (*in) >>  2  )   % (1U << 22 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 14 ))<<( 22 - 14 );
+    out++;
+    *out = ( (*in) >>  14  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 22 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 22 ) ;
+    out++;
+    *out = ( (*in) >>  26  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 22 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 6 ))<<( 22 - 6 );
+    out++;
+    *out = ( (*in) >>  6  )   % (1U << 22 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 18 ))<<( 22 - 18 );
+    out++;
+    *out = ( (*in) >>  18  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 22 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 22 ) ;
+    out++;
+    *out = ( (*in) >>  30  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 20 ))<<( 22 - 20 );
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 22 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 10 ))<<( 22 - 10 );
+    out++;
+    *out = ( (*in) >>  10  )   % (1U << 22 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_22_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -7903,71 +8500,6 @@ unpack_22_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_22 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 22 ) ;
-    out++;
-    *out = ( (*in) >>  22  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 22 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 2 ))<<( 22 - 2 );
-    out++;
-    *out = ( (*in) >>  2  )   % (1U << 22 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 14 ))<<( 22 - 14 );
-    out++;
-    *out = ( (*in) >>  14  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 22 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 22 ) ;
-    out++;
-    *out = ( (*in) >>  26  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 22 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 6 ))<<( 22 - 6 );
-    out++;
-    *out = ( (*in) >>  6  )   % (1U << 22 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 18 ))<<( 22 - 18 );
-    out++;
-    *out = ( (*in) >>  18  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 22 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 22 ) ;
-    out++;
-    *out = ( (*in) >>  30  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 20 ))<<( 22 - 20 );
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 22 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 10 ))<<( 22 - 10 );
-    out++;
-    *out = ( (*in) >>  10  )   % (1U << 22 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -8123,7 +8655,137 @@ unpack_23 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_24 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 24 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 24 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 24 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 24 ) ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 24 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 24 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 24 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 24 ) ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 24 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 24 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 24 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 24 ) ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 24 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 24 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 24 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 24 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_24 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 24 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 24 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 24 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 24 ) ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   % (1U << 24 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 24 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 24 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 24 ) ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   % (1U << 24 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 24 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 24 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 24 ) ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   % (1U << 24 ) ;
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 24 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 24 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 24 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 24 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_24_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -8753,70 +9415,6 @@ unpack_24_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 }
 
 
-#else
-static void
-unpack_24 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 24 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 24 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 24 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 24 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 24 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 24 ) ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   % (1U << 24 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 24 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 24 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 24 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 24 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 24 ) ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   % (1U << 24 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 24 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 24 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 24 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 24 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 24 ) ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   % (1U << 24 ) ;
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 24 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 24 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 24 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 24 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 24 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -8979,7 +9577,147 @@ unpack_25 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_26 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 26 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  26  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 20 ))<<( 26 - 20 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 14 ))<<( 26 - 14 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  14  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 26 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 2 ))<<( 26 - 2 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  2  )   % (1U << 26 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 22 ))<<( 26 - 22 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  22  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 26 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 10 ))<<( 26 - 10 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  10  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 26 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 26 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  30  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 24 ))<<( 26 - 24 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 18 ))<<( 26 - 18 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  18  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 26 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 6 ))<<( 26 - 6 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  6  )   % (1U << 26 ) ;
+    out++;
+  }
+  
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_26 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 26 ) ;
+    out++;
+    *out = ( (*in) >>  26  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 20 ))<<( 26 - 20 );
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 14 ))<<( 26 - 14 );
+    out++;
+    *out = ( (*in) >>  14  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 26 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 2 ))<<( 26 - 2 );
+    out++;
+    *out = ( (*in) >>  2  )   % (1U << 26 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 22 ))<<( 26 - 22 );
+    out++;
+    *out = ( (*in) >>  22  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 26 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 10 ))<<( 26 - 10 );
+    out++;
+    *out = ( (*in) >>  10  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 26 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 26 ) ;
+    out++;
+    *out = ( (*in) >>  30  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 24 ))<<( 26 - 24 );
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 18 ))<<( 26 - 18 );
+    out++;
+    *out = ( (*in) >>  18  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 26 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 26 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 6 ))<<( 26 - 6 );
+    out++;
+    *out = ( (*in) >>  6  )   % (1U << 26 ) ;
+    out++;
+  }
+  
+  return;
+}
+
+#else
 static void
 unpack_26_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -9670,75 +10408,6 @@ unpack_26_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_26 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 26 ) ;
-    out++;
-    *out = ( (*in) >>  26  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 20 ))<<( 26 - 20 );
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 14 ))<<( 26 - 14 );
-    out++;
-    *out = ( (*in) >>  14  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 26 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 2 ))<<( 26 - 2 );
-    out++;
-    *out = ( (*in) >>  2  )   % (1U << 26 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 22 ))<<( 26 - 22 );
-    out++;
-    *out = ( (*in) >>  22  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 26 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 10 ))<<( 26 - 10 );
-    out++;
-    *out = ( (*in) >>  10  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 26 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 26 ) ;
-    out++;
-    *out = ( (*in) >>  30  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 24 ))<<( 26 - 24 );
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 18 ))<<( 26 - 18 );
-    out++;
-    *out = ( (*in) >>  18  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 26 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 26 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 6 ))<<( 26 - 6 );
-    out++;
-    *out = ( (*in) >>  6  )   % (1U << 26 ) ;
-    out++;
-  }
-  
-  return;
-}
 #endif
 
 
@@ -9908,7 +10577,149 @@ unpack_27 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_28 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 28 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 24 ))<<( 28 - 24 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 20 ))<<( 28 - 20 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 28 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 28 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 28 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 28 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 28 ) ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 28 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 24 ))<<( 28 - 24 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 20 ))<<( 28 - 20 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 28 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 28 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 28 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 28 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 28 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_28 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 28 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 24 ))<<( 28 - 24 );
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 20 ))<<( 28 - 20 );
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 28 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 28 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 28 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 28 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 28 ) ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   % (1U << 28 ) ;
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 24 ))<<( 28 - 24 );
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 20 ))<<( 28 - 20 );
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 28 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 28 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 28 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 28 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 28 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 28 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_28_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -10599,76 +11410,6 @@ unpack_28_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     return;
 }
 
-#else
-static void
-unpack_28 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 28 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 24 ))<<( 28 - 24 );
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 20 ))<<( 28 - 20 );
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 28 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 28 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 28 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 28 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 28 ) ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   % (1U << 28 ) ;
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 24 ))<<( 28 - 24 );
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 20 ))<<( 28 - 20 );
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 28 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 28 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 28 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 28 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 28 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 28 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -10845,7 +11586,155 @@ unpack_29 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_30 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   % (1U << 30 ) ;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  30  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 28 ))<<( 30 - 28 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  28  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 26 ))<<( 30 - 26 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  26  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 24 ))<<( 30 - 24 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  24  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 22 ))<<( 30 - 22 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  22  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 20 ))<<( 30 - 20 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  20  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 18 ))<<( 30 - 18 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  18  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 16 ))<<( 30 - 16 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  16  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 14 ))<<( 30 - 14 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  14  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 12 ))<<( 30 - 12 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  12  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 10 ))<<( 30 - 10 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  10  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 8 ))<<( 30 - 8 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  8  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 6 ))<<( 30 - 6 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  6  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 4 ))<<( 30 - 4 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  4  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= (Bigendian_convert_uint(*in) % (1U<< 2 ))<<( 30 - 2 );
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  2  )   % (1U << 30 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_30 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   % (1U << 30 ) ;
+    out++;
+    *out = ( (*in) >>  30  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 28 ))<<( 30 - 28 );
+    out++;
+    *out = ( (*in) >>  28  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 26 ))<<( 30 - 26 );
+    out++;
+    *out = ( (*in) >>  26  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 24 ))<<( 30 - 24 );
+    out++;
+    *out = ( (*in) >>  24  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 22 ))<<( 30 - 22 );
+    out++;
+    *out = ( (*in) >>  22  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 20 ))<<( 30 - 20 );
+    out++;
+    *out = ( (*in) >>  20  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 18 ))<<( 30 - 18 );
+    out++;
+    *out = ( (*in) >>  18  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 16 ))<<( 30 - 16 );
+    out++;
+    *out = ( (*in) >>  16  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 14 ))<<( 30 - 14 );
+    out++;
+    *out = ( (*in) >>  14  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 12 ))<<( 30 - 12 );
+    out++;
+    *out = ( (*in) >>  12  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 10 ))<<( 30 - 10 );
+    out++;
+    *out = ( (*in) >>  10  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 8 ))<<( 30 - 8 );
+    out++;
+    *out = ( (*in) >>  8  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 6 ))<<( 30 - 6 );
+    out++;
+    *out = ( (*in) >>  6  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 4 ))<<( 30 - 4 );
+    out++;
+    *out = ( (*in) >>  4  )   % (1U << 30 ) ;
+    in += 4;
+    *out |= ((*in) % (1U<< 2 ))<<( 30 - 2 );
+    out++;
+    *out = ( (*in) >>  2  )   % (1U << 30 ) ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_30_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i InReg = _mm_load_si128(in);
@@ -11572,79 +12461,6 @@ unpack_30_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 }
 
 
-#else
-static void
-unpack_30 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   % (1U << 30 ) ;
-    out++;
-    *out = ( (*in) >>  30  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 28 ))<<( 30 - 28 );
-    out++;
-    *out = ( (*in) >>  28  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 26 ))<<( 30 - 26 );
-    out++;
-    *out = ( (*in) >>  26  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 24 ))<<( 30 - 24 );
-    out++;
-    *out = ( (*in) >>  24  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 22 ))<<( 30 - 22 );
-    out++;
-    *out = ( (*in) >>  22  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 20 ))<<( 30 - 20 );
-    out++;
-    *out = ( (*in) >>  20  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 18 ))<<( 30 - 18 );
-    out++;
-    *out = ( (*in) >>  18  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 16 ))<<( 30 - 16 );
-    out++;
-    *out = ( (*in) >>  16  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 14 ))<<( 30 - 14 );
-    out++;
-    *out = ( (*in) >>  14  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 12 ))<<( 30 - 12 );
-    out++;
-    *out = ( (*in) >>  12  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 10 ))<<( 30 - 10 );
-    out++;
-    *out = ( (*in) >>  10  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 8 ))<<( 30 - 8 );
-    out++;
-    *out = ( (*in) >>  8  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 6 ))<<( 30 - 6 );
-    out++;
-    *out = ( (*in) >>  6  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 4 ))<<( 30 - 4 );
-    out++;
-    *out = ( (*in) >>  4  )   % (1U << 30 ) ;
-    in += 4;
-    *out |= ((*in) % (1U<< 2 ))<<( 30 - 2 );
-    out++;
-    *out = ( (*in) >>  2  )   % (1U << 30 ) ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -11829,7 +12645,129 @@ unpack_31 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 
 
 
-#ifdef HAVE_SSE2
+#ifdef WORDS_BIGENDIAN
+static void
+unpack_32 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( Bigendian_convert_uint(*in) >>  0  )   ;
+    out++;
+  }
+
+  return;
+}
+
+#elif !defined(HAVE_SSE2)
+static void
+unpack_32 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
+  unsigned int column;
+  const UINT4 *bitpack = in;
+
+  for (column = 0; column < 4; column++) {
+    in = &(bitpack[column]);
+
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    in += 4;
+    out++;
+    *out = ( (*in) >>  0  )   ;
+    out++;
+  }
+
+  return;
+}
+
+#else
 static void
 unpack_32_fwd (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
     __m128i OutReg;
@@ -12234,66 +13172,6 @@ unpack_32_rev_8 (__m128i* __restrict__ out, const __m128i* __restrict__ in) {
 
 
 
-#else
-static void
-unpack_32 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
-  unsigned int column;
-  const UINT4 *bitpack = in;
-
-  for (column = 0; column < 4; column++) {
-    in = &(bitpack[column]);
-
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    in += 4;
-    out++;
-    *out = ( (*in) >>  0  )   ;
-    out++;
-  }
-
-  return;
-}
 #endif
 
 
@@ -12392,7 +13270,166 @@ unpack_32 (UINT4* __restrict__ out, const UINT4* __restrict__ in) {
 #endif
 
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+
+static void
+vertical_order (UINT4 *vertical, UINT4 *columnar) {
+
+  vertical[0] = columnar[0];		/* remainder 1 */
+  vertical[4] = columnar[1];		/* remainder 5 */
+  vertical[8] = columnar[2];		/* remainder 9 */
+  vertical[12] = columnar[3];		/* remainder 13 */
+  vertical[16] = columnar[4];		/* remainder 17 */
+  vertical[20] = columnar[5];		/* remainder 21 */
+  vertical[24] = columnar[6];		/* remainder 25 */
+  vertical[28] = columnar[7];		/* remainder 29 */
+
+  vertical[1] = columnar[8];		/* remainder 2 */
+  vertical[5] = columnar[9];		/* remainder 6 */
+  vertical[9] = columnar[10];		/* remainder 10 */
+  vertical[13] = columnar[11];		/* remainder 14 */
+  vertical[17] = columnar[12];		/* remainder 18 */
+  vertical[21] = columnar[13];		/* remainder 22 */
+  vertical[25] = columnar[14];		/* remainder 26 */
+  vertical[29] = columnar[15];		/* remainder 30 */
+
+  vertical[2] = columnar[16];		/* remainder 3 */
+  vertical[6] = columnar[17];		/* remainder 7 */
+  vertical[10] = columnar[18];		/* remainder 11 */
+  vertical[14] = columnar[19];		/* remainder 15 */
+  vertical[18] = columnar[20];		/* remainder 19 */
+  vertical[22] = columnar[21];		/* remainder 23 */
+  vertical[26] = columnar[22];		/* remainder 27 */
+  vertical[30] = columnar[23];		/* remainder 31 */
+
+  vertical[3] = columnar[24];		/* remainder 4 */
+  vertical[7] = columnar[25];		/* remainder 8 */
+  vertical[11] = columnar[26];		/* remainder 12 */
+  vertical[15] = columnar[27];		/* remainder 16 */
+  vertical[19] = columnar[28];		/* remainder 20 */
+  vertical[23] = columnar[29];		/* remainder 24 */
+  vertical[27] = columnar[30];		/* remainder 28 */
+  vertical[31] = columnar[31];		/* remainder 32 */
+
+  vertical[32] = columnar[32];		/* remainder 63 */
+  vertical[36] = columnar[33];		/* remainder 59 */
+  vertical[40] = columnar[34];		/* remainder 55 */
+  vertical[44] = columnar[35];		/* remainder 51 */
+  vertical[48] = columnar[36];		/* remainder 47 */
+  vertical[52] = columnar[37];		/* remainder 43 */
+  vertical[56] = columnar[38];		/* remainder 39 */
+  vertical[60] = columnar[39];		/* remainder 35 */
+
+  vertical[33] = columnar[40];		/* remainder 62 */
+  vertical[37] = columnar[41];		/* remainder 58 */
+  vertical[41] = columnar[42];		/* remainder 54 */
+  vertical[45] = columnar[43];		/* remainder 50 */
+  vertical[49] = columnar[44];		/* remainder 46 */
+  vertical[53] = columnar[45];		/* remainder 42 */
+  vertical[57] = columnar[46];		/* remainder 38 */
+  vertical[61] = columnar[47];		/* remainder 34 */
+
+  vertical[34] = columnar[48];		/* remainder 61 */
+  vertical[38] = columnar[49];		/* remainder 57 */
+  vertical[42] = columnar[50];		/* remainder 53 */
+  vertical[46] = columnar[51];		/* remainder 49 */
+  vertical[50] = columnar[52];		/* remainder 45 */
+  vertical[54] = columnar[53];		/* remainder 41 */
+  vertical[58] = columnar[54];		/* remainder 37 */
+  vertical[62] = columnar[55];		/* remainder 33 */
+
+  vertical[35] = columnar[56];		/* remainder 60 */
+  vertical[39] = columnar[57];		/* remainder 56 */
+  vertical[43] = columnar[58];		/* remainder 52 */
+  vertical[47] = columnar[59];		/* remainder 48 */
+  vertical[51] = columnar[60];		/* remainder 44 */
+  vertical[55] = columnar[61];		/* remainder 40 */
+  vertical[59] = columnar[62];		/* remainder 36 */
+  vertical[63] = columnar[63];		/* remainder 32 */
+
+  return;
+}
+
+static void
+vertical_order_huge (UINT8 *vertical, UINT4 *columnar) {
+
+  vertical[0] = (UINT8) columnar[0];		/* remainder 1 */
+  vertical[4] = (UINT8) columnar[1];		/* remainder 5 */
+  vertical[8] = (UINT8) columnar[2];		/* remainder 9 */
+  vertical[12] = (UINT8) columnar[3];		/* remainder 13 */
+  vertical[16] = (UINT8) columnar[4];		/* remainder 17 */
+  vertical[20] = (UINT8) columnar[5];		/* remainder 21 */
+  vertical[24] = (UINT8) columnar[6];		/* remainder 25 */
+  vertical[28] = (UINT8) columnar[7];		/* remainder 29 */
+
+  vertical[1] = (UINT8) columnar[8];		/* remainder 2 */
+  vertical[5] = (UINT8) columnar[9];		/* remainder 6 */
+  vertical[9] = (UINT8) columnar[10];		/* remainder 10 */
+  vertical[13] = (UINT8) columnar[11];		/* remainder 14 */
+  vertical[17] = (UINT8) columnar[12];		/* remainder 18 */
+  vertical[21] = (UINT8) columnar[13];		/* remainder 22 */
+  vertical[25] = (UINT8) columnar[14];		/* remainder 26 */
+  vertical[29] = (UINT8) columnar[15];		/* remainder 30 */
+
+  vertical[2] = (UINT8) columnar[16];		/* remainder 3 */
+  vertical[6] = (UINT8) columnar[17];		/* remainder 7 */
+  vertical[10] = (UINT8) columnar[18];		/* remainder 11 */
+  vertical[14] = (UINT8) columnar[19];		/* remainder 15 */
+  vertical[18] = (UINT8) columnar[20];		/* remainder 19 */
+  vertical[22] = (UINT8) columnar[21];		/* remainder 23 */
+  vertical[26] = (UINT8) columnar[22];		/* remainder 27 */
+  vertical[30] = (UINT8) columnar[23];		/* remainder 31 */
+
+  vertical[3] = (UINT8) columnar[24];		/* remainder 4 */
+  vertical[7] = (UINT8) columnar[25];		/* remainder 8 */
+  vertical[11] = (UINT8) columnar[26];		/* remainder 12 */
+  vertical[15] = (UINT8) columnar[27];		/* remainder 16 */
+  vertical[19] = (UINT8) columnar[28];		/* remainder 20 */
+  vertical[23] = (UINT8) columnar[29];		/* remainder 24 */
+  vertical[27] = (UINT8) columnar[30];		/* remainder 28 */
+  vertical[31] = (UINT8) columnar[31];		/* remainder 32 */
+
+  vertical[32] = (UINT8) columnar[32];		/* remainder 63 */
+  vertical[36] = (UINT8) columnar[33];		/* remainder 59 */
+  vertical[40] = (UINT8) columnar[34];		/* remainder 55 */
+  vertical[44] = (UINT8) columnar[35];		/* remainder 51 */
+  vertical[48] = (UINT8) columnar[36];		/* remainder 47 */
+  vertical[52] = (UINT8) columnar[37];		/* remainder 43 */
+  vertical[56] = (UINT8) columnar[38];		/* remainder 39 */
+  vertical[60] = (UINT8) columnar[39];		/* remainder 35 */
+
+  vertical[33] = (UINT8) columnar[40];		/* remainder 62 */
+  vertical[37] = (UINT8) columnar[41];		/* remainder 58 */
+  vertical[41] = (UINT8) columnar[42];		/* remainder 54 */
+  vertical[45] = (UINT8) columnar[43];		/* remainder 50 */
+  vertical[49] = (UINT8) columnar[44];		/* remainder 46 */
+  vertical[53] = (UINT8) columnar[45];		/* remainder 42 */
+  vertical[57] = (UINT8) columnar[46];		/* remainder 38 */
+  vertical[61] = (UINT8) columnar[47];		/* remainder 34 */
+
+  vertical[34] = (UINT8) columnar[48];		/* remainder 61 */
+  vertical[38] = (UINT8) columnar[49];		/* remainder 57 */
+  vertical[42] = (UINT8) columnar[50];		/* remainder 53 */
+  vertical[46] = (UINT8) columnar[51];		/* remainder 49 */
+  vertical[50] = (UINT8) columnar[52];		/* remainder 45 */
+  vertical[54] = (UINT8) columnar[53];		/* remainder 41 */
+  vertical[58] = (UINT8) columnar[54];		/* remainder 37 */
+  vertical[62] = (UINT8) columnar[55];		/* remainder 33 */
+
+  vertical[35] = (UINT8) columnar[56];		/* remainder 60 */
+  vertical[39] = (UINT8) columnar[57];		/* remainder 56 */
+  vertical[43] = (UINT8) columnar[58];		/* remainder 52 */
+  vertical[47] = (UINT8) columnar[59];		/* remainder 48 */
+  vertical[51] = (UINT8) columnar[60];		/* remainder 44 */
+  vertical[55] = (UINT8) columnar[61];		/* remainder 40 */
+  vertical[59] = (UINT8) columnar[62];		/* remainder 36 */
+  vertical[63] = (UINT8) columnar[63];		/* remainder 32 */
+
+  return;
+}
+
+
+#else
 static void
 vertical_order_fwd (UINT4 *vertical, UINT4 *columnar) {
 
@@ -12565,172 +13602,13 @@ vertical_order_huge_rev (UINT8 *vertical, UINT4 *columnar) {
 }
 #endif
 
-#else
-
-static void
-vertical_order (UINT4 *vertical, UINT4 *columnar) {
-
-  vertical[0] = columnar[0];		/* remainder 1 */
-  vertical[4] = columnar[1];		/* remainder 5 */
-  vertical[8] = columnar[2];		/* remainder 9 */
-  vertical[12] = columnar[3];		/* remainder 13 */
-  vertical[16] = columnar[4];		/* remainder 17 */
-  vertical[20] = columnar[5];		/* remainder 21 */
-  vertical[24] = columnar[6];		/* remainder 25 */
-  vertical[28] = columnar[7];		/* remainder 29 */
-
-  vertical[1] = columnar[8];		/* remainder 2 */
-  vertical[5] = columnar[9];		/* remainder 6 */
-  vertical[9] = columnar[10];		/* remainder 10 */
-  vertical[13] = columnar[11];		/* remainder 14 */
-  vertical[17] = columnar[12];		/* remainder 18 */
-  vertical[21] = columnar[13];		/* remainder 22 */
-  vertical[25] = columnar[14];		/* remainder 26 */
-  vertical[29] = columnar[15];		/* remainder 30 */
-
-  vertical[2] = columnar[16];		/* remainder 3 */
-  vertical[6] = columnar[17];		/* remainder 7 */
-  vertical[10] = columnar[18];		/* remainder 11 */
-  vertical[14] = columnar[19];		/* remainder 15 */
-  vertical[18] = columnar[20];		/* remainder 19 */
-  vertical[22] = columnar[21];		/* remainder 23 */
-  vertical[26] = columnar[22];		/* remainder 27 */
-  vertical[30] = columnar[23];		/* remainder 31 */
-
-  vertical[3] = columnar[24];		/* remainder 4 */
-  vertical[7] = columnar[25];		/* remainder 8 */
-  vertical[11] = columnar[26];		/* remainder 12 */
-  vertical[15] = columnar[27];		/* remainder 16 */
-  vertical[19] = columnar[28];		/* remainder 20 */
-  vertical[23] = columnar[29];		/* remainder 24 */
-  vertical[27] = columnar[30];		/* remainder 28 */
-  vertical[31] = columnar[31];		/* remainder 32 */
-
-  vertical[32] = columnar[32];		/* remainder 63 */
-  vertical[36] = columnar[33];		/* remainder 59 */
-  vertical[40] = columnar[34];		/* remainder 55 */
-  vertical[44] = columnar[35];		/* remainder 51 */
-  vertical[48] = columnar[36];		/* remainder 47 */
-  vertical[52] = columnar[37];		/* remainder 43 */
-  vertical[56] = columnar[38];		/* remainder 39 */
-  vertical[60] = columnar[39];		/* remainder 35 */
-
-  vertical[33] = columnar[40];		/* remainder 62 */
-  vertical[37] = columnar[41];		/* remainder 58 */
-  vertical[41] = columnar[42];		/* remainder 54 */
-  vertical[45] = columnar[43];		/* remainder 50 */
-  vertical[49] = columnar[44];		/* remainder 46 */
-  vertical[53] = columnar[45];		/* remainder 42 */
-  vertical[57] = columnar[46];		/* remainder 38 */
-  vertical[61] = columnar[47];		/* remainder 34 */
-
-  vertical[34] = columnar[48];		/* remainder 61 */
-  vertical[38] = columnar[49];		/* remainder 57 */
-  vertical[42] = columnar[50];		/* remainder 53 */
-  vertical[46] = columnar[51];		/* remainder 49 */
-  vertical[50] = columnar[52];		/* remainder 45 */
-  vertical[54] = columnar[53];		/* remainder 41 */
-  vertical[58] = columnar[54];		/* remainder 37 */
-  vertical[62] = columnar[55];		/* remainder 33 */
-
-  vertical[35] = columnar[56];		/* remainder 60 */
-  vertical[39] = columnar[57];		/* remainder 56 */
-  vertical[43] = columnar[58];		/* remainder 52 */
-  vertical[47] = columnar[59];		/* remainder 48 */
-  vertical[51] = columnar[60];		/* remainder 44 */
-  vertical[55] = columnar[61];		/* remainder 40 */
-  vertical[59] = columnar[62];		/* remainder 36 */
-  vertical[63] = columnar[63];		/* remainder 32 */
-
-  return;
-}
-
-static void
-vertical_order_huge (UINT8 *vertical, UINT4 *columnar) {
-
-  vertical[0] = (UINT8) columnar[0];		/* remainder 1 */
-  vertical[4] = (UINT8) columnar[1];		/* remainder 5 */
-  vertical[8] = (UINT8) columnar[2];		/* remainder 9 */
-  vertical[12] = (UINT8) columnar[3];		/* remainder 13 */
-  vertical[16] = (UINT8) columnar[4];		/* remainder 17 */
-  vertical[20] = (UINT8) columnar[5];		/* remainder 21 */
-  vertical[24] = (UINT8) columnar[6];		/* remainder 25 */
-  vertical[28] = (UINT8) columnar[7];		/* remainder 29 */
-
-  vertical[1] = (UINT8) columnar[8];		/* remainder 2 */
-  vertical[5] = (UINT8) columnar[9];		/* remainder 6 */
-  vertical[9] = (UINT8) columnar[10];		/* remainder 10 */
-  vertical[13] = (UINT8) columnar[11];		/* remainder 14 */
-  vertical[17] = (UINT8) columnar[12];		/* remainder 18 */
-  vertical[21] = (UINT8) columnar[13];		/* remainder 22 */
-  vertical[25] = (UINT8) columnar[14];		/* remainder 26 */
-  vertical[29] = (UINT8) columnar[15];		/* remainder 30 */
-
-  vertical[2] = (UINT8) columnar[16];		/* remainder 3 */
-  vertical[6] = (UINT8) columnar[17];		/* remainder 7 */
-  vertical[10] = (UINT8) columnar[18];		/* remainder 11 */
-  vertical[14] = (UINT8) columnar[19];		/* remainder 15 */
-  vertical[18] = (UINT8) columnar[20];		/* remainder 19 */
-  vertical[22] = (UINT8) columnar[21];		/* remainder 23 */
-  vertical[26] = (UINT8) columnar[22];		/* remainder 27 */
-  vertical[30] = (UINT8) columnar[23];		/* remainder 31 */
-
-  vertical[3] = (UINT8) columnar[24];		/* remainder 4 */
-  vertical[7] = (UINT8) columnar[25];		/* remainder 8 */
-  vertical[11] = (UINT8) columnar[26];		/* remainder 12 */
-  vertical[15] = (UINT8) columnar[27];		/* remainder 16 */
-  vertical[19] = (UINT8) columnar[28];		/* remainder 20 */
-  vertical[23] = (UINT8) columnar[29];		/* remainder 24 */
-  vertical[27] = (UINT8) columnar[30];		/* remainder 28 */
-  vertical[31] = (UINT8) columnar[31];		/* remainder 32 */
-
-  vertical[32] = (UINT8) columnar[32];		/* remainder 63 */
-  vertical[36] = (UINT8) columnar[33];		/* remainder 59 */
-  vertical[40] = (UINT8) columnar[34];		/* remainder 55 */
-  vertical[44] = (UINT8) columnar[35];		/* remainder 51 */
-  vertical[48] = (UINT8) columnar[36];		/* remainder 47 */
-  vertical[52] = (UINT8) columnar[37];		/* remainder 43 */
-  vertical[56] = (UINT8) columnar[38];		/* remainder 39 */
-  vertical[60] = (UINT8) columnar[39];		/* remainder 35 */
-
-  vertical[33] = (UINT8) columnar[40];		/* remainder 62 */
-  vertical[37] = (UINT8) columnar[41];		/* remainder 58 */
-  vertical[41] = (UINT8) columnar[42];		/* remainder 54 */
-  vertical[45] = (UINT8) columnar[43];		/* remainder 50 */
-  vertical[49] = (UINT8) columnar[44];		/* remainder 46 */
-  vertical[53] = (UINT8) columnar[45];		/* remainder 42 */
-  vertical[57] = (UINT8) columnar[46];		/* remainder 38 */
-  vertical[61] = (UINT8) columnar[47];		/* remainder 34 */
-
-  vertical[34] = (UINT8) columnar[48];		/* remainder 61 */
-  vertical[38] = (UINT8) columnar[49];		/* remainder 57 */
-  vertical[42] = (UINT8) columnar[50];		/* remainder 53 */
-  vertical[46] = (UINT8) columnar[51];		/* remainder 49 */
-  vertical[50] = (UINT8) columnar[52];		/* remainder 45 */
-  vertical[54] = (UINT8) columnar[53];		/* remainder 41 */
-  vertical[58] = (UINT8) columnar[54];		/* remainder 37 */
-  vertical[62] = (UINT8) columnar[55];		/* remainder 33 */
-
-  vertical[35] = (UINT8) columnar[56];		/* remainder 60 */
-  vertical[39] = (UINT8) columnar[57];		/* remainder 56 */
-  vertical[43] = (UINT8) columnar[58];		/* remainder 52 */
-  vertical[47] = (UINT8) columnar[59];		/* remainder 48 */
-  vertical[51] = (UINT8) columnar[60];		/* remainder 44 */
-  vertical[55] = (UINT8) columnar[61];		/* remainder 40 */
-  vertical[59] = (UINT8) columnar[62];		/* remainder 36 */
-  vertical[63] = (UINT8) columnar[63];		/* remainder 32 */
-
-  return;
-}
-
 #endif
 
 
-
-#ifdef HAVE_SSE2
-typedef void (*Unpacker_T) (__m128i* __restrict__, const __m128i* __restrict__);
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
 typedef void (*Unpacker_T) (UINT4* __restrict__, const UINT4* __restrict__);
+#else
+typedef void (*Unpacker_T) (__m128i* __restrict__, const __m128i* __restrict__);
 #endif
 
 
@@ -12745,8 +13623,20 @@ static Unpacker_T unpacker_table[33] =
    unpack_21, unpack_22, unpack_23, unpack_24,
    unpack_25, unpack_26, unpack_27, unpack_28,
    unpack_29, unpack_30, unpack_31, unpack_32};
+
+#elif defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+static Unpacker_T unpacker_all_table[33] =
+  {unpack_00,
+   unpack_00, unpack_02, unpack_00, unpack_04,
+   unpack_00, unpack_06, unpack_00, unpack_08,
+   unpack_00, unpack_10, unpack_00, unpack_12,
+   unpack_00, unpack_14, unpack_00, unpack_16,
+   unpack_00, unpack_18, unpack_00, unpack_20,
+   unpack_00, unpack_22, unpack_00, unpack_24,
+   unpack_00, unpack_26, unpack_00, unpack_28,
+   unpack_00, unpack_30, unpack_00, unpack_32};
+
 #else
-#ifdef HAVE_SSE2
 static Unpacker_T unpacker_all_table[34] =
   {unpack_00, unpack_00,
    unpack_02_fwd, unpack_02_rev, unpack_04_fwd, unpack_04_rev,
@@ -12864,18 +13754,6 @@ static Unpacker_T unpacker_table[17][17] =
 
 };
    
-#else
-static Unpacker_T unpacker_all_table[33] =
-  {unpack_00,
-   unpack_00, unpack_02, unpack_00, unpack_04,
-   unpack_00, unpack_06, unpack_00, unpack_08,
-   unpack_00, unpack_10, unpack_00, unpack_12,
-   unpack_00, unpack_14, unpack_00, unpack_16,
-   unpack_00, unpack_18, unpack_00, unpack_20,
-   unpack_00, unpack_22, unpack_00, unpack_24,
-   unpack_00, unpack_26, unpack_00, unpack_28,
-   unpack_00, unpack_30, unpack_00, unpack_32};
-#endif
 #endif
 
 
@@ -13786,7 +14664,11 @@ Bitpack64_read_one (Storedoligomer_T oligo, UINT4 *bitpackptrs, UINT4 *bitpackco
   Storedoligomer_T bmer;
   UINT4 *info, nwritten, packsize_div2;
   int delta, remainder, quarter_block, column, row;
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+  UINT4 ptr;
+  UINT4 diffs[BLOCKSIZE+1], *bitpack;
+  int k, i;
+#else
 #ifdef BRANCH_FREE_ROW_SUM
   __m128i diffs[3];
 #else
@@ -13797,10 +14679,6 @@ Bitpack64_read_one (Storedoligomer_T oligo, UINT4 *bitpackptrs, UINT4 *bitpackco
 #endif
   __m128i *bitpack;
   UINT4 *_diffs;
-#else
-  UINT4 ptr;
-  UINT4 diffs[BLOCKSIZE+1], *bitpack;
-  int k, i;
 #endif
 #ifdef DEBUG
   UINT4 offsets[BLOCKSIZE+1];
@@ -13812,20 +14690,113 @@ Bitpack64_read_one (Storedoligomer_T oligo, UINT4 *bitpackptrs, UINT4 *bitpackco
 
   debug(printf("Entered Bitpack64_read_one with oligo %u => bmer %u\n",oligo,bmer));
 
-  nwritten = info[0];		/* In 128-bit registers */
-#ifdef HAVE_SSE2  
-  bitpack = (__m128i *) &(bitpackcomp[nwritten*4]);
-#else
+#if defined(WORDS_BIGENDIAN)
+  nwritten = Bigendian_convert_uint(info[0]);		/* In 128-bit registers */
   bitpack = (UINT4 *) &(bitpackcomp[nwritten*4]);
-#endif
+  packsize_div2 = (Bigendian_convert_uint(info[DIFFERENTIAL_METAINFO_SIZE]) - nwritten);
 
+#elif !defined(HAVE_SSE2)
+  nwritten = info[0];		/* In 128-bit registers */
+  bitpack = (UINT4 *) &(bitpackcomp[nwritten*4]);
+  packsize_div2 = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten);
+
+#else
+  nwritten = info[0];		/* In 128-bit registers */
+  bitpack = (__m128i *) &(bitpackcomp[nwritten*4]);
   /* packsize = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten)*2; */
   packsize_div2 = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten);
+#endif
 
   remainder = oligo % BLOCKSIZE;
   quarter_block = remainder / 16;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+
+  /* Unpack all 64 diffs for non-SIMD */
+  (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
+
+  if (remainder <= 16) {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset0*/info[1]);
+#else
+    ptr = /*offset0*/info[1];
+#endif
+
+    delta = remainder - 1;
+    column = get_column(delta);
+    row = get_row(delta);
+    debug(printf("column %d, row %d\n",column,row));
+    
+    for (k = column*2 + 1, i = 0; i <= row; k += BLOCKSIZE/4, i++) {
+      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
+      ptr += diffs[k];
+    }
+
+  } else if (remainder <= 32) {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset0*/info[1]);
+#else
+    ptr = /*offset0*/info[1];
+#endif
+
+    delta = remainder - 1;
+    column = get_column(delta);
+    row = get_row(delta);
+    debug(printf("column %d, row %d\n",column,row));
+    
+    for (k = column*2 + 1, i = 0; i < 4; k += BLOCKSIZE/4, i++) {
+      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
+      ptr += diffs[k];
+    }
+
+    for (k = column*2 + 2; i <= row; k += BLOCKSIZE/4, i++) {
+      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
+      ptr += diffs[k];
+    }
+
+  } else if (remainder <= 48) {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1]);
+#else
+    ptr = /*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1];
+#endif
+
+    delta = 63 - remainder;
+    column = get_column(delta);
+    row = get_row(delta);
+    debug(printf("column %d, row %d\n",column,row));
+
+    for (k = column*2 + 9, i = 0; i < 4; k += BLOCKSIZE/4, i++) {
+      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
+      ptr -= diffs[k];
+    }
+
+    for (k = column*2 + 10; i <= row; k += BLOCKSIZE/4, i++) {
+      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
+      ptr -= diffs[k];
+    }
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1]);
+#else
+    ptr = /*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1];
+#endif
+
+    delta = 63 - remainder;
+    column = get_column(delta);
+    row = get_row(delta);
+    debug(printf("column %d, row %d\n",column,row));
+
+    for (k = column*2 + 9, i = 0; i <= row; k += BLOCKSIZE/4, i++) {
+      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
+      ptr -= diffs[k];
+    }
+  }
+
+  return ptr;
+
+#else  /* littleendian and SSE2 */
   _diffs = (UINT4 *) diffs;	/* Assumes a dummy register in diffs[0] */
 
 #ifdef BRANCH_FREE_QTR_BLOCK
@@ -13869,79 +14840,8 @@ Bitpack64_read_one (Storedoligomer_T oligo, UINT4 *bitpackptrs, UINT4 *bitpackco
 #endif
   }
 
-#endif
-
-#else
-
-  /* Unpack all 64 diffs for non-SIMD */
-  (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
-
-  if (remainder <= 16) {
-    ptr = /*offset0*/info[1];
-
-    delta = remainder - 1;
-    column = get_column(delta);
-    row = get_row(delta);
-    debug(printf("column %d, row %d\n",column,row));
-    
-    for (k = column*2 + 1, i = 0; i <= row; k += BLOCKSIZE/4, i++) {
-      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
-      ptr += diffs[k];
-    }
-
-  } else if (remainder <= 32) {
-    ptr = /*offset0*/info[1];
-
-    delta = remainder - 1;
-    column = get_column(delta);
-    row = get_row(delta);
-    debug(printf("column %d, row %d\n",column,row));
-    
-    for (k = column*2 + 1, i = 0; i < 4; k += BLOCKSIZE/4, i++) {
-      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
-      ptr += diffs[k];
-    }
-
-    for (k = column*2 + 2; i <= row; k += BLOCKSIZE/4, i++) {
-      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
-      ptr += diffs[k];
-    }
-
-  } else if (remainder <= 48) {
-    ptr = /*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1];
-
-    delta = 63 - remainder;
-    column = get_column(delta);
-    row = get_row(delta);
-    debug(printf("column %d, row %d\n",column,row));
-
-    for (k = column*2 + 9, i = 0; i < 4; k += BLOCKSIZE/4, i++) {
-      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
-      ptr -= diffs[k];
-    }
-
-    for (k = column*2 + 10; i <= row; k += BLOCKSIZE/4, i++) {
-      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
-      ptr -= diffs[k];
-    }
-
-  } else {
-    ptr = /*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1];
-
-    delta = 63 - remainder;
-    column = get_column(delta);
-    row = get_row(delta);
-    debug(printf("column %d, row %d\n",column,row));
-
-    for (k = column*2 + 9, i = 0; i <= row; k += BLOCKSIZE/4, i++) {
-      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
-      ptr -= diffs[k];
-    }
-  }
-
-  return ptr;
-
-#endif	/* HAVE_SSE2 */
+#endif	/* BRANCH_FREE_QTR_BLOCK */
+#endif	/* littleendian and SSE2 */
 }
 
 
@@ -13955,7 +14855,11 @@ Bitpack64_read_one_huge (Storedoligomer_T oligo, UINT4 *bitpackpages,
   UINT4 *info, nwritten, packsize_div2;
   UINT8 offset0, offset1;
   int delta, remainder, quarter_block, column, row;
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+  UINT8 ptr;
+  UINT4 diffs[BLOCKSIZE+1], *bitpack;
+  int k;
+#else
 #ifdef BRANCH_FREE_ROW_SUM
   __m128i diffs[3];
 #else
@@ -13966,10 +14870,6 @@ Bitpack64_read_one_huge (Storedoligomer_T oligo, UINT4 *bitpackpages,
 #endif
   __m128i *bitpack;
   UINT4 *_diffs;
-#else
-  UINT8 ptr;
-  UINT4 diffs[BLOCKSIZE+1], *bitpack;
-  int k;
 #endif
   int i;
 
@@ -13979,15 +14879,23 @@ Bitpack64_read_one_huge (Storedoligomer_T oligo, UINT4 *bitpackpages,
 
   debug(printf("Entered Bitpack64_read_one_huge with oligo %u => bmer %u\n",oligo,bmer));
 
-  nwritten = info[0];		/* In 128-bit registers */
-#ifdef HAVE_SSE2  
-  bitpack = (__m128i *) &(bitpackcomp[nwritten*4]);
-#else
+#ifdef WORDS_BIGENDIAN
+  nwritten = Bigendian_convert_uint(info[0]);		/* In 128-bit registers */
   bitpack = (UINT4 *) &(bitpackcomp[nwritten*4]);
-#endif
+  packsize_div2 = (Bigendian_convert_uint(info[DIFFERENTIAL_METAINFO_SIZE]) - nwritten);
 
+#elif !defined(HAVE_SSE2)
+  nwritten = info[0];		/* In 128-bit registers */
+  bitpack = (UINT4 *) &(bitpackcomp[nwritten*4]);
+  packsize_div2 = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten);
+
+#else
+  nwritten = info[0];		/* In 128-bit registers */
+  bitpack = (__m128i *) &(bitpackcomp[nwritten*4]);
   /* packsize = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten)*2; */
   packsize_div2 = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten);
+#endif
+
 
 #ifdef DEBUG
   printf("bitpack (for packsize %d):\n",packsize_div2*2);
@@ -14000,7 +14908,152 @@ Bitpack64_read_one_huge (Storedoligomer_T oligo, UINT4 *bitpackpages,
   remainder = oligo % BLOCKSIZE;
   quarter_block = remainder / 16;
 
-#ifdef HAVE_SSE2
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
+
+  /* Unpack all 64 diffs for non-SIMD */
+  (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
+
+  if ((remainder = oligo % BLOCKSIZE) == 0) {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset0*/info[1]);
+#else
+    ptr = /*offset0*/info[1];
+#endif
+
+  } else if (remainder <= 16) {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset0*/info[1]);
+    if (bitpackpages != NULL) {
+      pageptr = bitpackpages;
+      while (bmer+1 >= Bigendian_convert_uint(*pageptr)) {
+	ptr += POSITIONS_PAGE;
+	pageptr++;
+      }
+    }
+#else
+    ptr = /*offset0*/info[1];
+    if (bitpackpages != NULL) {
+      pageptr = bitpackpages;
+      while (bmer+1 >= *pageptr) {
+	ptr += POSITIONS_PAGE;
+	pageptr++;
+      }
+    }
+#endif
+
+    column = (remainder - 1) % 4; /* Goes from 0 to 3 */
+    row = (remainder - 1) / 4;
+    debug(printf("column %d, row %d\n",column,row));
+    
+    for (k = column*2 + 1, i = 0; i <= row; k += BLOCKSIZE/4, i++) {
+      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
+      ptr += diffs[k];
+    }
+
+  } else if (remainder <= 32) {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset0*/info[1]);
+    if (bitpackpages != NULL) {
+      pageptr = bitpackpages;
+      while (bmer+1 >= Bigendian_convert_uint(*pageptr)) {
+	ptr += POSITIONS_PAGE;
+	pageptr++;
+      }
+    }
+#else
+    ptr = /*offset0*/info[1];
+    if (bitpackpages != NULL) {
+      pageptr = bitpackpages;
+      while (bmer+1 >= *pageptr) {
+	ptr += POSITIONS_PAGE;
+	pageptr++;
+      }
+    }
+#endif
+
+    column = (remainder - 1) % 4; /* Goes from 0 to 3 */
+    row = (remainder - 1) / 4;
+    debug(printf("column %d, row %d\n",column,row));
+    
+    for (k = column*2 + 1, i = 0; i < 4; k += BLOCKSIZE/4, i++) {
+      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
+      ptr += diffs[k];
+    }
+
+    for (k = column*2 + 2; i <= row; k += BLOCKSIZE/4, i++) {
+      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
+      ptr += diffs[k];
+    }
+
+  } else if (remainder <= 48) {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1]);
+    if (bitpackpages != NULL) {
+      pageptr = bitpackpages;
+      while (bmer+1 >= Bigendian_convert_uint(*pageptr)) {
+	ptr += POSITIONS_PAGE;
+	pageptr++;
+      }
+    }
+#else
+    ptr = /*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1];
+    if (bitpackpages != NULL) {
+      pageptr = bitpackpages;
+      while (bmer+1 >= *pageptr) {
+	ptr += POSITIONS_PAGE;
+	pageptr++;
+      }
+    }
+#endif
+
+    column = (63 - remainder) % 4; /* Goes from 0 to 3.  Assert remainder < 64 */
+    row = (63 - remainder) / 4;
+    debug(printf("column %d, row %d\n",column,row));
+
+    for (k = column*2 + 9, i = 0; i < 4; k += BLOCKSIZE/4, i++) {
+      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
+      ptr -= diffs[k];
+    }
+
+    for (k = column*2 + 10; i <= row; k += BLOCKSIZE/4, i++) {
+      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
+      ptr -= diffs[k];
+    }
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    ptr = Bigendian_convert_uint(/*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1]);
+    if (bitpackpages != NULL) {
+      pageptr = bitpackpages;
+      while (bmer+1 >= Bigendian_convert_uint(*pageptr)) {
+	ptr += POSITIONS_PAGE;
+	pageptr++;
+      }
+    }
+#else
+    ptr = /*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1];
+    if (bitpackpages != NULL) {
+      pageptr = bitpackpages;
+      while (bmer+1 >= *pageptr) {
+	ptr += POSITIONS_PAGE;
+	pageptr++;
+      }
+    }
+#endif
+
+    column = (63 - remainder) % 4; /* Goes from 0 to 3.  Assert remainder < 64 */
+    row = (63 - remainder) / 4;
+    debug(printf("column %d, row %d\n",column,row));
+
+    for (k = column*2 + 9, i = 0; i <= row; k += BLOCKSIZE/4, i++) {
+      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
+      ptr -= diffs[k];
+    }
+  }
+
+  return ptr;
+
+#else			    /* littleendian and SSE2 */
   _diffs = (UINT4 *) diffs;	/* Assumes a dummy register in diffs[0] */
 
 #ifdef BRANCH_FREE_QTR_BLOCK
@@ -14107,106 +15160,8 @@ Bitpack64_read_one_huge (Storedoligomer_T oligo, UINT4 *bitpackpages,
 #endif
   }
 
-#endif
-
-#else
-
-  /* Unpack all 64 diffs for non-SIMD */
-  (unpacker_all_table[packsize_div2*2])(&(diffs[1]),bitpack);
-
-  if ((remainder = oligo % BLOCKSIZE) == 0) {
-    ptr = /*offset0*/info[1];
-
-  } else if (remainder <= 16) {
-    ptr = /*offset0*/info[1];
-    if (bitpackpages != NULL) {
-      pageptr = bitpackpages;
-      while (bmer+1 >= *pageptr) {
-	ptr += POSITIONS_PAGE;
-	pageptr++;
-      }
-    }
-
-    column = (remainder - 1) % 4; /* Goes from 0 to 3 */
-    row = (remainder - 1) / 4;
-    debug(printf("column %d, row %d\n",column,row));
-    
-    for (k = column*2 + 1, i = 0; i <= row; k += BLOCKSIZE/4, i++) {
-      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
-      ptr += diffs[k];
-    }
-
-  } else if (remainder <= 32) {
-    ptr = /*offset0*/info[1];
-    if (bitpackpages != NULL) {
-      pageptr = bitpackpages;
-      while (bmer+1 >= *pageptr) {
-	ptr += POSITIONS_PAGE;
-	pageptr++;
-      }
-    }
-
-    column = (remainder - 1) % 4; /* Goes from 0 to 3 */
-    row = (remainder - 1) / 4;
-    debug(printf("column %d, row %d\n",column,row));
-    
-    for (k = column*2 + 1, i = 0; i < 4; k += BLOCKSIZE/4, i++) {
-      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
-      ptr += diffs[k];
-    }
-
-    for (k = column*2 + 2; i <= row; k += BLOCKSIZE/4, i++) {
-      debug(printf("Adding diffs[%d] = %u\n",k,diffs[k]));
-      ptr += diffs[k];
-    }
-
-  } else if (remainder <= 48) {
-    ptr = /*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1];
-    if (bitpackpages != NULL) {
-      pageptr = bitpackpages;
-      while (bmer+1 >= *pageptr) {
-	ptr += POSITIONS_PAGE;
-	pageptr++;
-      }
-    }
-
-    column = (63 - remainder) % 4; /* Goes from 0 to 3.  Assert remainder < 64 */
-    row = (63 - remainder) / 4;
-    debug(printf("column %d, row %d\n",column,row));
-
-    for (k = column*2 + 9, i = 0; i < 4; k += BLOCKSIZE/4, i++) {
-      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
-      ptr -= diffs[k];
-    }
-
-    for (k = column*2 + 10; i <= row; k += BLOCKSIZE/4, i++) {
-      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
-      ptr -= diffs[k];
-    }
-
-  } else {
-    ptr = /*offset1*/info[DIFFERENTIAL_METAINFO_SIZE+1];
-    if (bitpackpages != NULL) {
-      pageptr = bitpackpages;
-      while (bmer+1 >= *pageptr) {
-	ptr += POSITIONS_PAGE;
-	pageptr++;
-      }
-    }
-
-    column = (63 - remainder) % 4; /* Goes from 0 to 3.  Assert remainder < 64 */
-    row = (63 - remainder) / 4;
-    debug(printf("column %d, row %d\n",column,row));
-
-    for (k = column*2 + 9, i = 0; i <= row; k += BLOCKSIZE/4, i++) {
-      debug(printf("Subtracting diffs[%d] = %u\n",k,diffs[k]));
-      ptr -= diffs[k];
-    }
-  }
-
-  return ptr;
-
-#endif
+#endif	/* BRANCH_FREE_QTR_BLOCK */
+#endif	/* littleendian and SSE2 */
 }
 
 
@@ -14218,12 +15173,12 @@ Bitpack64_block_offsets (UINT4 *offsets, Storedoligomer_T oligo,
   UINT4 *info, nwritten;
   UINT4 offset0, offset1, temp;
   int packsize, k;
-#ifdef HAVE_SSE2
-  __m128i diffs[8], *bitpack;
-  UINT4 *_diffs;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   int column, row;
   UINT4 diffs[BLOCKSIZE], columnar[BLOCKSIZE], *bitpack, *vertical;
+#else
+  __m128i diffs[8], *bitpack;
+  UINT4 *_diffs;
 #endif
 #ifdef DEBUG
   int i;
@@ -14231,52 +15186,36 @@ Bitpack64_block_offsets (UINT4 *offsets, Storedoligomer_T oligo,
 
 
   info = &(bitpackptrs[oligo/BLOCKSIZE * DIFFERENTIAL_METAINFO_SIZE]);
-  nwritten = info[0];		/* In 128-bit registers */
-#ifdef HAVE_SSE2
-  bitpack = (__m128i *) &(bitpackcomp[nwritten*4]);
-#else
+#ifdef WORDS_BIGENDIAN
+  nwritten = Bigendian_convert_uint(info[0]);
   bitpack = (UINT4 *) &(bitpackcomp[nwritten*4]);
-#endif
+  offset0 = Bigendian_convert_uint(info[1]);
+  offset1 = Bigendian_convert_uint(info[DIFFERENTIAL_METAINFO_SIZE+1]);
+  packsize = (Bigendian_convert_uint(info[DIFFERENTIAL_METAINFO_SIZE]) - nwritten)*2;
+
+#elif !defined(HAVE_SSE2)
+  nwritten = info[0];		/* In 128-bit registers */
+  bitpack = (UINT4 *) &(bitpackcomp[nwritten*4]);
   offset0 = info[1];
   offset1 = info[DIFFERENTIAL_METAINFO_SIZE+1];
-
   packsize = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten)*2;
+
+#else
+  nwritten = info[0];		/* In 128-bit registers */
+  bitpack = (__m128i *) &(bitpackcomp[nwritten*4]);
+  offset0 = info[1];
+  offset1 = info[DIFFERENTIAL_METAINFO_SIZE+1];
+  packsize = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten)*2;
+#endif
+
 
 #ifdef DEBUG
   printf("oligo: %08X, nwritten %u, offset0 %u, offset1 %u, packsize %d\n",
 	 oligo,nwritten,offset0,offset1,packsize);
 #endif
 
-#ifdef HAVE_SSE2
-#ifdef DEBUG
-  printf("bitpack:\n");
-  for (i = 0; i < packsize/2; i++) {
-    print_vector_hex(bitpack[i]);
-  }
-  printf("\n");
-#endif  
 
-  _diffs = (UINT4 *) &(diffs[0]);
-
-  /* Unpack fwd 32 cumulative sums under SIMD */
-  (unpacker_all_table[packsize])(&(diffs[0]),bitpack);
-  vertical_order_fwd(&(offsets[1]),_diffs);
-
-  /* Unpack rev 32 cumulative sums under SIMD */
-  (unpacker_all_table[packsize+1])(&(diffs[0]),bitpack);
-  vertical_order_rev(&(offsets[33]),_diffs);
-
-#ifdef DEBUG
-  printf("%u\n",offsets[i]);
-  for (i = 1; i <= BLOCKSIZE; i += 4) {
-    printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
-  }
-  printf("end of diffs vertical\n");
-#endif
-
-
-#else
-
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   /* Unpack all 64 diffs for non-SIMD */
   (unpacker_all_table[packsize])(&(diffs[0]),bitpack);
 
@@ -14311,7 +15250,35 @@ Bitpack64_block_offsets (UINT4 *offsets, Storedoligomer_T oligo,
   printf("end of diffs vertical\n");
 #endif
 
-#endif	/* HAVE_SSE2 */
+#else  /* littleendian and SSE2 */
+
+#ifdef DEBUG
+  printf("bitpack:\n");
+  for (i = 0; i < packsize/2; i++) {
+    print_vector_hex(bitpack[i]);
+  }
+  printf("\n");
+#endif  
+
+  _diffs = (UINT4 *) &(diffs[0]);
+
+  /* Unpack fwd 32 cumulative sums under SIMD */
+  (unpacker_all_table[packsize])(&(diffs[0]),bitpack);
+  vertical_order_fwd(&(offsets[1]),_diffs);
+
+  /* Unpack rev 32 cumulative sums under SIMD */
+  (unpacker_all_table[packsize+1])(&(diffs[0]),bitpack);
+  vertical_order_rev(&(offsets[33]),_diffs);
+
+#ifdef DEBUG
+  printf("%u\n",offsets[i]);
+  for (i = 1; i <= BLOCKSIZE; i += 4) {
+    printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+  }
+  printf("end of diffs vertical\n");
+#endif
+
+#endif	/* littleendian and SSE2 */
 
   /* Perform cumulative sum */
   offsets[0] = offset0;
@@ -14365,12 +15332,12 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
   Storedoligomer_T bmer;
   UINT8 offset0, offset1, temp;
   int packsize, k;
-#ifdef HAVE_SSE2
-  __m128i diffs[8], *bitpack;
-  UINT4 *_diffs;
-#else
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   int column, row;
   UINT4 diffs[BLOCKSIZE], columnar[BLOCKSIZE], *bitpack, *vertical;
+#else
+  __m128i diffs[8], *bitpack;
+  UINT4 *_diffs;
 #endif
 #ifdef DEBUG
   int i;
@@ -14379,13 +15346,33 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
   bmer = oligo/BLOCKSIZE;
 
   info = &(bitpackptrs[bmer * DIFFERENTIAL_METAINFO_SIZE]);
-  nwritten = info[0];		/* In 128-bit registers */
-#ifdef HAVE_SSE2
-  bitpack = (__m128i *) &(bitpackcomp[nwritten*4]);
-#else
+
+#ifdef WORDS_BIGENDIAN
+  nwritten = Bigendian_convert_uint(info[0]); /* In 128-bit registers */
   bitpack = (UINT4 *) &(bitpackcomp[nwritten*4]);
+
+#elif !defined(HAVE_SSE2)
+  nwritten = info[0];		/* In 128-bit registers */
+  bitpack = (UINT4 *) &(bitpackcomp[nwritten*4]);
+
+#else
+  nwritten = info[0];		/* In 128-bit registers */
+  bitpack = (__m128i *) &(bitpackcomp[nwritten*4]);
 #endif
 
+#ifdef WORDS_BIGENDIAN
+  offset0 = offset1 = 0UL;
+  pageptr = bitpackpages;
+  while (bmer >= Bigendian_convert_uint(*pageptr)) {
+    offset0 += POSITIONS_PAGE;
+    pageptr++;
+  }
+
+  offset1 = offset0;
+  if (bmer+1 >= Bigendian_convert_uint(*pageptr)) {
+    offset1 += POSITIONS_PAGE;
+  }
+#else
   offset0 = offset1 = 0UL;
   pageptr = bitpackpages;
   while (bmer >= *pageptr) {
@@ -14397,11 +15384,18 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
   if (bmer+1 >= *pageptr) {
     offset1 += POSITIONS_PAGE;
   }
+#endif
 
+
+#ifdef WORDS_BIGENDIAN
+  offset0 += Bigendian_convert_uint(info[1]);
+  offset1 += Bigendian_convert_uint(info[DIFFERENTIAL_METAINFO_SIZE+1]);
+  packsize = (Bigendian_convert_uint(info[DIFFERENTIAL_METAINFO_SIZE]) - nwritten)*2;
+#else
   offset0 += info[1];
   offset1 += info[DIFFERENTIAL_METAINFO_SIZE+1];
-
   packsize = (info[DIFFERENTIAL_METAINFO_SIZE] - nwritten)*2;
+#endif
 
 
 #ifdef DEBUG
@@ -14409,36 +15403,8 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
 	 oligo,nwritten,offset0,offset1,packsize);
 #endif
 
-#ifdef HAVE_SSE2
-#ifdef DEBUG
-  printf("bitpack:\n");
-  for (i = 0; i < packsize/2; i++) {
-    print_vector_hex(bitpack[i]);
-  }
-  printf("\n");
-#endif
 
-  _diffs = (UINT4 *) &(diffs[0]);
-
-  /* Unpack fwd 32 cumulative sums under SIMD */
-  (unpacker_all_table[packsize])(&(diffs[0]),bitpack);
-  vertical_order_huge_fwd(&(offsets[1]),_diffs);
-
-  /* Unpack rev 32 cumulative sums under SIMD */
-  (unpacker_all_table[packsize+1])(&(diffs[0]),bitpack);
-  vertical_order_huge_rev(&(offsets[33]),_diffs);
-
-#ifdef DEBUG
-  printf("%u\n",offsets[i]);
-  for (i = 1; i <= 64; i += 4) {
-    printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
-  }
-  printf("end of diffs vertical\n");
-#endif
-
-
-#else
-
+#if defined(WORDS_BIGENDIAN) || !defined(HAVE_SSE2)
   /* Unpack all 64 diffs for non-SIMD */
   (unpacker_all_table[packsize])(&(diffs[0]),bitpack);
 
@@ -14467,6 +15433,34 @@ Bitpack64_block_offsets_huge (UINT8 *offsets, Storedoligomer_T oligo,
 
 #ifdef DEBUG
   printf("%u\n",offset0);
+  for (i = 1; i <= 64; i += 4) {
+    printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
+  }
+  printf("end of diffs vertical\n");
+#endif
+
+
+#else
+#ifdef DEBUG
+  printf("bitpack:\n");
+  for (i = 0; i < packsize/2; i++) {
+    print_vector_hex(bitpack[i]);
+  }
+  printf("\n");
+#endif
+
+  _diffs = (UINT4 *) &(diffs[0]);
+
+  /* Unpack fwd 32 cumulative sums under SIMD */
+  (unpacker_all_table[packsize])(&(diffs[0]),bitpack);
+  vertical_order_huge_fwd(&(offsets[1]),_diffs);
+
+  /* Unpack rev 32 cumulative sums under SIMD */
+  (unpacker_all_table[packsize+1])(&(diffs[0]),bitpack);
+  vertical_order_huge_rev(&(offsets[33]),_diffs);
+
+#ifdef DEBUG
+  printf("%u\n",offsets[i]);
   for (i = 1; i <= 64; i += 4) {
     printf("%u %u %u %u\n",offsets[i],offsets[i+1],offsets[i+2],offsets[i+3]);
   }

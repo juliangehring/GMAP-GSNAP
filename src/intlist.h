@@ -1,6 +1,7 @@
-/* $Id: intlist.h 145990 2014-08-25 21:47:32Z twu $ */
+/* $Id: intlist.h 166641 2015-05-29 21:13:04Z twu $ */
 #ifndef INTLIST_INCLUDED
 #define INTLIST_INCLUDED
+
 #include "bool.h"
 
 #define T Intlist_T
@@ -32,6 +33,10 @@ extern int
 Intlist_length (T list);
 extern int
 Intlist_max (T list);
+extern int
+Intlist_min (T list);
+extern bool
+Intlist_vary (T list);
 extern bool
 Intlist_exists_p (T list, int x);
 extern int *

@@ -1,4 +1,4 @@
-/* $Id: genomicpos.h 157232 2015-01-22 18:55:31Z twu $ */
+/* $Id: genomicpos.h 157225 2015-01-22 18:47:23Z twu $ */
 #ifndef GENOMICPOS_INCLUDED
 #define GENOMICPOS_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -38,6 +38,17 @@ Genomicpos_commafmt (
 		     UINT4 N
 #endif
 		     );
+#ifdef MEMUSAGE
+void
+Genomicpos_commafmt_fill (char *string,
+#ifdef HAVE_64_BIT
+		     UINT8 N
+#else
+		     UINT4 N
+#endif
+		     );
+#endif
+
 extern int
 UINT8_compare (const void *a, const void *b);
 extern int

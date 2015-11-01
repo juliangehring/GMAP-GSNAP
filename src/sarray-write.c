@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sarray-write.c 151046 2014-10-16 19:08:41Z twu $";
+static char rcsid[] = "$Id: sarray-write.c 170326 2015-07-22 17:49:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -9,6 +9,8 @@ static char rcsid[] = "$Id: sarray-write.c 151046 2014-10-16 19:08:41Z twu $";
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>		/* For munmap */
+#include <math.h>		/* For rint */
+
 #include "bool.h"
 #include "access.h"
 #include "mem.h"
@@ -74,16 +76,17 @@ static char rcsid[] = "$Id: sarray-write.c 151046 2014-10-16 19:08:41Z twu $";
 /* #define READ_SA_FROM_FILE 1 */
 
 #define MONITOR_INTERVAL 100000000 /* 100 million nt */
+#define RW_BATCH  10000000	/* 10 million elements */
 
 /* For standard genome */
 void
 Sarray_write_array (char *sarrayfile, Genome_T genomecomp, UINT4 genomelength) {
   UINT4 *SA;
-  UINT4 n = genomelength;
+  UINT4 n = genomelength, ii;
   unsigned char *gbuffer;
   FILE *fp;
-
-
+  void *p;
+  
   SA = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
   gbuffer = (unsigned char *) CALLOC(n+1,sizeof(unsigned char));
   Genome_fill_buffer_int_string(genomecomp,/*left*/0,/*length*/n,gbuffer,/*conversion*/NULL);
@@ -94,7 +97,18 @@ Sarray_write_array (char *sarrayfile, Genome_T genomecomp, UINT4 genomelength) {
     fprintf(stderr,"Can't write to file %s\n",sarrayfile);
     exit(9);
   } else {
+#if 0
     FWRITE_UINTS(SA,n+1,fp);
+#else
+    for (ii = 0; ii + RW_BATCH <= n; ii += RW_BATCH) {
+      p = (void *) &(SA[ii]);
+      FWRITE_UINTS(p,RW_BATCH,fp);
+    }
+    if (ii <= n) {
+      p = (void *) &(SA[ii]);
+      FWRITE_UINTS(p,n - ii + 1,fp);
+    }
+#endif
     fclose(fp);
   }
 
@@ -108,8 +122,9 @@ Sarray_write_array (char *sarrayfile, Genome_T genomecomp, UINT4 genomelength) {
 void
 Sarray_write_array_from_genome (char *sarrayfile, unsigned char *gbuffer, UINT4 genomelength) {
   UINT4 *SA;
-  UINT4 n = genomelength;
+  UINT4 n = genomelength, ii;
   FILE *fp;
+  void *p;
 
 
   SA = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
@@ -119,7 +134,18 @@ Sarray_write_array_from_genome (char *sarrayfile, unsigned char *gbuffer, UINT4 
     fprintf(stderr,"Can't write to file %s\n",sarrayfile);
     exit(9);
   } else {
+#if 0
     FWRITE_UINTS(SA,n+1,fp);
+#else
+    for (ii = 0; ii + RW_BATCH <= n; ii += RW_BATCH) {
+      p = (void *) &(SA[ii]);
+      FWRITE_UINTS(p,RW_BATCH,fp);
+    }
+    if (ii <= n) {
+      p = (void *) &(SA[ii]);
+      FWRITE_UINTS(p,n - ii + 1,fp);
+    }
+#endif
     fclose(fp);
   }
 
@@ -162,7 +188,11 @@ sarray_search_char (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, char desired_ch
     if (low % 2 == 1 && high % 2 == 1) {
       mid += 1;
     }
+#ifdef WORDS_BIGENDIAN
+    pos = Bigendian_convert_uint(SA[mid]);
+#else
     pos = SA[mid];
+#endif
     c = Genome_get_char_lex(genomecomp,pos,n,chartable);
     if (desired_char > c) {
       low = mid + 1;
@@ -181,7 +211,11 @@ sarray_search_char (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, char desired_ch
     if (low % 2 == 1 || high % 2 == 1) {
       mid += 1;
     }
+#ifdef WORDS_BIGENDIAN
+    pos = Bigendian_convert_uint(SA[mid]);
+#else
     pos = SA[mid];
+#endif
     c = Genome_get_char_lex(genomecomp,pos,n,chartable);
     if (desired_char >= c) {
       low = mid;
@@ -248,7 +282,11 @@ sarray_search_simple (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, char *query,
     }
 
     nmatches = 0;
+#ifdef WORDS_BIGENDIAN
+    pos = Bigendian_convert_uint(SA[mid]);
+#else
     pos = SA[mid];
+#endif
 
     while (nmatches < querylength && (c = Genome_get_char_lex(genomecomp,pos,n,chartable)) == query[nmatches]) {
       nmatches++;
@@ -274,7 +312,11 @@ sarray_search_simple (Sarrayptr_T *initptr, Sarrayptr_T *finalptr, char *query,
     }
 
     nmatches = 0;
+#ifdef WORDS_BIGENDIAN
+    pos = Bigendian_convert_uint(SA[mid]);
+#else
     pos = SA[mid];
+#endif
 
     while (nmatches < querylength && (c = Genome_get_char_lex(genomecomp,pos,n,chartable)) == query[nmatches]) {
       nmatches++;
@@ -466,7 +508,8 @@ Sarray_write_index_separate (char *indexiptrsfile, char *indexicompfile, char *i
 			     char *sarrayfile, Genome_T genomecomp, UINT4 genomelength, bool compressp,
 			     char chartable[]) {
   UINT4 n = genomelength;
-  Oligospace_T oligospace, prev_oligospace, noccupied, prev_noccupied;
+  Oligospace_T oligospace, prev_oligospace, noccupied;
+  /* Oligospace_T prev_noccupied; */
   Sarrayptr_T *saindexi_new, *saindexj_new, *saindexi_old, *saindexj_old;
   UINT4 *SA;
   int sa_fd;
@@ -481,7 +524,7 @@ Sarray_write_index_separate (char *indexiptrsfile, char *indexicompfile, char *i
   oligospace = power(4,/*querylength*/indexsize);
   saindexi_old = (Sarrayptr_T *) CALLOC(oligospace,sizeof(Sarrayptr_T));
   saindexj_old = (Sarrayptr_T *) CALLOC(oligospace,sizeof(Sarrayptr_T));
-  prev_noccupied = 0;
+  /* prev_noccupied = 0; */
   noccupied = make_index_separate(saindexi_old,saindexj_old,
 				  oligospace,/*querylength*/indexsize,genomecomp,SA,n,chartable);
   fprintf(stderr,"For indexsize %d, occupied %u/%u\n",indexsize,noccupied,oligospace);
@@ -570,7 +613,8 @@ Sarray_write_index_interleaved (char *indexptrsfile, char *indexcompfile,
 				char *sarrayfile, Genome_T genomecomp, UINT4 genomelength, bool compressp,
 				char chartable[]) {
   UINT4 n = genomelength;
-  Oligospace_T oligospace, prev_oligospace, noccupied, prev_noccupied;
+  Oligospace_T oligospace, prev_oligospace, noccupied;
+  /* Oligospace_T prev_noccupied; */
   Sarrayptr_T *saindex_new, *saindex_old;
   UINT4 *SA;
   int sa_fd;
@@ -584,7 +628,7 @@ Sarray_write_index_interleaved (char *indexptrsfile, char *indexcompfile,
   indexsize = MIN_INDEXSIZE;
   oligospace = power(4,/*querylength*/indexsize);
   saindex_old = (Sarrayptr_T *) CALLOC(2*oligospace,sizeof(Sarrayptr_T));
-  prev_noccupied = 0;
+  /* prev_noccupied = 0; */
   noccupied = make_index_interleaved(saindex_old,
 				     oligospace,/*querylength*/indexsize,genomecomp,SA,n,chartable);
   fprintf(stderr,"For indexsize %d, occupied %u/%u\n",indexsize,noccupied,oligospace);
@@ -661,6 +705,149 @@ Sarray_write_index_interleaved (char *indexptrsfile, char *indexcompfile,
 }
 
 
+/* phi is the successor array: [0..n] */
+void
+Sarray_write_csa (char **csaptrfiles, char **csacompfiles, char *sasampleqfile, char *sasamplesfile, char *saindex0file,
+		  char *sarrayfile, char *rankfile, Genome_T genomecomp, UINT4 genomelength, char chartable[]) {
+  UINT4 *CSA, *SA, *SA_inv, sa_i;
+  FILE *fp, *sa_fp, *samples_fp;
+  /* FILE *csa_fp; */
+  UINT4 n = genomelength, n_plus_one, ii, i, b;
+  int chari, k;
+  Sarrayptr_T saindexi[5], saindexj[5], saindexn, indexX;
+  int sa_fd, rank_fd;
+  size_t sa_len, rank_len;
+  int indexsize;
+  UINT4 *read_buffer, *write_buffer, ignore;
+  char *queryuc_ptr;
+  int csa_sampling;
+
+  /* Write SA sampling interval */
+  fp = fopen(sasampleqfile,"wb");
+  csa_sampling = rint(log((double) genomelength)/log(2.0));
+  fprintf(stderr,"CSA sampling: %d\n",csa_sampling);
+  FWRITE_INT(csa_sampling,fp);
+  fclose(fp);
+
+
+  /* Determine sizes of each csa */
+  SA = (UINT4 *) Access_mmap(&sa_fd,&sa_len,sarrayfile,sizeof(UINT4),/*randomp*/true);
+  queryuc_ptr = (char *) CALLOC(/*querylength*/1+1,sizeof(char));
+
+  /* A */
+  oligo_nt(queryuc_ptr,/*oligo*/0,/*querylength*/1);
+  sarray_search_simple(&(saindexi[0]),&(saindexj[0]),queryuc_ptr,/*querylength*/1,
+		       genomecomp,SA,/*i*/1,/*j*/n,n,chartable);
+  printf("A: %u..%u\n",saindexi[0],saindexj[0]);
+
+  /* C */
+  oligo_nt(queryuc_ptr,/*oligo*/1,/*querylength*/1);
+  sarray_search_simple(&(saindexi[1]),&(saindexj[1]),queryuc_ptr,/*querylength*/1,
+		       genomecomp,SA,/*i*/1,/*j*/n,n,chartable);
+  printf("C: %u..%u\n",saindexi[1],saindexj[1]);
+
+  /* G */
+  oligo_nt(queryuc_ptr,/*oligo*/2,/*querylength*/1);
+  sarray_search_simple(&(saindexi)[2],&(saindexj[2]),queryuc_ptr,/*querylength*/1,
+		       genomecomp,SA,/*i*/1,/*j*/n,n,chartable);
+  printf("G: %u..%u\n",saindexi[2],saindexj[2]);
+
+  /* T */
+  oligo_nt(queryuc_ptr,/*oligo*/3,/*querylength*/1);
+  sarray_search_simple(&(saindexi[3]),&(saindexj[3]),queryuc_ptr,/*querylength*/1,
+		       genomecomp,SA,/*i*/1,/*j*/n,n,chartable);
+  printf("T: %u..%u\n",saindexi[3],saindexj[3]);
+
+  /* X */
+  saindexi[4] = saindexj[3] + 1;
+  saindexj[4] = genomelength;
+  printf("X: %u..%u\n",saindexi[4],saindexj[4]);
+
+  munmap((void *) SA,sa_len);
+  close(sa_fd);
+
+  fp = fopen(saindex0file,"wb");
+  FWRITE_UINT(saindexi[0],fp);
+  FWRITE_UINT(saindexi[1],fp);
+  FWRITE_UINT(saindexi[2],fp);
+  FWRITE_UINT(saindexi[3],fp);
+  FWRITE_UINT(saindexi[4],fp);
+
+  n_plus_one = genomelength + 1;
+  FWRITE_UINT(n_plus_one,fp);	/* Needed by sarray-read to find genomiclength */
+
+  fclose(fp);
+
+
+  /* Process suffix array */
+  read_buffer = (UINT4 *) MALLOC(RW_BATCH * sizeof(UINT4));
+
+  SA_inv = (UINT4 *) Access_mmap(&rank_fd,&rank_len,rankfile,sizeof(UINT4),/*randomp*/true);
+  /* csa_fp = fopen(csafile,"wb");*/
+  sa_fp = fopen(sarrayfile,"rb");
+  samples_fp = fopen(sasamplesfile,"wb");
+
+  CSA = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
+
+  /* Ignore csa[0] which corresponds to end-of-string terminator */
+  FREAD_UINT(&sa_i,sa_fp);
+  FWRITE_UINT(sa_i,samples_fp);
+  CSA[0] = genomelength;
+  /* FWRITE_UINT(CSA[0],csa_fp); */
+
+  ii = 1;
+  while (ii + RW_BATCH <= n) {
+    FREAD_UINTS(read_buffer,RW_BATCH,sa_fp);
+    for (b = 0, i = ii; b < RW_BATCH; b++, i++) {
+      if ((i % csa_sampling) == 0) {
+	FWRITE_UINT(read_buffer[b],samples_fp);
+      }
+      CSA[i] = SA_inv[read_buffer[b] + 1];
+    }
+    /* FWRITE_UINTS(&(CSA[ii]),RW_BATCH,csa_fp); */
+    ii += RW_BATCH;
+  }
+  
+  /* Final partial batch */
+  for (i = ii; i <= n; i++) {	/* final partial batch */
+    FREAD_UINT(&sa_i,sa_fp);
+    if ((i % csa_sampling) == 0) {
+      FWRITE_UINT(sa_i,samples_fp);
+    }
+    CSA[i] = SA_inv[sa_i + 1];
+    /* FWRITE_UINT(CSA[i],csa_fp);*/
+  }
+  /* fclose(csa_fp); */
+
+  fclose(samples_fp);
+  fclose(sa_fp);
+  munmap((void *) SA_inv,rank_len);
+  close(rank_fd);
+  FREE(read_buffer);
+
+  for (chari = 0; chari < 5; chari++) {
+    if (saindexj[chari] < saindexi[chari]) {
+      fp = fopen(csaptrfiles[chari],"wb");
+      fclose(fp);
+      fp = fopen(csacompfiles[chari],"wb");
+      fclose(fp);
+    } else {
+      saindexn = saindexj[chari] - saindexi[chari] + 1;
+      /* Provide (n-1) to write values [0..n] */
+      Bitpack64_write_differential(csaptrfiles[chari],csacompfiles[chari],
+				   &(CSA[saindexi[chari]]),saindexn-1);
+    }
+  }
+
+  fprintf(stderr,"done\n");
+
+  FREE(CSA);
+
+  return;
+}
+
+
+
 #if 0
 UINT4 *
 Sarray_compute_lcp_kasai (UINT4 *SA, UINT4 n) {
@@ -724,6 +911,7 @@ Sarray_compute_lcp_kasai (UINT4 *SA, UINT4 n) {
 
 #if 0
 /* Puts rank in file, to save on memory */
+/* Rank file contains the inverse suffix array, needed to compute the compressed suffix array */
 UINT4 *
 Sarray_compute_lcp (char *rankfile, UINT4 *SA, UINT4 n) {
   UINT4 *lcp;
@@ -790,9 +978,8 @@ Sarray_compute_lcp (char *rankfile, UINT4 *SA, UINT4 n) {
 #endif
 
 
-#define RW_BATCH  10000000	/* 10 million elements */
-
 /* Puts rank and permuted suffix array in file, to save on memory even further */
+/* Rank file is the same as the inverted suffix array, needed to compute the compressed suffix array */
 UINT4 *
 Sarray_compute_lcp (char *rankfile, char *permuted_sarray_file, char *sarrayfile, UINT4 n) {
   UINT4 *lcp;
@@ -861,7 +1048,11 @@ Sarray_compute_lcp (char *rankfile, char *permuted_sarray_file, char *sarrayfile
     for (b = 0, i = ii; b < RW_BATCH; b++, i++) {
       rank_i = read_buffer_1[b];
       if (rank_i > 0) {
+#ifdef WORDS_BIGENDIAN
+	write_buffer[b] = Bigendian_convert_uint(SA[rank_i - 1]);
+#else
 	write_buffer[b] = SA[rank_i - 1];
+#endif
       } else {
 	write_buffer[b] = 0;	/* Will be ignored */
       }
@@ -871,7 +1062,11 @@ Sarray_compute_lcp (char *rankfile, char *permuted_sarray_file, char *sarrayfile
   for (i = ii; i <= n; i++) {	/* final partial batch */
     FREAD_UINT(&rank_i,fp);
     if (rank_i > 0) {
+#ifdef WORDS_BIGENDIAN
+      FWRITE_UINT(Bigendian_convert_uint(SA[rank_i - 1]),permsa_fp);
+#else
       FWRITE_UINT(SA[rank_i - 1],permsa_fp);
+#endif
     } else {
       FWRITE_UINT(zero,permsa_fp); /* Will be ignored */
     }
@@ -935,7 +1130,9 @@ Sarray_compute_lcp (char *rankfile, char *permuted_sarray_file, char *sarrayfile
   FREE(read_buffer_1);
 
   remove(permuted_sarray_file);
+#ifndef USE_CSA
   remove(rankfile);
+#endif
 
   return lcp;
 }
@@ -1044,7 +1241,7 @@ Sarray_compute_lcp_from_genome (UINT4 *SA, unsigned char *gbuffer, UINT4 n) {
   UINT4 *rank, h;
   UINT4 i, j;
   char *comma;
-  UINT4 horig;
+  /* UINT4 horig; */
 
   lcp = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
 
@@ -1058,7 +1255,7 @@ Sarray_compute_lcp_from_genome (UINT4 *SA, unsigned char *gbuffer, UINT4 n) {
   for (i = 0; i <= n; i++) {
     if (rank[i] > 0) {
       j = SA[rank[i] - 1];
-      horig = h;
+      /* horig = h; */
       while (i + h < n && j + h < n && gbuffer[i+h] == gbuffer[j+h]) {
 	h++;
       }
@@ -1115,8 +1312,13 @@ compute_plcp (UINT4 *plcp, UINT4 *SA, UINT4 n) {
     }
   }
 
+#if 0
   /* This makes lcp[0] = -1, because lcp[0] = plcp[SA[0]] = plcp[n] = -1 */
   plcp[n] = -1;
+#else
+  /* This makes lcp[0] = 0, because lcp[0] = plcp[SA[0]] = plcp[n] = 0 */
+  plcp[n] = 0;
+#endif
 
   return;
 }
@@ -1202,9 +1404,11 @@ get_all_children (bool *filledp, Sarrayptr_T *l, Sarrayptr_T *r, Sarrayptr_T i, 
 void
 Sarray_write_plcp (char *plcpptrsfile, char *plcpcompfile, UINT4 *SA, UINT4 genomelength) {
   UINT4 *plcp;
-  UINT4 *ramp;
+  UINT4 *ramp, *p;
 
   UINT4 n = genomelength, i;
+  UINT4 ii;
+  FILE *fp;
 
   plcp = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
   ramp = plcp;
@@ -1225,7 +1429,23 @@ Sarray_write_plcp (char *plcpptrsfile, char *plcpcompfile, UINT4 *SA, UINT4 geno
 
   fprintf(stderr,"Writing permuted lcp file...");
   /* Provide n to write values [0..n] */
+
+#if 0
+  /* Print plcp as an array */
+  fp = fopen("plcp","wb");
+  for (ii = 0; ii + RW_BATCH <= n; ii += RW_BATCH) {
+    p = (void *) &(ramp[ii]);
+    FWRITE_UINTS(p,RW_BATCH,fp);
+  }
+  if (ii <= n) {
+    p = (void *) &(ramp[ii]);
+    FWRITE_UINTS(p,n - ii + 1,fp);
+  }
+  fclose(fp);
+#else
   Bitpack64_write_differential(plcpptrsfile,plcpcompfile,ramp,n);
+#endif
+
   fprintf(stderr,"done\n");
 
   FREE(plcp);
@@ -2039,6 +2259,7 @@ Sarray_array_uncompress (Genome_T genomecomp, char *sarrayfile, char *plcpptrsfi
   UINT4 n = genomelength, pos, match, h;
   unsigned char *gbuffer;
 
+  int shmid;
   UINT4 *SA, *plcpptrs, *plcpcomp;
 
   int sa_fd, plcpcomp_fd;
@@ -2058,7 +2279,7 @@ Sarray_array_uncompress (Genome_T genomecomp, char *sarrayfile, char *plcpptrsfi
   }
 
   SA = (UINT4 *) Access_mmap(&sa_fd,&sa_len,sarrayfile,sizeof(UINT4),/*randomp*/false);
-  plcpptrs = (UINT4 *) Access_allocated(&plcpptrs_len,&seconds,plcpptrsfile,sizeof(UINT4));
+  plcpptrs = (UINT4 *) Access_allocate(&shmid,&plcpptrs_len,&seconds,plcpptrsfile,sizeof(UINT4),/*sharedp*/false);
   plcpcomp = (UINT4 *) Access_mmap(&plcpcomp_fd,&plcpcomp_len,plcpcompfile,sizeof(UINT4),
 				  /*randomp*/true);
   plcpcomp = (UINT4 *) Access_mmap(&plcpcomp_fd,&plcpcomp_len,plcpcompfile,sizeof(UINT4),
@@ -2070,10 +2291,18 @@ Sarray_array_uncompress (Genome_T genomecomp, char *sarrayfile, char *plcpptrsfi
   printf("i\tSA\tLCP\n");
 
   pos = start;
+#ifdef WORDS_BIGENDIAN
+  sa_i = Bigendian_convert_uint(SA[pos]);
+#else
   sa_i = SA[pos];
+#endif
   lcp_i = Bitpack64_read_one(sa_i,plcpptrs,plcpcomp) - sa_i;
 
+#ifdef WORDS_BIGENDIAN
+  sa_nexti = Bigendian_convert_uint(SA[pos+1]);
+#else
   sa_nexti = SA[pos+1];
+#endif
   lcp_nexti = Bitpack64_read_one(sa_nexti,plcpptrs,plcpcomp) - sa_nexti;
 
   if (pos == 0) {
@@ -2087,7 +2316,11 @@ Sarray_array_uncompress (Genome_T genomecomp, char *sarrayfile, char *plcpptrsfi
     sa_i = sa_nexti;
     lcp_i = lcp_nexti;
 
+#ifdef WORDS_BIGENDIAN
+    sa_nexti = Bigendian_convert_uint(SA[pos+1]);
+#else
     sa_nexti = SA[pos+1];
+#endif
     lcp_nexti = Bitpack64_read_one(sa_nexti,plcpptrs,plcpcomp) - sa_nexti;
 
     printf("%u\t%u\t%u\t",pos,sa_i,lcp_i);
@@ -2168,7 +2401,11 @@ Sarray_child_uncompress (Genome_T genomecomp, unsigned char *lcpchilddc, UINT4 *
   pos = start;
 
   for (pos = start; pos <= end; pos++) {
+#ifdef WORDS_BIGENDIAN
+    sa_i = Bigendian_convert_uint(SA[pos]);
+#else
     sa_i = SA[pos];
+#endif
     lcp_i = Bytecoding_lcpchilddc_lcp(pos,lcpchilddc,lcp_exceptions,n_lcp_exceptions); /* lcp(i,j) */
     c2 = Bytecoding_lcpchilddc_dc(&c1,pos,lcpchilddc);
 

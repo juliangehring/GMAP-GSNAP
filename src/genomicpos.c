@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genomicpos.c 101488 2013-07-15 16:52:36Z twu $";
+static char rcsid[] = "$Id: genomicpos.c 155282 2014-12-12 19:42:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -57,6 +57,47 @@ Genomicpos_commafmt (
   FREE(buffer);
   return string;
 }
+
+
+#ifdef MEMUSAGE
+/* Does not allocate memory.  Used for reporting MEMUSAGE results. */
+void
+Genomicpos_commafmt_fill (char *string,
+#ifdef HAVE_64_BIT
+		     UINT8 N
+#else
+		     UINT4 N
+#endif
+		     ) {
+  char *buffer;
+  int len, posn = 1;
+  char *ptr, *start;
+
+  buffer = (char *) CALLOC(BUFSIZE+1,sizeof(char));
+  start = ptr = &(buffer[BUFSIZE]);
+  buffer[BUFSIZE] = '\0';
+
+  if (N == 0UL) {
+    *--ptr = '0';
+  } else {
+    while (N > 0UL) {
+      *--ptr = (char)((N % 10UL) + '0');
+      N /= 10UL;
+      if (N > 0UL) {
+	if ((posn % 3) == 0) {
+	  *--ptr = ',';
+	}
+      }
+      posn++;
+    }
+  }
+
+  len = start - ptr;		/* Not including terminal '\0'. */
+  memcpy(string,ptr,len+1);
+  FREE(buffer);
+  return;
+}
+#endif
 
 
 int

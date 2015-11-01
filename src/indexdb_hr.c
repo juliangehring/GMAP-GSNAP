@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb_hr.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: indexdb_hr.c 168395 2015-06-26 17:13:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -702,6 +702,7 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
+#if 0
     if (this->offsetsstrm_access == ALLOCATED) {
       ptr0 = this->offsetsstrm[subst];
       end0 = this->offsetsstrm[subst+1];
@@ -709,6 +710,9 @@ point_one_shift (int *nentries, T this, Storedoligomer_T subst) {
       ptr0 = Bigendian_convert_uint(this->offsetsstrm[subst]);
       end0 = Bigendian_convert_uint(this->offsetsstrm[subst+1]);
     }
+#else
+    abort();
+#endif
 #else
     ptr0 = this->offsetsstrm[subst];
     end0 = this->offsetsstrm[subst+1];
@@ -808,6 +812,7 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
+#if 0
     if (this->offsetsstrm_access == ALLOCATED) {
       ptr0 = this->offsetsstrm[subst];
       end0 = this->offsetsstrm[subst+nadjacent];
@@ -815,6 +820,9 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
       ptr0 = Bigendian_convert_uint(this->offsetsstrm[subst]);
       end0 = Bigendian_convert_uint(this->offsetsstrm[subst+nadjacent]);
     }
+#else
+    abort();
+#endif
 #else
     ptr0 = this->offsetsstrm[subst];
     end0 = this->offsetsstrm[subst+nadjacent];
@@ -841,6 +849,7 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
+#if 0
     if (this->offsetsstrm_access == ALLOCATED) {
       ptr0 = this->offsetsstrm[subst];
       end0 = this->offsetsstrm[subst+nadjacent];
@@ -848,6 +857,9 @@ count_one_shift (T this, Storedoligomer_T subst, int nadjacent) {
       ptr0 = Bigendian_convert_uint(this->offsetsstrm[subst]);
       end0 = Bigendian_convert_uint(this->offsetsstrm[subst+nadjacent]);
     }
+#else
+    abort();
+#endif
 #else
     ptr0 = this->offsetsstrm[subst];
     end0 = this->offsetsstrm[subst+nadjacent];
@@ -1836,6 +1848,7 @@ Indexdb_count_no_subst (T this, Storedoligomer_T oligo) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
+#if 0
     if (this->offsetsstrm_access == ALLOCATED) {
       ptr0 = this->offsetsstrm[oligo];
       end0 = this->offsetsstrm[oligo+1];
@@ -1843,6 +1856,9 @@ Indexdb_count_no_subst (T this, Storedoligomer_T oligo) {
       ptr0 = Bigendian_convert_uint(this->offsetsstrm[oligo]);
       end0 = Bigendian_convert_uint(this->offsetsstrm[oligo+1]);
     }
+#else
+    abort();
+#endif
 #else
     ptr0 = this->offsetsstrm[oligo];
     end0 = this->offsetsstrm[oligo+1];

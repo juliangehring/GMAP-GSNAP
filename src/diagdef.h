@@ -1,6 +1,7 @@
-/* $Id: diagdef.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: diagdef.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef DIAGDEF_INCLUDED
 #define DIAGDEF_INCLUDED
+
 #include "bool.h"
 
 #define T Diag_T

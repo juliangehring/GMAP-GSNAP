@@ -49,6 +49,7 @@ am__aclocal_m4_deps = $(top_srcdir)/config/libtool.m4 \
 	$(top_srcdir)/config/mmap-flags.m4 \
 	$(top_srcdir)/config/acx_mmap_fixed.m4 \
 	$(top_srcdir)/config/acx_mmap_variable.m4 \
+	$(top_srcdir)/config/shm-flags.m4 \
 	$(top_srcdir)/config/ax_mpi.m4 \
 	$(top_srcdir)/config/acx_pthread.m4 \
 	$(top_srcdir)/config/builtin-popcount.m4 \
@@ -98,9 +99,6 @@ EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
 GMAPDB = @GMAPDB@
-GOBY_CFLAGS = @GOBY_CFLAGS@
-GOBY_LDFLAGS = @GOBY_LDFLAGS@
-GOBY_LIBS = @GOBY_LIBS@
 GREP = @GREP@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
@@ -120,6 +118,7 @@ MAX_READLENGTH = @MAX_READLENGTH@
 MKDIR_P = @MKDIR_P@
 MPICC = @MPICC@
 MPILIBS = @MPILIBS@
+MPI_CFLAGS = @MPI_CFLAGS@
 NM = @NM@
 NMEDIT = @NMEDIT@
 OBJDUMP = @OBJDUMP@

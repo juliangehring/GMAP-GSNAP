@@ -1,6 +1,7 @@
-/* $Id: block.h 99748 2013-06-27 21:01:48Z twu $ */
+/* $Id: block.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef BLOCK_INCLUDED
 #define BLOCK_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "indexdb.h"

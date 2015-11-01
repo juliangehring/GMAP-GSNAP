@@ -1,6 +1,7 @@
-/* $Id: datadir.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: datadir.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef DATADIR_INCLUDED
 #define DATADIR_INCLUDED
+
 #include <stdio.h>
 
 extern char *

@@ -1,8 +1,8 @@
-/* $Id: littleendian.h 115892 2013-11-20 22:52:31Z twu $ */
+/* $Id: littleendian.h 157223 2015-01-22 18:43:01Z twu $ */
 #ifndef LITTLEENDIAN_INCLUDED
 #define LITTLEENDIAN_INCLUDED
 #ifdef HAVE_CONFIG_H
-#include <config.h>
+#include <config.h>		/* For HAVE_64_BIT */
 #endif
 
 #include <stdio.h>

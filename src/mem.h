@@ -1,9 +1,8 @@
-/* $Id: mem.h 145990 2014-08-25 21:47:32Z twu $ */
+/* $Id: mem.h 157223 2015-01-22 18:43:01Z twu $ */
 #ifndef MEM_INCLUDED
 #define MEM_INCLUDED
-
 #ifdef HAVE_CONFIG_H
-#include <config.h>
+#include <config.h>		/* For HAVE_ALLOCA, HAVE_ALLOCA_H */
 #endif
 
 #include <stddef.h>
@@ -35,7 +34,7 @@ typedef enum {MAIN_STORAGE, INPUT_USAGE, OUTPUT_USAGE, WORKER_STORAGE} Memusage_
 extern void
 Mem_usage_init ();
 extern void
-Mem_usage_set_threadname (const char *threadname);
+Mem_usage_set_threadname (char *threadname_in);
 extern void
 Mem_usage_reset_heap_baseline (long int x);
 extern void

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diag.c 146622 2014-09-02 21:30:22Z twu $";
+static char rcsid[] = "$Id: diag.c 166641 2015-05-29 21:13:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -40,26 +40,43 @@ static char rcsid[] = "$Id: diag.c 146622 2014-09-02 21:30:22Z twu $";
 #endif
 
 
-#ifndef USE_DIAGPOOL
+#if 0
+/* Oligoindex procedures use diagpool_push instead */
 T
-Diag_new (Chrpos_T diagonal, int querystart, int queryend, int nconsecutive) {
+Diag_new (int querystart, int queryend, Diag_T diagonal) {
   T new = (T) MALLOC(sizeof(*new));
 
   new->diagonal = diagonal;
   new->querystart = querystart;
   new->queryend = queryend;
-  new->nconsecutive = nconsecutive;
+  new->nconsecutive = queryend - querystart + 1;
   new->dominatedp = false;
+  new->score = 0.0;
 
   return new;
 }
+#endif
+
 
 void
 Diag_free (T *old) {
   FREE(*old);
   return;
 }
-#endif
+
+void
+Diag_gc (List_T *list) {
+  T diagonal;
+  List_T p;
+
+  for (p = *list; p != NULL; p = List_next(p)) {
+    diagonal = (T) List_head(p);
+    FREE(diagonal);
+  }
+  List_free(&(*list));
+  return;
+}
+
 
 Chrpos_T
 Diag_diagonal (T this) {
@@ -93,7 +110,54 @@ Diag_set_dominatedp (T this) {
 
 
 int
-Diag_compare_nconsecutive (const void *x, const void *y) {
+Diag_ascending_cmp (const void *a, const void *b) {
+  T x = * (T *) a;
+  T y = * (T *) b;
+
+  if (x->querystart < y->querystart) {
+    return -1;
+  } else if (y->querystart < x->querystart) {
+    return +1;
+  } else if (x->queryend < y->queryend) {
+    return -1;
+  } else if (y->queryend < x->queryend) {
+    return +1;
+  } else if (x->diagonal < y->diagonal) {
+    return -1;
+  } else if (y->diagonal < x->diagonal) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+int
+Diag_descending_cmp (const void *a, const void *b) {
+  T x = * (T *) a;
+  T y = * (T *) b;
+
+  if (x->querystart > y->querystart) {
+    return -1;
+  } else if (y->querystart > x->querystart) {
+    return +1;
+  } else if (x->queryend > y->queryend) {
+    return -1;
+  } else if (y->queryend > x->queryend) {
+    return +1;
+  } else if (x->diagonal > y->diagonal) {
+    return -1;
+  } else if (y->diagonal > x->diagonal) {
+    return +1;
+  } else {
+    return 0;
+  }
+}
+
+
+
+static int
+nconsecutive_cmp (const void *x, const void *y) {
   T a = * (T *) x;
   T b = * (T *) y;
 
@@ -106,8 +170,8 @@ Diag_compare_nconsecutive (const void *x, const void *y) {
   }
 }
 
-int
-Diag_compare_diagonal (const void *x, const void *y) {
+static int
+diagonal_cmp (const void *x, const void *y) {
   T a = * (T *) x;
   T b = * (T *) y;
 
@@ -153,6 +217,8 @@ Diag_update_coverage (bool *coveredp, int *ncovered, List_T diagonals, int query
   List_T p;
   T diag;
   int *scores, querypos, count;
+
+  debug(printf("Entered Diag_update_coverage with %d diagonals\n",List_length(diagonals)));
 
   *ncovered = 0;
 #ifdef GSNAP
@@ -248,17 +314,13 @@ diagonal_coverage (int *clear_coverage, T *array, int nunique) {
 
 
 int
-Diag_compare_querystart (const void *x, const void *y) {
+_querystart (const void *x, const void *y) {
   T a = * (T *) x;
   T b = * (T *) y;
 
   if (a->querystart < b->querystart) {
     return -1;
   } else if (b->querystart < a->querystart) {
-    return +1;
-  } else if (a->diagonal < b->diagonal) {
-    return -1;
-  } else if (b->diagonal < a->diagonal) {
     return +1;
   } else {
     return 0;
@@ -306,7 +368,7 @@ Diag_print_segments (List_T diagonals, char *queryseq_ptr, char *genomicseg_ptr)
   if ((n = List_length(diagonals)) > 0) {
     array = (T *) MALLOCA(n * sizeof(T));
     List_fill_array((void **) array,diagonals);
-    qsort(array,List_length(diagonals),sizeof(T),Diag_compare_querystart);
+    qsort(array,List_length(diagonals),sizeof(T),Diag_ascending_cmp);
     for (i = 0; i < List_length(diagonals); i++) {
       print_segment(array[i],/*chrinit*/0U,queryseq_ptr,genomicseg_ptr);
     }
@@ -370,7 +432,7 @@ compute_dominance (int *nunique, T *array, int ndiagonals) {
   int i, j, k;
   T super, sub;
 
-  qsort(array,ndiagonals,sizeof(T),Diag_compare_nconsecutive);
+  qsort(array,ndiagonals,sizeof(T),nconsecutive_cmp);
 
   *nunique = ndiagonals;
   i = 0;
@@ -561,7 +623,7 @@ Diag_compute_bounds (int *diag_querystart, int *diag_queryend,
       array = compute_dominance(&nunique,array,ngooddiagonals);
     }
 
-    qsort(array,nunique,sizeof(T),Diag_compare_diagonal);
+    qsort(array,nunique,sizeof(T),diagonal_cmp);
     if (debug_graphic_p == true) {
       print_segments_for_R_array(array,nunique,chrinit,"red");
     }

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read-univ.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: iit-read-univ.c 168395 2015-06-26 17:13:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -95,7 +95,7 @@ static char rcsid[] = "$Id: iit-read-univ.c 153955 2014-11-24 17:54:45Z twu $";
    available). */
 typedef struct Univ_FNode_T *Univ_FNode_T;
 struct Univ_FNode_T {
-  Univcoord_T value;
+  Univ_IIT_coord_T value;
   int a;
   int b;
   int leftindex;
@@ -223,7 +223,7 @@ Univ_IIT_genomelength (T chromosome_iit, bool with_circular_alias_p) {
 
 
 bool *
-Univ_IIT_circularp (T chromosome_iit) {
+Univ_IIT_circularp (bool *any_circular_p, T chromosome_iit) {
   bool *circularp;
   Univinterval_T interval;
   int chrnum, nchromosomes;
@@ -232,11 +232,13 @@ Univ_IIT_circularp (T chromosome_iit) {
   nchromosomes = chromosome_iit->total_nintervals;
   circularp = (bool *) CALLOC(nchromosomes+1,sizeof(bool));
 
+  *any_circular_p = false;
   circularp[0] = false;		/* chrnum of 0 indicates translocation */
   if ((circular_typeint = Univ_IIT_typeint(chromosome_iit,"circular")) >= 0) {
     for (chrnum = 0; chrnum < nchromosomes; chrnum++) {
       interval = &(chromosome_iit->intervals[chrnum]);
       if (Univinterval_type(interval) == circular_typeint) {
+	*any_circular_p = true;
 	circularp[chrnum+1] = true;
       }
     }
@@ -582,6 +584,128 @@ Univ_IIT_dump_fai (T this) {
 }
 
 
+#ifdef USE_MPI
+/* For chromosome.iit file, which is stored in version 1 */
+void
+Univ_IIT_dump_sam (MPI_File fp, T this, char *sam_read_group_id, char *sam_read_group_name,
+		   char *sam_read_group_library, char *sam_read_group_platform) {
+  int index = 0, i;
+  Univinterval_T interval;
+  Chrpos_T interval_length;
+  char *label, buffer[20];
+  bool allocp;
+  int circular_typeint;
+
+  if (this == NULL) {
+    return;
+  } else {
+    circular_typeint = Univ_IIT_typeint(this,"circular");
+  }
+
+  for (i = 0; i < this->total_nintervals; i++) {
+    interval = &(this->intervals[i]);
+    label = Univ_IIT_label(this,index+1,&allocp);
+    MPI_File_write_shared(fp,"@SQ\tSN:",strlen("@SQ\tSN:"),MPI_CHAR,MPI_STATUS_IGNORE);
+    MPI_File_write_shared(fp,label,strlen(label),MPI_CHAR,MPI_STATUS_IGNORE);
+    if (allocp == true) {
+      FREE(label);
+    }
+    /* startpos = Univinterval_low(interval); */
+    /* endpos = startpos + Univinterval_length(interval) - 1U; */
+
+    interval_length = Univinterval_length(interval);
+    sprintf(buffer,"%u",interval_length);
+    MPI_File_write_shared(fp,"\tLN:%s",strlen("\tLN:")+strlen(buffer),MPI_CHAR,MPI_STATUS_IGNORE);
+    if (Univinterval_type(interval) == circular_typeint) {
+      MPI_File_write_shared(fp,"\ttp:circular",strlen("\ttp:circular"),MPI_CHAR,MPI_STATUS_IGNORE);
+    }
+    MPI_File_write_shared(fp,"\n",1,MPI_CHAR,MPI_STATUS_IGNORE);
+
+    index++;
+  }
+
+  if (sam_read_group_id != NULL) {
+    MPI_File_write_shared(fp,"@RG\tID:",strlen("@RG\tID:"),MPI_CHAR,MPI_STATUS_IGNORE);
+    MPI_File_write_shared(fp,sam_read_group_id,strlen(sam_read_group_id),MPI_CHAR,MPI_STATUS_IGNORE);
+
+    if (sam_read_group_platform != NULL) {
+      MPI_File_write_shared(fp,"\tPL:",strlen("\tPL:"),MPI_CHAR,MPI_STATUS_IGNORE);
+      MPI_File_write_shared(fp,sam_read_group_platform,strlen(sam_read_group_platform),MPI_CHAR,MPI_STATUS_IGNORE);
+    }
+    if (sam_read_group_library != NULL) {
+      MPI_File_write_shared(fp,"\tLB:",strlen("\tLB:"),MPI_CHAR,MPI_STATUS_IGNORE);
+      MPI_File_write_shared(fp,sam_read_group_library,strlen(sam_read_group_library),MPI_CHAR,MPI_STATUS_IGNORE);
+    }
+    MPI_File_write_shared(fp,"\tSM:",strlen("\tSM:"),MPI_CHAR,MPI_STATUS_IGNORE);
+    MPI_File_write_shared(fp,sam_read_group_name,strlen(sam_read_group_name),MPI_CHAR,MPI_STATUS_IGNORE);
+    MPI_File_write_shared(fp,"\n",1,MPI_CHAR,MPI_STATUS_IGNORE);
+  }
+
+  return;
+}
+
+
+int
+Univ_IIT_reserve_sam (T this, char *sam_read_group_id, char *sam_read_group_name,
+		      char *sam_read_group_library, char *sam_read_group_platform) {
+  int nchars = 0;
+  int index = 0, i;
+  Univinterval_T interval;
+  Chrpos_T interval_length;
+  char *label, buffer[20];
+  bool allocp;
+  int circular_typeint;
+
+  if (this == NULL) {
+    return 0;
+  } else {
+    circular_typeint = Univ_IIT_typeint(this,"circular");
+  }
+
+  for (i = 0; i < this->total_nintervals; i++) {
+    interval = &(this->intervals[i]);
+    label = Univ_IIT_label(this,index+1,&allocp);
+    nchars += strlen("@SQ\tSN:");
+    nchars += strlen(label);
+    if (allocp == true) {
+      FREE(label);
+    }
+    /* startpos = Univinterval_low(interval); */
+    /* endpos = startpos + Univinterval_length(interval) - 1U; */
+
+    interval_length = Univinterval_length(interval);
+    sprintf(buffer,"%u",interval_length);
+    nchars += strlen("\tLN:")+strlen(buffer);
+    if (Univinterval_type(interval) == circular_typeint) {
+      nchars += strlen("\ttp:circular");
+    }
+    nchars += strlen("\n");
+
+    index++;
+  }
+
+  if (sam_read_group_id != NULL) {
+    nchars += strlen("@RG\tID:");
+    nchars += strlen(sam_read_group_id);
+
+    if (sam_read_group_platform != NULL) {
+      nchars += strlen("\tPL:");
+      nchars += strlen(sam_read_group_platform);
+    }
+    if (sam_read_group_library != NULL) {
+      nchars += strlen("\tLB:");
+      nchars += strlen(sam_read_group_library);
+    }
+    nchars += strlen("\tSM:");
+    nchars += strlen(sam_read_group_name);
+    nchars += strlen("\n");
+  }
+
+  return nchars;
+}
+
+
+#else
 /* For chromosome.iit file, which is stored in version 1 */
 void
 Univ_IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name,
@@ -631,6 +755,8 @@ Univ_IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_gro
 
   return;
 }
+#endif
+
 
 
 Chrpos_T *
@@ -775,7 +901,10 @@ Univ_IIT_free (T *old) {
       FREE((*old)->labelorder);
       /* close((*old)->fd); -- closed in read_annotations */
 
-    } else if ((*old)->access == ALLOCATED) {
+    } else if ((*old)->access == ALLOCATED_PRIVATE) {
+      /* Nothing to close.  IIT must have been created by Univ_IIT_new. */
+
+    } else if ((*old)->access == ALLOCATED_SHARED) {
       /* Nothing to close.  IIT must have been created by Univ_IIT_new. */
 
     } else {
@@ -857,6 +986,7 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
     new->nodes = (struct Univ_FNode_T *) CALLOC(new->nnodes,sizeof(struct Univ_FNode_T));
 #ifdef WORDS_BIGENDIAN
     if (new->coord_values_8p == true) {
+#ifdef HAVE_64_BIT
       for (i = 0; i < new->nnodes; i++) {
 	Bigendian_fread_uint8(&(new->nodes[i].value),fp);
 	Bigendian_fread_int(&(new->nodes[i].a),fp);
@@ -865,6 +995,10 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
 	Bigendian_fread_int(&(new->nodes[i].rightindex),fp);
       }
       offset += (sizeof(UINT8)+sizeof(int)+sizeof(int)+sizeof(int)+sizeof(int))*new->nnodes;
+#else
+      fprintf(stderr,"IIT file contains 64-bit coordinates, but this computer is only 32-bit.  Cannot continue.\n");
+      exit(9);
+#endif
     } else {
       for (i = 0; i < new->nnodes; i++) {
 	Bigendian_fread_uint(&uint4,fp);
@@ -878,6 +1012,7 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
     }
 #else
     if (new->coord_values_8p == true) {
+#ifdef HAVE_64_BIT
 #if 1
       offset += sizeof(struct Univ_FNode_T)*fread(new->nodes,sizeof(struct Univ_FNode_T),new->nnodes,fp);
 #else
@@ -890,6 +1025,10 @@ read_tree_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T new) {
 	printf("i %d, node value %llu\n",i,(unsigned long long) new->nodes[i].value);
       }
       offset += (sizeof(UINT8)+sizeof(int)+sizeof(int)+sizeof(int)+sizeof(int))*new->nnodes;
+#endif
+#else
+      fprintf(stderr,"IIT file contains 64-bit coordinates, but this computer is only 32-bit.  Cannot continue.\n");
+      exit(9);
 #endif
     } else {
       for (i = 0; i < new->nnodes; i++) {
@@ -922,16 +1061,21 @@ read_intervals_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T n
 
 #ifdef WORDS_BIGENDIAN
   if (new->coord_values_8p == true) {
+#ifdef HAVE_64_BIT
     for (i = 0; i < new->total_nintervals; i++) {
       Bigendian_fread_uint8(&(new->intervals[i].low),fp);
       Bigendian_fread_uint8(&(new->intervals[i].high),fp);
       Bigendian_fread_int(&(new->intervals[i].type),fp);
     }
+#else
+    fprintf(stderr,"IIT file contains 64-bit coordinates, but this computer is only 32-bit.  Cannot continue.\n");
+    exit(9);
+#endif
   } else {
     for (i = 0; i < new->total_nintervals; i++) {
-      Bigendian_fread_uint(&unit4,fp);
+      Bigendian_fread_uint(&uint4,fp);
       new->intervals[i].low = (Univcoord_T) uint4;
-      Bigendian_fread_uint(&unit4,fp);
+      Bigendian_fread_uint(&uint4,fp);
       new->intervals[i].high = (Univcoord_T) uint4;
       Bigendian_fread_int(&(new->intervals[i].type),fp);
     }
@@ -939,12 +1083,17 @@ read_intervals_univ (off_t offset, off_t filesize, FILE *fp, char *filename, T n
   }
 #else
   if (new->coord_values_8p == true) {
+#ifdef HAVE_64_BIT
     for (i = 0; i < new->total_nintervals; i++) {
       FREAD_UINT8(&(new->intervals[i].low),fp);
       FREAD_UINT8(&(new->intervals[i].high),fp);
       FREAD_INT(&(new->intervals[i].type),fp);
     }
     offset += (sizeof(UINT8)+sizeof(UINT8)+sizeof(int))*new->total_nintervals;
+#else
+    fprintf(stderr,"IIT file contains 64-bit coordinates, but this computer is only 32-bit.  Cannot continue.\n");
+    exit(9);
+#endif
   } else {
     for (i = 0; i < new->total_nintervals; i++) {
       FREAD_UINT(&uint4,fp);

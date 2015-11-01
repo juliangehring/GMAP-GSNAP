@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bytecoding.c 153444 2014-11-18 01:24:55Z twu $";
+static char rcsid[] = "$Id: bytecoding.c 170515 2015-07-23 23:03:24Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -445,6 +445,19 @@ Bytecoding_read (UINT4 key, unsigned char *bytes, UINT4 *exceptions, int nexcept
     
     while (lowi < highi) {
       middlei = lowi + ((highi - lowi) / 2);
+#ifdef WORDS_BIGENDIAN
+      debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
+		     highi,exceptions[2*highi],key));
+      if (key < Bigendian_convert_uint(exceptions[2*middlei])) {
+	highi = middlei;
+      } else if (key > Bigendian_convert_uint(exceptions[2*middlei])) {
+	lowi = middlei + 1;
+      } else {
+	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
+	return Bigendian_convert_uint(exceptions[2*middlei+1]);
+      }
+#else
       debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
 		     highi,exceptions[2*highi],key));
@@ -456,6 +469,7 @@ Bytecoding_read (UINT4 key, unsigned char *bytes, UINT4 *exceptions, int nexcept
 	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
 	return exceptions[2*middlei+1];
       }
+#endif
     }
 
     /* debug10(printf("binary search returns %d => %u\n",highi,exceptions[highi+1])); */
@@ -478,13 +492,31 @@ Bytecoding_read_wguide (UINT4 key, unsigned char *bytes, UINT4 *guide, UINT4 *ex
 
   } else {
     guidei = key/guide_interval;
+#ifdef WORDS_BIGENDIAN
+    lowi = Bigendian_convert_uint(guide[guidei]);
+    highi = Bigendian_convert_uint(guide[guidei+1]);
+#else
     lowi = guide[guidei];
     highi = guide[guidei+1];
+#endif
 
     debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,key));
     
     while (lowi < highi) {
       middlei = lowi + ((highi - lowi) / 2);
+#ifdef WORDS_BIGENDIAN
+      debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
+		     highi,exceptions[2*highi],key));
+      if (key < Bigendian_convert_uint(exceptions[2*middlei])) {
+	highi = middlei;
+      } else if (key > Bigendian_convert_uint(exceptions[2*middlei])) {
+	lowi = middlei + 1;
+      } else {
+	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
+	return Bigendian_convert_uint(exceptions[2*middlei+1]);
+      }
+#else
       debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
 		     highi,exceptions[2*highi],key));
@@ -496,6 +528,7 @@ Bytecoding_read_wguide (UINT4 key, unsigned char *bytes, UINT4 *guide, UINT4 *ex
 	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
 	return exceptions[2*middlei+1];
       }
+#endif
     }
 
     /* debug10(printf("binary search returns %d => %u\n",highi,exceptions[highi+1])); */
@@ -525,6 +558,19 @@ Bytecoding_lcpchilddc_lcp (UINT4 key, unsigned char *bytes, UINT4 *exceptions, i
     
     while (lowi < highi) {
       middlei = lowi + ((highi - lowi) / 2);
+#ifdef WORDS_BIGENDIAN
+      debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
+		     highi,exceptions[2*highi],key));
+      if (key < Bigendian_convert_uint(exceptions[2*middlei])) {
+	highi = middlei;
+      } else if (key > Bigendian_convert_uint(exceptions[2*middlei])) {
+	lowi = middlei + 1;
+      } else {
+	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
+	return Bigendian_convert_uint(exceptions[2*middlei+1]);
+      }
+#else
       debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
 		     highi,exceptions[2*highi],key));
@@ -536,6 +582,7 @@ Bytecoding_lcpchilddc_lcp (UINT4 key, unsigned char *bytes, UINT4 *exceptions, i
 	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
 	return exceptions[2*middlei+1];
       }
+#endif
     }
 
     /* debug10(printf("binary search returns %d => %u\n",highi,exceptions[highi+1])); */
@@ -580,13 +627,31 @@ Bytecoding_lcpchilddc_child_up (UINT4 key, unsigned char *bytes, UINT4 *guide, U
 
   } else {
     guidei = key/guide_interval;
+#ifdef WORDS_BIGENDIAN
+    lowi = Bigendian_convert_uint(guide[guidei]);
+    highi = Bigendian_convert_uint(guide[guidei+1]);
+#else
     lowi = guide[guidei];
     highi = guide[guidei+1];
+#endif
 
     debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,key));
     
     while (lowi < highi) {
       middlei = lowi + ((highi - lowi) / 2);
+#ifdef WORDS_BIGENDIAN
+      debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
+		     highi,exceptions[2*highi],key));
+      if (key < Bigendian_convert_uint(exceptions[2*middlei])) {
+	highi = middlei;
+      } else if (key > Bigendian_convert_uint(exceptions[2*middlei])) {
+	lowi = middlei + 1;
+      } else {
+	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
+	return key - Bigendian_convert_uint(exceptions[2*middlei+1]);
+      }
+#else
       debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
 		     highi,exceptions[2*highi],key));
@@ -598,6 +663,7 @@ Bytecoding_lcpchilddc_child_up (UINT4 key, unsigned char *bytes, UINT4 *guide, U
 	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
 	return key - exceptions[2*middlei+1];
       }
+#endif
     }
 
     /* debug10(printf("binary search returns %d => %u\n",highi,exceptions[highi+1])); */
@@ -622,13 +688,31 @@ Bytecoding_lcpchilddc_child_next (UINT4 key, unsigned char *bytes, UINT4 *guide,
 
   } else {
     guidei = key/guide_interval;
+#ifdef WORDS_BIGENDIAN
+    lowi = Bigendian_convert_uint(guide[guidei]);
+    highi = Bigendian_convert_uint(guide[guidei+1]);
+#else
     lowi = guide[guidei];
     highi = guide[guidei+1];
+#endif
 
     debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,key));
     
     while (lowi < highi) {
       middlei = lowi + ((highi - lowi) / 2);
+#ifdef WORDS_BIGENDIAN
+      debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
+		     highi,exceptions[2*highi],key));
+      if (key < Bigendian_convert_uint(exceptions[2*middlei])) {
+	highi = middlei;
+      } else if (key > Bigendian_convert_uint(exceptions[2*middlei])) {
+	lowi = middlei + 1;
+      } else {
+	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
+	return Bigendian_convert_uint(exceptions[2*middlei+1]) + key + 1;
+      }
+#else
       debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
 		     highi,exceptions[2*highi],key));
@@ -640,6 +724,7 @@ Bytecoding_lcpchilddc_child_next (UINT4 key, unsigned char *bytes, UINT4 *guide,
 	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
 	return exceptions[2*middlei+1] + key + 1;
       }
+#endif
     }
 
     /* debug10(printf("binary search returns %d => %u\n",highi,exceptions[highi+1])); */
@@ -652,7 +737,7 @@ Bytecoding_lcpchilddc_child_next (UINT4 key, unsigned char *bytes, UINT4 *guide,
 
 
 UINT4
-Bytecoding_lcpchilddc_lcp_next (UINT4 key, unsigned char *bytes, UINT4 *child_guide,
+Bytecoding_lcpchilddc_lcp_next (UINT4 *child_next, UINT4 key, unsigned char *bytes, UINT4 *child_guide,
 				UINT4 *child_exceptions, int child_guide_interval,
 				UINT4 *lcp_exceptions, int n_lcp_exceptions) {
   UINT8 blocki = key/2;		/* Needs to be UINT8, because 5 * 2^32 will overflow UINT4 */
@@ -663,17 +748,37 @@ Bytecoding_lcpchilddc_lcp_next (UINT4 key, unsigned char *bytes, UINT4 *child_gu
 
   if ((byte = block[3 + (key % 2)]) < 255) {
     debug10(printf("value %d < 255\n",byte));
-    return Bytecoding_lcpchilddc_lcp((UINT4) byte + key + 1,bytes,lcp_exceptions,n_lcp_exceptions);
+    *child_next = (UINT4) byte + key + 1;
+    return Bytecoding_lcpchilddc_lcp(*child_next,bytes,lcp_exceptions,n_lcp_exceptions);
 
   } else {
     guidei = key/child_guide_interval;
+#ifdef WORDS_BIGENDIAN
+    lowi = Bigendian_convert_uint(child_guide[guidei]);
+    highi = Bigendian_convert_uint(child_guide[guidei+1]);
+#else
     lowi = child_guide[guidei];
     highi = child_guide[guidei+1];
+#endif
 
     debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,key));
     
     while (lowi < highi) {
       middlei = lowi + ((highi - lowi) / 2);
+#ifdef WORDS_BIGENDIAN
+      debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		     lowi,child_exceptions[2*lowi],middlei,child_exceptions[2*middlei],
+		     highi,child_exceptions[2*highi],key));
+      if (key < Bigendian_convert_uint(child_exceptions[2*middlei])) {
+	highi = middlei;
+  } else if (key > Bigendian_convert_uint(child_exceptions[2*middlei])) {
+	lowi = middlei + 1;
+      } else {
+	debug10(printf("binary search returns %d => %u\n",middlei,child_exceptions[2*middlei+1]));
+	*child_next = Bigendian_convert_uint(child_exceptions[2*middlei+1]) + key + 1;
+	return Bytecoding_lcpchilddc_lcp(*child_next,bytes,lcp_exceptions,n_lcp_exceptions);
+      }
+#else
       debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		     lowi,child_exceptions[2*lowi],middlei,child_exceptions[2*middlei],
 		     highi,child_exceptions[2*highi],key));
@@ -683,9 +788,10 @@ Bytecoding_lcpchilddc_lcp_next (UINT4 key, unsigned char *bytes, UINT4 *child_gu
 	lowi = middlei + 1;
       } else {
 	debug10(printf("binary search returns %d => %u\n",middlei,child_exceptions[2*middlei+1]));
-	return Bytecoding_lcpchilddc_lcp(child_exceptions[2*middlei+1] + key + 1,bytes,
-					 lcp_exceptions,n_lcp_exceptions);
+	*child_next = child_exceptions[2*middlei+1] + key + 1;
+	return Bytecoding_lcpchilddc_lcp(*child_next,bytes,lcp_exceptions,n_lcp_exceptions);
       }
+#endif
     }
 
     /* debug10(printf("binary search returns %d => %u\n",highi,exceptions[highi+1])); */
@@ -720,13 +826,31 @@ Bytecoding_lcpchilddcn_child_up (bool *nextp, UINT4 key, unsigned char *bytes, U
 
   } else {
     guidei = key/guide_interval;
+#ifdef WORDS_BIGENDIAN
+    lowi = Bigendian_convert_uint(guide[guidei]);
+    highi = Bigendian_convert_uint(guide[guidei+1]);
+#else
     lowi = guide[guidei];
     highi = guide[guidei+1];
+#endif
 
     debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,key));
     
     while (lowi < highi) {
       middlei = lowi + ((highi - lowi) / 2);
+#ifdef WORDS_BIGENDIAN
+      debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
+		     highi,exceptions[2*highi],key));
+      if (key < Bigendian_convert_uint(exceptions[2*middlei])) {
+	highi = middlei;
+     } else if (key > Bigendian_convert_uint(exceptions[2*middlei])) {
+	lowi = middlei + 1;
+      } else {
+	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
+	return key - Bigendian_convert_uint(exceptions[2*middlei+1]);
+      }
+#else
       debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
 		     highi,exceptions[2*highi],key));
@@ -738,6 +862,7 @@ Bytecoding_lcpchilddcn_child_up (bool *nextp, UINT4 key, unsigned char *bytes, U
 	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
 	return key - exceptions[2*middlei+1];
       }
+#endif
     }
 
     /* debug10(printf("binary search returns %d => %u\n",highi,exceptions[highi+1])); */
@@ -773,13 +898,31 @@ Bytecoding_lcpchilddcn_child_next (bool *nextp, UINT4 key, unsigned char *bytes,
 
   } else {
     guidei = key/guide_interval;
+#ifdef WORDS_BIGENDIAN
+    lowi = Bigendian_convert_uint(guide[guidei]);
+    highi = Bigendian_convert_uint(guide[guidei+1]);
+#else
     lowi = guide[guidei];
     highi = guide[guidei+1];
+#endif
 
     debug10(printf("entered binary search with lowi=%d, highi=%d, goal=%u\n",lowi,highi,key));
     
     while (lowi < highi) {
       middlei = lowi + ((highi - lowi) / 2);
+#ifdef WORDS_BIGENDIAN
+      debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
+		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
+		     highi,exceptions[2*highi],key));
+      if (key < Bigendian_convert_uint(exceptions[2*middlei])) {
+	highi = middlei;
+      } else if (key > Bigendian_convert_uint(exceptions[2*middlei])) {
+	lowi = middlei + 1;
+      } else {
+	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
+	return Bigendian_convert_uint(exceptions[2*middlei+1]) + key + 1;
+      }
+#else
       debug10(printf("  binary: %d:%u %d:%u %d:%u   vs. %u\n",
 		     lowi,exceptions[2*lowi],middlei,exceptions[2*middlei],
 		     highi,exceptions[2*highi],key));
@@ -791,6 +934,7 @@ Bytecoding_lcpchilddcn_child_next (bool *nextp, UINT4 key, unsigned char *bytes,
 	debug10(printf("binary search returns %d => %u\n",middlei,exceptions[2*middlei+1]));
 	return exceptions[2*middlei+1] + key + 1;
       }
+#endif
     }
 
     /* debug10(printf("binary search returns %d => %u\n",highi,exceptions[highi+1])); */

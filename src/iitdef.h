@@ -1,8 +1,8 @@
-/* $Id: iitdef.h 138717 2014-06-11 17:06:45Z twu $ */
+/* $Id: iitdef.h 157223 2015-01-22 18:43:01Z twu $ */
 #ifndef IITDEF_INCLUDED
 #define IITDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
-#include <config.h>
+#include <config.h>		/* For HAVE_SYS_TYPES_H, HAVE_PTHREAD */
 #endif
 
 #ifdef HAVE_SYS_TYPES_H

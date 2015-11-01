@@ -1,6 +1,7 @@
-/* $Id: univinterval.h 102893 2013-07-25 22:11:12Z twu $ */
+/* $Id: univinterval.h 168395 2015-06-26 17:13:13Z twu $ */
 #ifndef UNIVINTERVAL_INCLUDED
 #define UNIVINTERVAL_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "types.h"
@@ -8,8 +9,8 @@
 #define T Univinterval_T
 typedef struct T *T;
 struct T {
-  Univcoord_T low;		/* low <= high */
-  Univcoord_T high;
+  Univ_IIT_coord_T low;		/* low <= high */
+  Univ_IIT_coord_T high;
   int sign;
   int type;
 };

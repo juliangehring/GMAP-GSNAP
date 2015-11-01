@@ -1,6 +1,7 @@
-/* $Id: interval.h 135351 2014-05-07 15:56:14Z twu $ */
+/* $Id: interval.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef INTERVAL_INCLUDED
 #define INTERVAL_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "types.h"

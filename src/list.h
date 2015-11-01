@@ -1,4 +1,4 @@
-/* $Id: list.h 161598 2015-03-21 02:37:54Z twu $ */
+/* $Id: list.h 166641 2015-05-29 21:13:04Z twu $ */
 #ifndef LIST_INCLUDED
 #define LIST_INCLUDED
 
@@ -33,6 +33,8 @@ List_dump (T list);
 extern T List_append (T list, T tail);
 extern void *
 List_last_value (T this);
+extern T
+List_last_item (T this);
 extern void *
 List_index (T this, int index);
 extern T

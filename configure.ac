@@ -73,6 +73,10 @@ else
 	AC_MSG_RESULT($CFLAGS)
 fi
 
+AC_MSG_CHECKING(MPI_CFLAGS)
+AC_ARG_VAR([MPI_CFLAGS], [Compiler flags (default: -O3)])
+AC_MSG_RESULT($MPI_CFLAGS)
+AC_SUBST(MPI_CFLAGS)
 
 
 AC_CONFIG_SRCDIR([src/gmap.c])
@@ -87,7 +91,8 @@ AC_SYS_LARGEFILE
 AC_ARG_PROGRAM
 
 #AM_INIT_AUTOMAKE([no-dependencies])
-AM_INIT_AUTOMAKE(AC_PACKAGE_NAME, AC_PACKAGE_VERSION)
+#AM_INIT_AUTOMAKE(AC_PACKAGE_NAME, AC_PACKAGE_VERSION)
+AM_INIT_AUTOMAKE
 
 AM_CONDITIONAL(FULLDIST,test "x$enable_fulldist" = xyes)
 AC_ARG_ENABLE([fulldist],
@@ -140,7 +145,11 @@ ACX_PATH_PERL
 
 AC_PROG_CC
 AM_PROG_CC_C_O
+
 AX_MPI    # Sets MPICC to use for isolated source files that need it
+# AC_PROG_CC_MPI   # This sets CC to mpicc
+
+AM_CONDITIONAL(MPI_FOUND,test "x$MPILIBS" != x)
 
 AC_PROG_LIBTOOL
 
@@ -155,6 +164,30 @@ AC_CHECK_LIB(m, rint)
 #	POPT_LIBS=""
 #fi
 #AC_SUBST(POPT_LIBS)
+
+
+AC_MSG_CHECKING(whether to use MPI_File for input)
+AC_ARG_ENABLE([mpi-file-input],
+              AC_HELP_STRING([--enable-mpi-file-input],
+                             [Enable MPI_File for input for MPI versions (default=yes).  Note: Use only if you have a parallel I/O file system, like Lustre]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+	xyes)
+        AC_MSG_RESULT(enabled)
+	AC_DEFINE(USE_MPI_FILE_INPUT,1,[Define to 1 if you want to use MPI_File for input.])
+	;;
+	
+	xno)
+	AC_MSG_RESULT(disabled)
+	;;
+
+	x)
+	AC_MSG_RESULT([not specified so enabled by default])
+	AC_DEFINE(USE_MPI_FILE_INPUT,1,[Define to 1 if you want to use MPI_File for input.])
+	;;
+esac	
+
 
 # In call to ACX_PTHREAD, don't provide ACTION-IF-FOUND; otherwise,
 # HAVE_PTHREAD won't be defined
@@ -265,8 +298,10 @@ fi
 
 ACX_MMAP_FLAGS
 ACX_MADVISE_FLAGS
+ACX_SHM_FLAGS
 
-AC_CHECK_FUNCS([ceil floor index log madvise memcpy memmove memset munmap pow rint stat64 strtoul sysconf sysctl sigaction])
+AC_CHECK_FUNCS([ceil floor index log madvise memcpy memmove memset munmap pow rint stat64 strtoul sysconf sysctl sigaction \
+                shmget shmctl shmat shmdt semget semctl semop])
 
 ACX_STRUCT_STAT64
 ACX_PAGESIZE
@@ -616,34 +651,9 @@ esac
 AC_SUBST(BZLIB_LIBS)
 
 
-# Goby package
-
-AC_MSG_CHECKING(for goby library)
-AC_ARG_WITH([goby],
-            AC_HELP_STRING([--with-goby=DIR],
-                           [Location of Goby header files (in DIR/include) and library files (in DIR/lib) (optional)]),
-            [answer="$withval"],
-            [answer=""])
-if test x"$answer" = x; then
-            GOBY_CFLAGS=""
-            GOBY_LDFLAGS=""
-	    GOBY_LIBS=""
-            AC_MSG_RESULT(disabled)
-else
-            AC_DEFINE(HAVE_GOBY,1,[Define to 1 if you have a working Goby library.])
-            GOBY_CFLAGS="-I$withval/include"
-            GOBY_LDFLAGS="-L$withval/lib"
-	    GOBY_LIBS="-lgoby"
-            AC_MSG_RESULT(enabled)
-fi
-AC_SUBST(GOBY_CFLAGS)
-AC_SUBST(GOBY_LDFLAGS)
-AC_SUBST(GOBY_LIBS)
-
-
-
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([src/Makefile])
+AC_CONFIG_FILES([mpi/Makefile])
 AC_CONFIG_FILES([util/Makefile])
 AC_CONFIG_FILES([util/gmap_compress.pl])
 AC_CONFIG_FILES([util/gmap_uncompress.pl])
@@ -747,12 +757,21 @@ rebuild your compiler and linker.
 ])
 fi
 
-AC_MSG_CHECKING(compiler and flags to be used)
+AC_MSG_CHECKING(Standard compiler and flags to be used)
 AC_MSG_RESULT($CC $CFLAGS)
+AC_MSG_CHECKING(Standard linker flags to be used)
+AC_MSG_RESULT($LD_FLAGS)
+
+AC_MSG_CHECKING(MPI compiler and flags to be used)
+AC_MSG_RESULT($MPICC $MPI_CFLAGS)
+AC_MSG_CHECKING(MPI linker flags to be used)
+AC_MSG_RESULT($MPI_CLDFLAGS)
+
 AC_MSG_CHECKING(pthread compiler flags to be used)
 AC_MSG_RESULT($PTHREAD_CFLAGS)
 AC_MSG_CHECKING(popcnt compiler flags to be used)
 AC_MSG_RESULT($POPCNT_CFLAGS)
+
 AC_MSG_CHECKING(SIMD features available on computer)
 AC_MSG_RESULT($ax_cv_cpu_features)
 AC_MSG_CHECKING(SIMD compiler flags to be used)

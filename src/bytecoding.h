@@ -1,6 +1,7 @@
-/* $Id: bytecoding.h 132144 2014-04-02 16:02:28Z twu $ */
+/* $Id: bytecoding.h 170515 2015-07-23 23:03:24Z twu $ */
 #ifndef BYTECODING_INCLUDED
 #define BYTECODING_INCLUDED
+
 #include "bool.h"
 #include "types.h"
 
@@ -36,7 +37,8 @@ Bytecoding_lcpchilddc_child_up (UINT4 key, unsigned char *bytes, UINT4 *guide, U
 extern UINT4
 Bytecoding_lcpchilddc_child_next (UINT4 key, unsigned char *bytes, UINT4 *guide, UINT4 *exceptions, int guide_interval);
 extern UINT4
-Bytecoding_lcpchilddc_lcp_next (UINT4 key, unsigned char *lcpchilddc, UINT4 *child_guide,
+Bytecoding_lcpchilddc_lcp_next (UINT4 *child_next, UINT4 key,
+				unsigned char *lcpchilddc, UINT4 *child_guide,
 				UINT4 *child_exceptions, int child_guide_interval,
 				UINT4 *lcp_exceptions, int n_lcp_exceptions);
 

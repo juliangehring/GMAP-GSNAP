@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 158357 2015-02-10 19:10:16Z twu $";
+static char rcsid[] = "$Id: stage1.c 173039 2015-08-31 19:12:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -2550,8 +2550,9 @@ collapse_diagonals (Univcoord_T **diagonals, int *ndiagonals,
   /* Set up batches */
   maxsegments = 0;
 
-  batchpool = (struct Batch_T *) MALLOCA((querylength-oligobase+1) * sizeof(struct Batch_T));
-  heap = (Batch_T *) MALLOCA((2*querylength+1+1) * sizeof(Batch_T));
+  /* Batch_T can be large, so don't use alloca */
+  batchpool = (struct Batch_T *) MALLOC((querylength-oligobase+1) * sizeof(struct Batch_T));
+  heap = (Batch_T *) MALLOC((2*querylength+1+1) * sizeof(Batch_T));
 
   for (querypos = 0, i = 0; querypos <= querylength - oligobase; querypos++) {
     if (ndiagonals[querypos] > 0) {
@@ -2570,8 +2571,8 @@ collapse_diagonals (Univcoord_T **diagonals, int *ndiagonals,
   }
 
   if (maxsegments == 0) {
-    FREEA(heap);
-    FREEA(batchpool);
+    FREE(heap);
+    FREE(batchpool);
     return;
   }
 
@@ -2672,8 +2673,8 @@ collapse_diagonals (Univcoord_T **diagonals, int *ndiagonals,
   }
 
   /* Terminate loop. */
-  FREEA(heap);
-  FREEA(batchpool);
+  FREE(heap);
+  FREE(batchpool);
 
   return;
 }
@@ -2700,8 +2701,9 @@ find_segments (int *nsegments, Univcoord_T **diagonals, int *ndiagonals,
   /* Set up batches */
   maxsegments = 0;
 
-  batchpool = (struct Batch_T *) MALLOCA((querylength-oligobase+1) * sizeof(struct Batch_T));
-  heap = (Batch_T *) MALLOCA((2*querylength+1+1) * sizeof(Batch_T));
+  /* Batch_T can be large, so don't use alloca */
+  batchpool = (struct Batch_T *) MALLOC((querylength-oligobase+1) * sizeof(struct Batch_T));
+  heap = (Batch_T *) MALLOC((2*querylength+1+1) * sizeof(Batch_T));
 
   for (querypos = 0, i = 0; querypos <= querylength - oligobase; querypos++) {
     if (ndiagonals[querypos] > 0) {
@@ -2720,8 +2722,8 @@ find_segments (int *nsegments, Univcoord_T **diagonals, int *ndiagonals,
   }
 
   if (maxsegments == 0) {
-    FREEA(heap);
-    FREEA(batchpool);
+    FREE(heap);
+    FREE(batchpool);
     *nsegments = 0;
     return (struct Segment_T *) NULL;
   } else {
@@ -2895,8 +2897,8 @@ find_segments (int *nsegments, Univcoord_T **diagonals, int *ndiagonals,
     ptr++;			/* Needed to get correct value for nsegments below */
   }
 
-  FREEA(heap);
-  FREEA(batchpool);
+  FREE(heap);
+  FREE(batchpool);
 
   *nsegments = ptr - segments;
   debug6(for (j = 0; j < *nsegments; j++) {

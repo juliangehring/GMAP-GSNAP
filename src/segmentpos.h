@@ -1,4 +1,4 @@
-/* $Id: segmentpos.h 138719 2014-06-11 17:07:13Z twu $ */
+/* $Id: segmentpos.h 155282 2014-12-12 19:42:54Z twu $ */
 #ifndef SEGMENTPOS_INCLUDED
 #define SEGMENTPOS_INCLUDED
 #include <stdio.h>
@@ -7,6 +7,7 @@
 #include "types.h"
 #include "chrom.h"
 #include "iit-read-univ.h"
+#include "filestring.h"
 
 #define T Segmentpos_T
 typedef struct T *T;
@@ -29,7 +30,7 @@ Segmentpos_new (Chrom_T chrom, Chrpos_T chrpos1, Chrpos_T chrpos2,
 extern void
 Segmentpos_free (T *old);
 extern void
-Segmentpos_print (FILE *fp, T this, char *acc, Univcoord_T chroffset);
+Segmentpos_print (Filestring_T fp, T this, char *acc, Univcoord_T chroffset);
 extern int
 Segmentpos_compare_alpha (const void *x, const void *y);
 extern int
@@ -40,7 +41,7 @@ extern int
 Segmentpos_compare_order (const void *x, const void *y);
 
 extern void
-Segmentpos_print_accessions (FILE *fp, Univ_IIT_T contig_iit, Univcoord_T position1,
+Segmentpos_print_accessions (Filestring_T fp, Univ_IIT_T contig_iit, Univcoord_T position1,
 			     Univcoord_T position2, bool referencealignp, 
 			     char *align_strain);
 

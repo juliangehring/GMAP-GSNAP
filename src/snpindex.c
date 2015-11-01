@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: snpindex.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: snpindex.c 168395 2015-06-26 17:13:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -855,22 +855,28 @@ merge_positions8 (FILE *positions_high_fp, FILE *positions_low_fp,
   UINT8 *ptr1 = start1, *ptr2 = start2;
   char *nt;
 #ifdef WORDS_BIGENDIAN
-  UINT8 position2;
+  UINT8 position1, position2;
 #endif
 
   while (ptr1 < end1 && ptr2 < end2) {
 #ifdef WORDS_BIGENDIAN
-    abort();
+    position1 = Bigendian_convert_uint8(*ptr1);
     position2 = Bigendian_convert_uint8(*ptr2);
-    if (*ptr1 < position2) {
-      FWRITE_UINT8(*ptr1,positions_fp);
+    if (position1 < position2) {
+      position8_high = position1 >> POSITIONS8_HIGH_SHIFT;
+      position8_low = position1 & POSITIONS8_LOW_MASK;
+      FWRITE_CHAR(position8_high,positions_high_fp);
+      FWRITE_UINT(position8_low,positions_low_fp);
       ptr1++;
-    } else if (position2 < *ptr1) {
-      FWRITE_UINT8(position2,positions_fp);
+    } else if (position2 < position1) {
+      position8_high = position2 >> POSITIONS8_HIGH_SHIFT;
+      position8_low = position2 & POSITIONS8_LOW_MASK;
+      FWRITE_CHAR(position8_high,positions_high_fp);
+      FWRITE_UINT(position8_low,positions_low_fp);
       ptr2++;
     } else {
       nt = shortoligo_nt(oligo,index1part);
-      fprintf(stderr,"Problem: saw duplicate positions %u in oligo %s\n",*ptr1,nt);
+      fprintf(stderr,"Problem: saw duplicate positions %u in oligo %s\n",position1,nt);
       FREE(nt);
       abort();
       /*
@@ -881,7 +887,6 @@ merge_positions8 (FILE *positions_high_fp, FILE *positions_low_fp,
     }
 
 #else
-
     if (*ptr1 < *ptr2) {
       position8_high = *ptr1 >> POSITIONS8_HIGH_SHIFT;
       position8_low = *ptr1 & POSITIONS8_LOW_MASK;
@@ -909,27 +914,32 @@ merge_positions8 (FILE *positions_high_fp, FILE *positions_low_fp,
   }
 
   while (ptr1 < end1) {
+#ifdef WORDS_BIGENDIAN
+    position1 = Bigendian_convert_uint8(*ptr1);
+    position8_high = position1 >> POSITIONS8_HIGH_SHIFT;
+    position8_low = position1 & POSITIONS8_LOW_MASK;
+#else
     position8_high = *ptr1 >> POSITIONS8_HIGH_SHIFT;
     position8_low = *ptr1 & POSITIONS8_LOW_MASK;
+#endif
     FWRITE_CHAR(position8_high,positions_high_fp);
     FWRITE_UINT(position8_low,positions_low_fp);
     ptr1++;
   }
 
+  while (ptr2 < end2) {
 #ifdef WORDS_BIGENDIAN
-  while (ptr2 < end2) {
-    FWRITE_UINT8(Bigendian_convert_uint8(*ptr2),positions_fp);
-    ptr2++;
-  }
+    position2 = Bigendian_convert_uint8(*ptr2);
+    position8_high = position2 >> POSITIONS8_HIGH_SHIFT;
+    position8_low = position2 & POSITIONS8_LOW_MASK;
 #else
-  while (ptr2 < end2) {
     position8_high = *ptr2 >> POSITIONS8_HIGH_SHIFT;
     position8_low = *ptr2 & POSITIONS8_LOW_MASK;
+#endif
     FWRITE_CHAR(position8_high,positions_high_fp);
     FWRITE_UINT(position8_low,positions_low_fp);
     ptr2++;
   }
-#endif
 
   return;
 }
@@ -941,16 +951,17 @@ merge_positions4 (FILE *positions_fp, UINT4 *start1, UINT4 *end1,
   UINT4 *ptr1 = start1, *ptr2 = start2;
   char *nt;
 #ifdef WORDS_BIGENDIAN
-  UINT4 position2;
+  UINT4 position1, position2;
 #endif
 
   while (ptr1 < end1 && ptr2 < end2) {
 #ifdef WORDS_BIGENDIAN
+    position1 = Bigendian_convert_uint(*ptr1);
     position2 = Bigendian_convert_uint(*ptr2);
-    if (*ptr1 < position2) {
-      FWRITE_UINT(*ptr1,positions_fp);
+    if (position1 < position2) {
+      FWRITE_UINT(position1,positions_fp);
       ptr1++;
-    } else if (position2 < *ptr1) {
+    } else if (position2 < position1) {
       FWRITE_UINT(position2,positions_fp);
       ptr2++;
     } else {
@@ -988,21 +999,24 @@ merge_positions4 (FILE *positions_fp, UINT4 *start1, UINT4 *end1,
   }
 
   while (ptr1 < end1) {
+#ifdef WORDS_BIGENDIAN
+    position1 = Bigendian_convert_uint(*ptr1);
+    FWRITE_UINT(position1,positions_fp);
+#else    
     FWRITE_UINT(*ptr1,positions_fp);
+#endif
     ptr1++;
   }
 
+  while (ptr2 < end2) {
 #ifdef WORDS_BIGENDIAN
-  while (ptr2 < end2) {
-    FWRITE_UINT(Bigendian_convert_uint(*ptr2),positions_fp);
-    ptr2++;
-  }
+    position2 = Bigendian_convert_uint(*ptr2);
+    FWRITE_UINT(position2,positions_fp);
 #else
-  while (ptr2 < end2) {
     FWRITE_UINT(*ptr2,positions_fp);
+#endif
     ptr2++;
   }
-#endif
 
   return;
 }
@@ -1024,6 +1038,8 @@ main (int argc, char *argv[]) {
 #ifdef EXTRA_ALLOCATION
   Positionsptr_T npositions;
 #endif
+
+  int shmid;
   unsigned char *ref_positions8_high;
   UINT4 *ref_positions8_low;
   UINT8 *snp_positions8, *ref_positions8;
@@ -1153,7 +1169,7 @@ main (int argc, char *argv[]) {
   IIT_dump_divstrings(stderr,snps_iit);
 
   genome = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-		      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+		      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
 
   /* Copy genome */
   nblocks = Genome_totallength(genome)/32U;
@@ -1313,10 +1329,11 @@ main (int argc, char *argv[]) {
     ref_positions8_low = (UINT4 *) Access_mmap(&ref_positions_low_fd,&ref_positions_low_len,
 					       filenames->positions_low_filename,sizeof(UINT4),/*randomp*/false);
 #else
-    ref_positions8_high = (unsigned char *) Access_allocated(&ref_positions_high_len,&seconds,
-							     filenames->positions_high_filename,sizeof(unsigned char));
-    ref_positions8_low = (UINT4 *) Access_allocated(&ref_positions_low_len,&seconds,
-						     filenames->positions_low_filename,sizeof(UINT4));
+    ref_positions8_high = (unsigned char *) Access_allocate(&shmid,&ref_positions_high_len,&seconds,
+							    filenames->positions_high_filename,sizeof(unsigned char),
+							    /*sharedp*/false);
+    ref_positions8_low = (UINT4 *) Access_allocate(&shmid,&ref_positions_low_len,&seconds,
+						   filenames->positions_low_filename,sizeof(UINT4),/*sharedp*/false);
 #endif
     /* Unpack */
     totalcounts = ref_positions_high_len/sizeof(unsigned char);
@@ -1343,8 +1360,8 @@ main (int argc, char *argv[]) {
     ref_positions4 = (UINT4 *) Access_mmap(&ref_positions_low_fd,&ref_positions_low_len,
 					   filenames->positions_low_filename,sizeof(UINT4),/*randomp*/false);
 #else
-    ref_positions4 = (UINT4 *) Access_allocated(&ref_positions_low_len,&seconds,
-						filenames->positions_low_filename,sizeof(UINT4));
+    ref_positions4 = (UINT4 *) Access_allocate(&shmid,&ref_positions_low_len,&seconds,
+					       filenames->positions_low_filename,sizeof(UINT4),/*sharedp*/false);
 #endif
   }
 

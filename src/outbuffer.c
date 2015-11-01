@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: outbuffer.c 165777 2015-05-15 18:09:06Z twu $";
+static char rcsid[] = "$Id: outbuffer.c 173039 2015-08-31 19:12:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,14 +19,14 @@ static char rcsid[] = "$Id: outbuffer.c 165777 2015-05-15 18:09:06Z twu $";
 #include "bool.h"
 #include "mem.h"
 #include "samheader.h"
-#include "samflags.h"		/* For output types */
 
-#ifdef GSNAP
-#include "shortread.h"
-#include "samprint.h"
-#include "stage3hr.h"
+
+/* MPI processing */
+#ifdef DEBUGM
+#define debugm(x) x
+#else
+#define debugm(x)
 #endif
-
 
 #ifdef DEBUG
 #define debug(x) x
@@ -41,891 +41,59 @@ static char rcsid[] = "$Id: outbuffer.c 165777 2015-05-15 18:09:06Z twu $";
 #endif
 
 
-typedef struct RRlist_T *RRlist_T;
-struct RRlist_T {
-  int id;
-  Result_T result;
-  Request_T request;
-  RRlist_T next;
-};
+/* sam-to-bam conversions always need the headers */
+#define SAM_HEADERS_ON_EMPTY_FILES 1
 
+static int argc;
+static char **argv;
+static int optind_save;
 
-#ifdef DEBUG1
-static void
-RRlist_dump (RRlist_T head, RRlist_T tail) {
-  RRlist_T this;
-
-  printf("head %p\n",head);
-  for (this = head; this != NULL; this = head->next) {
-    printf("%p: next %p\n",this,this->next);
-  }
-  printf("tail %p\n",tail);
-  printf("\n");
-  return;
-}
-#endif
-
-
-/* Returns new tail */
-static RRlist_T
-RRlist_push (RRlist_T *head, RRlist_T tail, Request_T request, Result_T result) {
-  RRlist_T new;
-
-  new = (RRlist_T) MALLOC_OUT(sizeof(*new)); /* Called by worker thread */
-  new->request = request;
-  new->result = result;
-  new->next = (RRlist_T) NULL;
-  
-  if (*head == NULL) {		/* Equivalent to tail == NULL, but using *head avoids having to set tail in RRlist_pop */
-    *head = new;
-  } else {
-    tail->next = new;
-  }
-
-  return new;
-}
-
-
-/* Returns new head */
-static RRlist_T
-RRlist_pop (RRlist_T head, Request_T *request, Result_T *result) {
-  RRlist_T newhead;
-
-  *request = head->request;
-  *result = head->result;
-
-  newhead = head->next;
-
-  FREE_OUT(head);		/* Called by outbuffer thread */
-  return newhead;
-}
-
-
-static RRlist_T
-RRlist_insert (RRlist_T list, int id, Request_T request, Result_T result) {
-  RRlist_T *p;
-  RRlist_T new;
-  
-  p = &list;
-  while (*p != NULL && id > (*p)->id) {
-    p = &(*p)->next;
-  }
-
-  new = (RRlist_T) MALLOC_OUT(sizeof(*new));
-  new->id = id;
-  new->request = request;
-  new->result = result;
-  
-  new->next = *p;
-  *p = new;
-  return list;
-}
-
-/* Returns new head */
-static RRlist_T
-RRlist_pop_id (RRlist_T head, int *id, Request_T *request, Result_T *result) {
-  RRlist_T newhead;
-
-  *id = head->id;
-  *request = head->request;
-  *result = head->result;
-
-  newhead = head->next;
-
-  FREE_OUT(head);		/* Called by outbuffer thread */
-  return newhead;
-}
-
-
-
-
-#define T Outbuffer_T
-struct T {
-
-#ifndef GSNAP
-  Genome_T genome;
-#endif
-
-  Univ_IIT_T chromosome_iit;
-
-  char *sevenway_root;
-  char *failedinput_root;
-  bool appendp;
+static Univ_IIT_T chromosome_iit;
+static bool any_circular_p;
+static int nworkers;
+static bool orderedp;
+static bool quiet_if_excessive_p;
 
 #ifdef GSNAP
-  bool sam_headers_p;
-  char *sam_read_group_id;
-  char *sam_read_group_name;
-  char *sam_read_group_library;
-  char *sam_read_group_platform;
-  int quality_shift;
-  int nworkers;
-  bool orderedp;
-  int argc;
-  char **argv;
-  int optind;
-#elif defined PMAP
-
+static bool output_sam_p;
 #else
-  bool sam_headers_p;
-  bool sam_paired_p;
-  char *sam_read_group_id;
-  char *sam_read_group_name;
-  char *sam_read_group_library;
-  char *sam_read_group_platform;
-  int quality_shift;
-  int nworkers;
-  bool orderedp;
-  int argc;
-  char **argv;
-  int optind;
+static Printtype_T printtype;
+static Sequence_T usersegment;
 #endif
 
-  FILE *fp_failedinput_1;
-  FILE *fp_failedinput_2;
+static bool sam_headers_p;
+static char *sam_read_group_id;
+static char *sam_read_group_name;
+static char *sam_read_group_library;
+static char *sam_read_group_platform;
 
+static bool appendp;
+static char *output_file;
+static char *split_output_root;
+static char *failedinput_root;
+
+#ifdef USE_MPI
+static MPI_File *outputs;
 #ifdef GSNAP
+static MPI_File output_failedinput_1;
+static MPI_File output_failedinput_2;
+#else
+static MPI_File output_failedinput;
+#endif
 
-  FILE *fp_nomapping;		/* NM */
-  FILE *fp_halfmapping_uniq;	/* HU */
-  FILE *fp_halfmapping_circular; /* HC */
-  FILE *fp_halfmapping_transloc; /* HT */
-  FILE *fp_halfmapping_mult;	 /* HM */
-  FILE *fp_halfmapping_mult_xs_1; /* HX */
-  FILE *fp_halfmapping_mult_xs_2; /* HX */
-  FILE *fp_unpaired_uniq;	 /* UU */
-  FILE *fp_unpaired_circular;	 /* UC */
-  FILE *fp_unpaired_transloc;	 /* UT */
-  FILE *fp_unpaired_mult;	 /* UM */
-  FILE *fp_unpaired_mult_xs_1;	 /* UX */
-  FILE *fp_unpaired_mult_xs_2;	 /* UX */
-  FILE *fp_paired_uniq_circular; /* PC */
-  FILE *fp_paired_uniq_inv;	 /* PI */
-  FILE *fp_paired_uniq_scr;	 /* PS */
-  FILE *fp_paired_uniq_long;	 /* PL */
-  FILE *fp_paired_mult;		 /* PM */
-  FILE *fp_paired_mult_xs_1;	 /* PX */
-  FILE *fp_paired_mult_xs_2;	 /* PX */
-  FILE *fp_concordant_uniq;	 /* CU */
-  FILE *fp_concordant_circular;	 /* CC */
-  FILE *fp_concordant_transloc;	 /* CT */
-  FILE *fp_concordant_mult;	 /* CM */
-  FILE *fp_concordant_mult_xs_1; /* CX */
-  FILE *fp_concordant_mult_xs_2; /* CX */
-
-  bool timingp;
-  bool output_sam_p;
-  Gobywriter_T gobywriter;
-
-  bool fastq_format_p;
-  bool clip_overlap_p;		/* clip_overlap_p and merge_overlap_p cannot both be true */
-  bool merge_overlap_p;
-  bool merge_samechr_p;
-  bool print_m8_p;
-
-  bool invert_first_p;
-  bool invert_second_p;
-  Chrpos_T pairmax;
 
 #else
-
-  FILE *fp_nomapping;		/* NM */
-  FILE *fp_uniq;		/* UU */
-  FILE *fp_circular;		/* UC */
-  FILE *fp_transloc;		/* UT */
-  FILE *fp_mult;		/* UM */
-  FILE *fp_mult_xs;		/* UX */
-
-  bool chimeras_allowed_p;
-
-  char *user_genomicseg;
-  Sequence_T usersegment;
-
-  char *dbversion;
-  char *chrsubset_name;
-  Univ_IIT_T contig_iit;
-  IIT_T altstrain_iit;
-  IIT_T map_iit;
-  int *map_divint_crosstable;
-
-  Printtype_T printtype;
-  bool checksump;
-  int chimera_margin;
-
-  bool map_exons_p;
-  bool map_bothstrands_p;
-  bool print_comment_p;
-  int nflanking;
-
-  int proteinmode;
-  int invertmode;
-  bool nointronlenp;
-
-  int wraplength;
-  int ngap;
-  int cds_startpos;
-
-  bool fulllengthp;
-  bool truncatep;
-  bool strictp;
-  bool diagnosticp;
-  bool maponlyp;
-
-  bool stage1debug;
-  bool diag_debug;
-  bool debug_graphic_p;
-
-#endif
-
-  int maxpaths_report;
-  bool nofailsp;
-  bool failsonlyp;
-  bool quiet_if_excessive_p;
-
-#ifdef HAVE_PTHREAD
-  pthread_mutex_t lock;
-#endif
-
-  unsigned int output_buffer_size;
-  unsigned int nread;
-  unsigned int ntotal;
-  unsigned int nprocessed;
-
-  RRlist_T head;
-  RRlist_T tail;
-  
-#ifdef HAVE_PTHREAD
-  pthread_cond_t result_avail_p;
-#endif
-};
-
-
-/************************************************************************
- *   File routines
- ************************************************************************/
-
-static void
-failedinput_close (T this) {
-  if (this->fp_failedinput_1 != NULL) {
-    fclose(this->fp_failedinput_1);
-  }
-  if (this->fp_failedinput_2 != NULL) {
-    fclose(this->fp_failedinput_2);
-  }
-  return;
-}
-
-
+static char *write_mode;
+static FILE **outputs = NULL;
 #ifdef GSNAP
-
-/* Always open both .1 and .2 */
-static void
-failedinput_open_paired (T this) {
-  char *filename;
-  char *write_mode;
-
-  if (this->appendp == true) {
-    write_mode = "a";
-  } else {
-    write_mode = "w";
-  }
-
-  if (this->failedinput_root != NULL) {
-    filename = (char *) MALLOCA((strlen(this->failedinput_root)+strlen(".1")+1) * sizeof(char));
-    sprintf(filename,"%s.1",this->failedinput_root);
-    if ((this->fp_failedinput_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-
-    /* Re-use filename, since it is the same length */
-    sprintf(filename,"%s.2",this->failedinput_root);
-    if ((this->fp_failedinput_2 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREEA(filename);
-  }
-
-  return;
-}
-
-
-
-static void
-sevenway_open_single (T this) {
-  char *filename;
-  char *write_mode;
-
-  if (this->appendp == true) {
-    write_mode = "a";
-  } else {
-    write_mode = "w";
-  }
-
-  /* Cannot use alloca easily, since each filename has a different length */
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping")+1,sizeof(char));
-  sprintf(filename,"%s.nomapping",this->sevenway_root);
-  if ((this->fp_nomapping = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_uniq")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_uniq",this->sevenway_root);
-  if ((this->fp_unpaired_uniq = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_circular")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_circular",this->sevenway_root);
-  if ((this->fp_unpaired_circular = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_transloc")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_transloc",this->sevenway_root);
-  if ((this->fp_unpaired_transloc = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_mult",this->sevenway_root);
-  if ((this->fp_unpaired_mult = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  if (this->quiet_if_excessive_p == false) {
-    this->fp_unpaired_mult_xs_1 = (FILE *) NULL;
-
-#if 0
-  } else if (this->fails_as_input_p == true) {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs.1.fq")+1,sizeof(char));
-    sprintf(filename,"%s.unpaired_mult_xs.1.fq",this->sevenway_root);
-    if ((this->fp_unpaired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-#endif
-
-  } else {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs")+1,sizeof(char));
-    sprintf(filename,"%s.unpaired_mult_xs",this->sevenway_root);
-    if ((this->fp_unpaired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-
-    if (this->output_sam_p == true && this->sam_headers_p == true) {
-      SAM_header_print_HD(this->fp_unpaired_mult_xs_1,this->nworkers,this->orderedp);
-      SAM_header_print_PG(this->fp_unpaired_mult_xs_1,this->argc,this->argv,this->optind);
-      Univ_IIT_dump_sam(this->fp_unpaired_mult_xs_1,this->chromosome_iit,
-			this->sam_read_group_id,this->sam_read_group_name,
-			this->sam_read_group_library,this->sam_read_group_platform);
-    }
-  }
-
-
-  if (this->output_sam_p == true && this->sam_headers_p == true) {
-    SAM_header_print_HD(this->fp_nomapping,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_nomapping,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_nomapping,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_unpaired_uniq,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_unpaired_uniq,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_unpaired_uniq,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_unpaired_circular,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_unpaired_circular,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_unpaired_circular,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_unpaired_transloc,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_unpaired_transloc,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_unpaired_transloc,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_unpaired_mult,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_unpaired_mult,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_unpaired_mult,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-  }
-
-  if (this->output_sam_p == true) {
-    SAM_file_setup_single(this->fp_failedinput_1,this->fp_nomapping,this->fp_unpaired_uniq,this->fp_unpaired_circular,
-			  this->fp_unpaired_transloc,this->fp_unpaired_mult,this->fp_unpaired_mult_xs_1);
-  } else {
-    Stage3hr_file_setup_single(this->fp_failedinput_1,this->fp_nomapping,this->fp_unpaired_uniq,this->fp_unpaired_circular,
-			       this->fp_unpaired_transloc,this->fp_unpaired_mult,this->fp_unpaired_mult_xs_1);
-  }
-
-  return;
-}
-
-
-static void
-sevenway_open_paired (T this) {
-  char *filename;
-  char *write_mode;
-
-  if (this->appendp == true) {
-    write_mode = "a";
-  } else {
-    write_mode = "w";
-  }
-
-  if (this->quiet_if_excessive_p == false) {
-    this->fp_unpaired_mult_xs_1 = (FILE *) NULL;
-    this->fp_unpaired_mult_xs_2 = (FILE *) NULL;
-
-#if 0
-  } else if (this->fails_as_input_p == true) {
-    if (this->fp_unpaired_mult_xs_1 == NULL) {
-      filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs.1.fq")+1,sizeof(char));
-      sprintf(filename,"%s.unpaired_mult_xs.1.fq",this->sevenway_root);
-      if ((this->fp_unpaired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-	fprintf(stderr,"Cannot open file %s for writing\n",filename);
-	exit(9);
-      }
-      FREE(filename);
-    }
-
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs.2.fq")+1,sizeof(char));
-    sprintf(filename,"%s.unpaired_mult_xs.2.fq",this->sevenway_root);
-    if ((this->fp_unpaired_mult_xs_2 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-#endif
-
-  } else {
-    if (this->fp_unpaired_mult_xs_1 == NULL) {
-      filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".unpaired_mult_xs")+1,sizeof(char));
-      sprintf(filename,"%s.unpaired_mult_xs",this->sevenway_root);
-      if ((this->fp_unpaired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-	fprintf(stderr,"Cannot open file %s for writing\n",filename);
-	exit(9);
-      }
-      FREE(filename);
-
-      if (this->output_sam_p == true && this->sam_headers_p == true) {
-	SAM_header_print_HD(this->fp_unpaired_mult_xs_1,this->nworkers,this->orderedp);
-	SAM_header_print_PG(this->fp_unpaired_mult_xs_1,this->argc,this->argv,this->optind);
-	Univ_IIT_dump_sam(this->fp_unpaired_mult_xs_1,this->chromosome_iit,
-			  this->sam_read_group_id,this->sam_read_group_name,
-			  this->sam_read_group_library,this->sam_read_group_platform);
-      }
-    }
-  }
-
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_uniq")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_uniq",this->sevenway_root);
-  if ((this->fp_halfmapping_uniq = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_circular")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_circular",this->sevenway_root);
-  if ((this->fp_halfmapping_circular = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_transloc")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_transloc",this->sevenway_root);
-  if ((this->fp_halfmapping_transloc = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_mult")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_mult",this->sevenway_root);
-  if ((this->fp_halfmapping_mult = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  if (this->quiet_if_excessive_p == false) {
-    this->fp_halfmapping_mult_xs_1 = (FILE *) NULL;
-    this->fp_halfmapping_mult_xs_2 = (FILE *) NULL;
-
-#if 0
-  } else if (this->fails_as_input_p == true) {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_mult_xs.1.fq")+1,sizeof(char));
-    sprintf(filename,"%s.halfmapping_mult_xs.1.fq",this->sevenway_root);
-    if ((this->fp_halfmapping_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_mult_xs.2.fq")+1,sizeof(char));
-    sprintf(filename,"%s.halfmapping_mult_xs.2.fq",this->sevenway_root);
-    if ((this->fp_halfmapping_mult_xs_2 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-#endif
-
-  } else {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".halfmapping_mult_xs")+1,sizeof(char));
-    sprintf(filename,"%s.halfmapping_mult_xs",this->sevenway_root);
-    if ((this->fp_halfmapping_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-
-    if (this->output_sam_p == true && this->sam_headers_p == true) {
-      SAM_header_print_HD(this->fp_halfmapping_mult_xs_1,this->nworkers,this->orderedp);
-      SAM_header_print_PG(this->fp_halfmapping_mult_xs_1,this->argc,this->argv,this->optind);
-      Univ_IIT_dump_sam(this->fp_halfmapping_mult_xs_1,this->chromosome_iit,
-			this->sam_read_group_id,this->sam_read_group_name,
-			this->sam_read_group_library,this->sam_read_group_platform);
-    }
-  }
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_uniq_circular")+1,sizeof(char));
-  sprintf(filename,"%s.paired_uniq_circular",this->sevenway_root);
-  if ((this->fp_paired_uniq_circular = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_uniq_inv")+1,sizeof(char));
-  sprintf(filename,"%s.paired_uniq_inv",this->sevenway_root);
-  if ((this->fp_paired_uniq_inv = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_uniq_scr")+1,sizeof(char));
-  sprintf(filename,"%s.paired_uniq_scr",this->sevenway_root);
-  if ((this->fp_paired_uniq_scr = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_uniq_long")+1,sizeof(char));
-  sprintf(filename,"%s.paired_uniq_long",this->sevenway_root);
-  if ((this->fp_paired_uniq_long = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_mult")+1,sizeof(char));
-  sprintf(filename,"%s.paired_mult",this->sevenway_root);
-  if ((this->fp_paired_mult = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  if (this->quiet_if_excessive_p == false) {
-    this->fp_paired_mult_xs_1 = (FILE *) NULL;
-    this->fp_paired_mult_xs_2 = (FILE *) NULL;
-     
-#if 0
-  } else if (this->fails_as_input_p == true) {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_mult_xs.1.fq")+1,sizeof(char));
-    sprintf(filename,"%s.paired_mult_xs.1.fq",this->sevenway_root);
-    if ((this->fp_paired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_mult_xs.2.fq")+1,sizeof(char));
-    sprintf(filename,"%s.paired_mult_xs.2.fq",this->sevenway_root);
-    if ((this->fp_paired_mult_xs_2 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-#endif
-
-  } else {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".paired_mult_xs")+1,sizeof(char));
-    sprintf(filename,"%s.paired_mult_xs",this->sevenway_root);
-    if ((this->fp_paired_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-
-    if (this->output_sam_p == true && this->sam_headers_p == true) {
-      SAM_header_print_HD(this->fp_paired_mult_xs_1,this->nworkers,this->orderedp);
-      SAM_header_print_PG(this->fp_paired_mult_xs_1,this->argc,this->argv,this->optind);
-      Univ_IIT_dump_sam(this->fp_paired_mult_xs_1,this->chromosome_iit,
-			this->sam_read_group_id,this->sam_read_group_name,
-			this->sam_read_group_library,this->sam_read_group_platform);
-    }
-  }
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_uniq")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_uniq",this->sevenway_root);
-  if ((this->fp_concordant_uniq = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_circular")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_circular",this->sevenway_root);
-  if ((this->fp_concordant_circular = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_transloc")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_transloc",this->sevenway_root);
-  if ((this->fp_concordant_transloc = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_mult")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_mult",this->sevenway_root);
-  if ((this->fp_concordant_mult = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  if (this->quiet_if_excessive_p == false) {
-    this->fp_concordant_mult_xs_1 = (FILE *) NULL;
-    this->fp_concordant_mult_xs_2 = (FILE *) NULL;
-
-#if 0
-  } else if (this->fails_as_input_p == true) {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_mult_xs.1.fq")+1,sizeof(char));
-    sprintf(filename,"%s.concordant_mult_xs.1.fq",this->sevenway_root);
-    if ((this->fp_concordant_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_mult_xs.2.fq")+1,sizeof(char));
-    sprintf(filename,"%s.concordant_mult_xs.2.fq",this->sevenway_root);
-    if ((this->fp_concordant_mult_xs_2 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-#endif
-
-  } else {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".concordant_mult_xs")+1,sizeof(char));
-    sprintf(filename,"%s.concordant_mult_xs",this->sevenway_root);
-    if ((this->fp_concordant_mult_xs_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-
-    if (this->output_sam_p == true && this->sam_headers_p == true) {
-      SAM_header_print_HD(this->fp_concordant_mult_xs_1,this->nworkers,this->orderedp);
-      SAM_header_print_PG(this->fp_concordant_mult_xs_1,this->argc,this->argv,this->optind);
-      Univ_IIT_dump_sam(this->fp_concordant_mult_xs_1,this->chromosome_iit,
-			this->sam_read_group_id,this->sam_read_group_name,
-			this->sam_read_group_library,this->sam_read_group_platform);
-    }
-  }
-
-  if (this->output_sam_p == true && this->sam_headers_p == true) {
-    SAM_header_print_HD(this->fp_halfmapping_uniq,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_halfmapping_uniq,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_halfmapping_uniq,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_halfmapping_circular,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_halfmapping_circular,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_halfmapping_circular,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_halfmapping_transloc,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_halfmapping_transloc,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_halfmapping_transloc,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_halfmapping_mult,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_halfmapping_mult,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_halfmapping_mult,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_paired_uniq_circular,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_paired_uniq_circular,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_paired_uniq_circular,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_paired_uniq_inv,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_paired_uniq_inv,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_paired_uniq_inv,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_paired_uniq_scr,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_paired_uniq_scr,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_paired_uniq_scr,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_paired_uniq_long,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_paired_uniq_long,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_paired_uniq_long,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_paired_mult,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_paired_mult,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_paired_mult,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_concordant_uniq,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_concordant_uniq,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_concordant_uniq,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_concordant_circular,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_concordant_circular,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_concordant_circular,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_concordant_transloc,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_concordant_transloc,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_concordant_transloc,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-    SAM_header_print_HD(this->fp_concordant_mult,this->nworkers,this->orderedp);
-    SAM_header_print_PG(this->fp_concordant_mult,this->argc,this->argv,this->optind);
-    Univ_IIT_dump_sam(this->fp_concordant_mult,this->chromosome_iit,
-		      this->sam_read_group_id,this->sam_read_group_name,
-		      this->sam_read_group_library,this->sam_read_group_platform);
-  }
-
-  if (this->output_sam_p == true) {
-    SAM_file_setup_paired(this->fp_failedinput_1,this->fp_failedinput_2,this->fp_nomapping,
-			  this->fp_halfmapping_uniq,this->fp_halfmapping_circular,
-			  this->fp_halfmapping_transloc,this->fp_halfmapping_mult,
-			  this->fp_halfmapping_mult_xs_1,this->fp_halfmapping_mult_xs_2,
-			  this->fp_paired_uniq_circular,this->fp_paired_uniq_inv,this->fp_paired_uniq_scr,
-			  this->fp_paired_uniq_long,this->fp_paired_mult,
-			  this->fp_paired_mult_xs_1,this->fp_paired_mult_xs_2,
-			  this->fp_concordant_uniq,this->fp_concordant_circular,
-			  this->fp_concordant_transloc,this->fp_concordant_mult,
-			  this->fp_concordant_mult_xs_1,this->fp_concordant_mult_xs_2);
-
-  } else {
-    Stage3hr_file_setup_paired(this->fp_failedinput_1,this->fp_failedinput_2,this->fp_nomapping,
-			       this->fp_halfmapping_uniq,this->fp_halfmapping_circular,
-			       this->fp_halfmapping_transloc,this->fp_halfmapping_mult,
-			       this->fp_halfmapping_mult_xs_1,this->fp_halfmapping_mult_xs_2,
-			       this->fp_paired_uniq_circular,this->fp_paired_uniq_inv,this->fp_paired_uniq_scr,
-			       this->fp_paired_uniq_long,this->fp_paired_mult,
-			       this->fp_paired_mult_xs_1,this->fp_paired_mult_xs_2,
-			       this->fp_concordant_uniq,this->fp_concordant_circular,
-			       this->fp_concordant_transloc,this->fp_concordant_mult,
-			       this->fp_concordant_mult_xs_1,this->fp_concordant_mult_xs_2);
-  }
-
-  return;
-}
-
-static void
-sevenway_close (T this) {
-  fclose(this->fp_unpaired_uniq);
-  fclose(this->fp_unpaired_circular);
-  fclose(this->fp_unpaired_transloc);
-  fclose(this->fp_unpaired_mult);
-  if (this->quiet_if_excessive_p == true) {
-    fclose(this->fp_unpaired_mult_xs_1);
-    if (this->fp_unpaired_mult_xs_2 != NULL) {
-      fclose(this->fp_unpaired_mult_xs_2);
-    }
-  }
-  if (this->fp_nomapping != NULL) {
-    fclose(this->fp_nomapping);
-  }
-  if (this->fp_halfmapping_uniq != NULL) {
-    /* Paired output */
-    fclose(this->fp_halfmapping_uniq);
-    fclose(this->fp_halfmapping_circular);
-    fclose(this->fp_halfmapping_transloc);
-    fclose(this->fp_halfmapping_mult);
-    fclose(this->fp_paired_uniq_long);
-    fclose(this->fp_paired_uniq_scr);
-    fclose(this->fp_paired_uniq_inv);
-    fclose(this->fp_paired_uniq_circular);
-    fclose(this->fp_paired_mult);
-    fclose(this->fp_concordant_uniq);
-    fclose(this->fp_concordant_circular);
-    fclose(this->fp_concordant_transloc);
-    fclose(this->fp_concordant_mult);
-
-    if (this->quiet_if_excessive_p == true) {
-      fclose(this->fp_halfmapping_mult_xs_1);
-      fclose(this->fp_paired_mult_xs_1);
-      fclose(this->fp_concordant_mult_xs_1);
-      if (this->fp_halfmapping_mult_xs_2 != NULL) {
-	fclose(this->fp_halfmapping_mult_xs_2);
-      }
-      if (this->fp_paired_mult_xs_2 != NULL) {
-	fclose(this->fp_paired_mult_xs_2);
-      }
-      if (this->fp_concordant_mult_xs_2 != NULL) {
-	fclose(this->fp_concordant_mult_xs_2);
-      }
-    }
-  }
-
-  return;
-}
-
+static FILE *output_failedinput_1;
+static FILE *output_failedinput_2;
 #else
+static FILE *output_failedinput;
+#endif
 
-/* GMAP version */
+#endif
 
-static void
-print_gff_header (FILE *fp, int argc, char **argv, int optind) {
-  char **argstart;
-  int c;
-
-  fprintf(fp,"##gff-version   3\n");
-  fprintf(fp,"# Generated by GMAP version %s using call: ",PACKAGE_VERSION);
-  argstart = &(argv[-optind]);
-  for (c = 0; c < argc + optind; c++) {
-    fprintf(fp," %s",argstart[c]);
-  }
-  fprintf(fp,"\n");
-  return;
-}
 
 
 /* Taken from Univ_IIT_dump_sam */
@@ -953,517 +121,435 @@ dump_sam_usersegment (FILE *fp, Sequence_T usersegment,
   return;
 }
 
-
+#ifndef GSNAP
 static void
-failedinput_open (T this) {
-  char *filename;
-  char *write_mode;
+print_gff_header (FILE *fp, int argc, char **argv, int optind) {
+  char **argstart;
+  int c;
 
-  if (this->appendp == true) {
-    write_mode = "a";
-  } else {
-    write_mode = "w";
+  fprintf(fp,"##gff-version   3\n");
+  fprintf(fp,"# Generated by GMAP version %s using call: ",PACKAGE_VERSION);
+  argstart = &(argv[-optind]);
+  for (c = 0; c < argc + optind; c++) {
+    fprintf(fp," %s",argstart[c]);
   }
-
-  if (this->failedinput_root != NULL) {
-    filename = (char *) CALLOC(strlen(this->failedinput_root)+1,sizeof(char));
-    sprintf(filename,"%s",this->failedinput_root);
-    if ((this->fp_failedinput_1 = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-  }
-
+  fprintf(fp,"\n");
   return;
 }
-
-
-static void
-sevenway_open (T this, int nworkers, bool orderedp, int argc, char **argv, int optind) {
-  char *filename;
-  char *write_mode;
-
-  if (this->appendp == true) {
-    write_mode = "a";
-  } else {
-    write_mode = "w";
-  }
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".nomapping")+1,sizeof(char));
-  sprintf(filename,"%s.nomapping",this->sevenway_root);
-  if ((this->fp_nomapping = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".uniq")+1,sizeof(char));
-  sprintf(filename,"%s.uniq",this->sevenway_root);
-  if ((this->fp_uniq = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".circular")+1,sizeof(char));
-  sprintf(filename,"%s.circular",this->sevenway_root);
-  if ((this->fp_circular = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  if (this->chimeras_allowed_p == true) {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".transloc")+1,sizeof(char));
-    sprintf(filename,"%s.transloc",this->sevenway_root);
-    if ((this->fp_transloc = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-  }
-
-  filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".mult")+1,sizeof(char));
-  sprintf(filename,"%s.mult",this->sevenway_root);
-  if ((this->fp_mult = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  if (this->quiet_if_excessive_p == false) {
-    this->fp_mult_xs = (FILE *) NULL;
-  } else {
-    filename = (char *) CALLOC(strlen(this->sevenway_root)+strlen(".mult_xs")+1,sizeof(char));
-    sprintf(filename,"%s.mult_xs",this->sevenway_root);
-    if ((this->fp_mult_xs = fopen(filename,write_mode)) == NULL) {
-      fprintf(stderr,"Cannot open file %s for writing\n",filename);
-      exit(9);
-    }
-    FREE(filename);
-  }
-
-  if (this->printtype == GFF3_GENE || this->printtype == GFF3_MATCH_CDNA || this->printtype == GFF3_MATCH_EST) {
-    print_gff_header(this->fp_nomapping,argc,argv,optind);
-    print_gff_header(this->fp_uniq,argc,argv,optind);
-    print_gff_header(this->fp_circular,argc,argv,optind);
-    print_gff_header(this->fp_mult,argc,argv,optind);
-    if (this->quiet_if_excessive_p == true) {
-      print_gff_header(this->fp_mult_xs,argc,argv,optind);
-    }
-
-#ifndef PMAP
-  } else if (this->printtype == SAM && this->sam_headers_p == true) {
-    if (this->usersegment != NULL) {
-      dump_sam_usersegment(this->fp_nomapping,this->usersegment,
-			   this->sam_read_group_id,this->sam_read_group_name,
-			   this->sam_read_group_library,this->sam_read_group_platform);
-      dump_sam_usersegment(this->fp_uniq,this->usersegment,
-			   this->sam_read_group_id,this->sam_read_group_name,
-			   this->sam_read_group_library,this->sam_read_group_platform);
-      dump_sam_usersegment(this->fp_circular,this->usersegment,
-			   this->sam_read_group_id,this->sam_read_group_name,
-			   this->sam_read_group_library,this->sam_read_group_platform);
-      dump_sam_usersegment(this->fp_mult,this->usersegment,
-			   this->sam_read_group_id,this->sam_read_group_name,
-			   this->sam_read_group_library,this->sam_read_group_platform);
-      if (this->quiet_if_excessive_p == true) {
-	dump_sam_usersegment(this->fp_mult_xs,this->usersegment,
-			     this->sam_read_group_id,this->sam_read_group_name,
-			     this->sam_read_group_library,this->sam_read_group_platform);
-      }
-
-    } else {
-      SAM_header_print_HD(this->fp_nomapping,nworkers,orderedp);
-      SAM_header_print_PG(this->fp_nomapping,argc,argv,optind);
-      Univ_IIT_dump_sam(this->fp_nomapping,this->chromosome_iit,
-			this->sam_read_group_id,this->sam_read_group_name,
-			this->sam_read_group_library,this->sam_read_group_platform);
-      SAM_header_print_HD(this->fp_uniq,nworkers,orderedp);
-      SAM_header_print_PG(this->fp_uniq,argc,argv,optind);
-      Univ_IIT_dump_sam(this->fp_uniq,this->chromosome_iit,
-			this->sam_read_group_id,this->sam_read_group_name,
-			this->sam_read_group_library,this->sam_read_group_platform);
-      SAM_header_print_HD(this->fp_circular,nworkers,orderedp);
-      SAM_header_print_PG(this->fp_circular,argc,argv,optind);
-      Univ_IIT_dump_sam(this->fp_circular,this->chromosome_iit,
-			this->sam_read_group_id,this->sam_read_group_name,
-			this->sam_read_group_library,this->sam_read_group_platform);
-      SAM_header_print_HD(this->fp_mult,nworkers,orderedp);
-      SAM_header_print_PG(this->fp_mult,argc,argv,optind);
-      Univ_IIT_dump_sam(this->fp_mult,this->chromosome_iit,
-			this->sam_read_group_id,this->sam_read_group_name,
-			this->sam_read_group_library,this->sam_read_group_platform);
-      if (this->quiet_if_excessive_p == true) {
-	SAM_header_print_HD(this->fp_mult_xs,nworkers,orderedp);
-	SAM_header_print_PG(this->fp_mult_xs,argc,argv,optind);
-	Univ_IIT_dump_sam(this->fp_mult_xs,this->chromosome_iit,
-			  this->sam_read_group_id,this->sam_read_group_name,
-			  this->sam_read_group_library,this->sam_read_group_platform);
-      }
-    }
-#endif
-  }
-
-  return;
-}
-
-static void
-sevenway_close (T this) {
-  if (this->quiet_if_excessive_p == true) {
-    fclose(this->fp_mult_xs);
-  }
-  fclose(this->fp_mult);
-  fclose(this->fp_circular);
-  fclose(this->fp_uniq);
-  if (this->chimeras_allowed_p == true) {
-    fclose(this->fp_transloc);
-  }
-  fclose(this->fp_nomapping);
-  return;
-}
-
 #endif
 
 
-
+static void
+print_file_headers (
+#ifdef USE_MPI
+		    MPI_File output
+#else
+		    FILE *output
+#endif
+		    ) {
 #ifdef GSNAP
-
-T
-Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, char *failedinput_root,
-	       bool appendp, Univ_IIT_T chromosome_iit, bool timingp,
-	       bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
-	       char *sam_read_group_library, char *sam_read_group_platform,
-	       int nworkers, bool orderedp, Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp,
-	       bool fastq_format_p, bool clip_overlap_p, bool merge_overlap_p, bool merge_samechr_p, bool print_m8_p,
-	       int maxpaths_report, bool quiet_if_excessive_p, int quality_shift,
-	       bool invert_first_p, bool invert_second_p, Chrpos_T pairmax,
-	       int argc, char **argv, int optind) {
-  T new = (T) MALLOC(sizeof(*new));
-  FILE *fp_capture = NULL, *fp_ignore = NULL;
-
-  new->chromosome_iit = chromosome_iit;
-
-  new->fp_failedinput_1 = NULL;
-  new->fp_failedinput_2 = NULL;
-
-  new->fp_nomapping = NULL;
-  new->fp_halfmapping_uniq = NULL;
-  new->fp_halfmapping_circular = NULL;
-  new->fp_halfmapping_transloc = NULL;
-  new->fp_halfmapping_mult = NULL;
-  new->fp_halfmapping_mult_xs_1 = NULL;
-  new->fp_halfmapping_mult_xs_2 = NULL;
-  new->fp_unpaired_uniq = NULL;
-  new->fp_unpaired_circular = NULL;
-  new->fp_unpaired_transloc = NULL;
-  new->fp_unpaired_mult = NULL;
-  new->fp_unpaired_mult_xs_1 = NULL;
-  new->fp_unpaired_mult_xs_2 = NULL;
-  new->fp_paired_uniq_circular = NULL;
-  new->fp_paired_uniq_inv = NULL;
-  new->fp_paired_uniq_scr = NULL;
-  new->fp_paired_uniq_long = NULL;
-  new->fp_paired_mult = NULL;
-  new->fp_paired_mult_xs_1 = NULL;
-  new->fp_paired_mult_xs_2 = NULL;
-  new->fp_concordant_uniq = NULL;
-  new->fp_concordant_circular = NULL;
-  new->fp_concordant_transloc = NULL;
-  new->fp_concordant_mult = NULL;
-  new->fp_concordant_mult_xs_1 = NULL;
-  new->fp_concordant_mult_xs_2 = NULL;
-  
-  new->sevenway_root = sevenway_root;
-  new->failedinput_root = failedinput_root;
-  new->appendp = appendp;
-
-  new->timingp = timingp;
-  new->output_sam_p = output_sam_p;
-  new->sam_headers_p = sam_headers_p;
-  new->sam_read_group_id = sam_read_group_id;
-  new->sam_read_group_name = sam_read_group_name;
-  new->sam_read_group_library = sam_read_group_library;
-  new->sam_read_group_platform = sam_read_group_platform;
-  new->nworkers = nworkers;
-  new->orderedp = orderedp;
-  new->argc = argc;
-  new->argv = argv;
-  new->optind = optind;
-
-  new->gobywriter = gobywriter;
-
-  new->nofailsp = nofailsp;
-  new->failsonlyp = failsonlyp;
-  new->fastq_format_p = fastq_format_p;
-  new->clip_overlap_p = clip_overlap_p;
-  new->merge_overlap_p = merge_overlap_p;
-  new->merge_samechr_p = merge_samechr_p;
-  new->print_m8_p = print_m8_p;
-
-  new->maxpaths_report = maxpaths_report;
-  new->quiet_if_excessive_p = quiet_if_excessive_p;
-
-  new->quality_shift = quality_shift;
-  new->invert_first_p = invert_first_p;
-  new->invert_second_p = invert_second_p;
-  new->pairmax = pairmax;
-
-#ifdef HAVE_PTHREAD
-  pthread_mutex_init(&new->lock,NULL);
-#endif
-
-  new->output_buffer_size = output_buffer_size;
-  new->nread = nread;
-  new->ntotal = (unsigned int) -1U; /* Set to infinity until all reads are input */
-  new->nprocessed = 0;
-
-  new->head = (RRlist_T) NULL;
-  new->tail = (RRlist_T) NULL;
-
-#ifdef HAVE_PTHREAD
-  pthread_cond_init(&new->result_avail_p,NULL);
-#endif
-
-  /* Initialize output streams */
-  if (new->gobywriter != NULL) {
-    Goby_file_handles(&fp_capture,&fp_ignore,new->gobywriter);
-    new->fp_nomapping = fp_ignore;
-    new->fp_halfmapping_uniq = fp_capture;
-    new->fp_halfmapping_circular = fp_capture;
-    new->fp_halfmapping_transloc = fp_capture;
-    new->fp_halfmapping_mult = fp_capture;
-    new->fp_halfmapping_mult_xs_1 = fp_capture;
-    new->fp_halfmapping_mult_xs_2 = fp_capture;
-    new->fp_unpaired_uniq = fp_capture;
-    new->fp_unpaired_circular = fp_capture;
-    new->fp_unpaired_transloc = fp_capture;
-    new->fp_unpaired_mult = fp_capture;
-    new->fp_unpaired_mult_xs_1 = fp_capture;
-    new->fp_unpaired_mult_xs_2 = fp_capture;
-    new->fp_paired_uniq_circular = fp_capture;
-    new->fp_paired_uniq_inv = fp_capture;
-    new->fp_paired_uniq_scr = fp_capture;
-    new->fp_paired_uniq_long = fp_capture;
-    new->fp_paired_mult = fp_capture;
-    new->fp_paired_mult_xs_1 = fp_capture;
-    new->fp_paired_mult_xs_2 = fp_capture;
-    new->fp_concordant_uniq = fp_capture;
-    new->fp_concordant_circular = fp_capture;
-    new->fp_concordant_transloc = fp_capture;
-    new->fp_concordant_mult = fp_capture;
-    new->fp_concordant_mult_xs_1 = fp_capture;
-    new->fp_concordant_mult_xs_2 = fp_capture;
-
-    if (output_sam_p == true) {
-      SAM_file_setup_all(new->fp_failedinput_1,new->fp_failedinput_2,new->fp_nomapping,
-			 new->fp_unpaired_uniq,new->fp_unpaired_circular,
-			 new->fp_unpaired_transloc,new->fp_unpaired_mult,
-			 new->fp_unpaired_mult_xs_1,new->fp_unpaired_mult_xs_2,
-			 new->fp_halfmapping_uniq,new->fp_halfmapping_circular,
-			 new->fp_halfmapping_transloc,new->fp_halfmapping_mult,
-			 new->fp_halfmapping_mult_xs_1,new->fp_halfmapping_mult_xs_2,
-			 new->fp_paired_uniq_circular,new->fp_paired_uniq_inv,new->fp_paired_uniq_scr,
-			 new->fp_paired_uniq_long,new->fp_paired_mult,
-			 new->fp_paired_mult_xs_1,new->fp_paired_mult_xs_2,
-			 new->fp_concordant_uniq,new->fp_concordant_circular,
-			 new->fp_concordant_transloc,new->fp_concordant_mult,
-			 new->fp_concordant_mult_xs_1,new->fp_concordant_mult_xs_2);
-
-    } else {
-      Stage3hr_file_setup_all(new->fp_failedinput_1,new->fp_failedinput_2,new->fp_nomapping,
-			      new->fp_unpaired_uniq,new->fp_unpaired_circular,
-			      new->fp_unpaired_transloc,new->fp_unpaired_mult,
-			      new->fp_unpaired_mult_xs_1,new->fp_unpaired_mult_xs_2,
-			      new->fp_halfmapping_uniq,new->fp_halfmapping_circular,
-			      new->fp_halfmapping_transloc,new->fp_halfmapping_mult,
-			      new->fp_halfmapping_mult_xs_1,new->fp_halfmapping_mult_xs_2,
-			      new->fp_paired_uniq_circular,new->fp_paired_uniq_inv,new->fp_paired_uniq_scr,
-			      new->fp_paired_uniq_long,new->fp_paired_mult,
-			      new->fp_paired_mult_xs_1,new->fp_paired_mult_xs_2,
-			      new->fp_concordant_uniq,new->fp_concordant_circular,
-			      new->fp_concordant_transloc,new->fp_concordant_mult,
-			      new->fp_concordant_mult_xs_1,new->fp_concordant_mult_xs_2);
-    }
-
-  } else {
-    if (failedinput_root != NULL) {
-      failedinput_open_paired(new);
-    }
-
-    if (sevenway_root != NULL) {
-      sevenway_open_single(new);
-      
-    } else {
-      new->fp_nomapping = stdout;
-      new->fp_halfmapping_uniq = stdout;
-      new->fp_halfmapping_circular = stdout;
-      new->fp_halfmapping_transloc = stdout;
-      new->fp_halfmapping_mult = stdout;
-      new->fp_halfmapping_mult_xs_1 = stdout;
-      new->fp_halfmapping_mult_xs_2 = stdout;
-      new->fp_unpaired_uniq = stdout;
-      new->fp_unpaired_circular = stdout;
-      new->fp_unpaired_transloc = stdout;
-      new->fp_unpaired_mult = stdout;
-      new->fp_unpaired_mult_xs_1 = stdout;
-      new->fp_unpaired_mult_xs_2 = stdout;
-      new->fp_paired_uniq_circular = stdout;
-      new->fp_paired_uniq_inv = stdout;
-      new->fp_paired_uniq_scr = stdout;
-      new->fp_paired_uniq_long = stdout;
-      new->fp_paired_mult = stdout;
-      new->fp_paired_mult_xs_1 = stdout;
-      new->fp_paired_mult_xs_2 = stdout;
-      new->fp_concordant_uniq = stdout;
-      new->fp_concordant_circular = stdout;
-      new->fp_concordant_transloc = stdout;
-      new->fp_concordant_mult = stdout;
-      new->fp_concordant_mult_xs_1 = stdout;
-      new->fp_concordant_mult_xs_2 = stdout;
-
-      if (output_sam_p == true) {
-	SAM_file_setup_all(new->fp_failedinput_1,new->fp_failedinput_2,new->fp_nomapping,
-			   new->fp_unpaired_uniq,new->fp_unpaired_circular,
-			   new->fp_unpaired_transloc,new->fp_unpaired_mult,
-			   new->fp_unpaired_mult_xs_1,new->fp_unpaired_mult_xs_2,
-			   new->fp_halfmapping_uniq,new->fp_halfmapping_circular,
-			   new->fp_halfmapping_transloc,new->fp_halfmapping_mult,
-			   new->fp_halfmapping_mult_xs_1,new->fp_halfmapping_mult_xs_2,
-			   new->fp_paired_uniq_circular,new->fp_paired_uniq_inv,new->fp_paired_uniq_scr,
-			   new->fp_paired_uniq_long,new->fp_paired_mult,
-			   new->fp_paired_mult_xs_1,new->fp_paired_mult_xs_2,
-			   new->fp_concordant_uniq,new->fp_concordant_circular,
-			   new->fp_concordant_transloc,new->fp_concordant_mult,
-			   new->fp_concordant_mult_xs_1,new->fp_concordant_mult_xs_2);
-
-      } else {
-	Stage3hr_file_setup_all(new->fp_failedinput_1,new->fp_failedinput_2,new->fp_nomapping,
-				new->fp_unpaired_uniq,new->fp_unpaired_circular,
-				new->fp_unpaired_transloc,new->fp_unpaired_mult,
-				new->fp_unpaired_mult_xs_1,new->fp_unpaired_mult_xs_2,
-				new->fp_halfmapping_uniq,new->fp_halfmapping_circular,
-				new->fp_halfmapping_transloc,new->fp_halfmapping_mult,
-				new->fp_halfmapping_mult_xs_1,new->fp_halfmapping_mult_xs_2,
-				new->fp_paired_uniq_circular,new->fp_paired_uniq_inv,new->fp_paired_uniq_scr,
-				new->fp_paired_uniq_long,new->fp_paired_mult,
-				new->fp_paired_mult_xs_1,new->fp_paired_mult_xs_2,
-				new->fp_concordant_uniq,new->fp_concordant_circular,
-				new->fp_concordant_transloc,new->fp_concordant_mult,
-				new->fp_concordant_mult_xs_1,new->fp_concordant_mult_xs_2);
-      }
-
-      if (output_sam_p == true && sam_headers_p == true) {
-	SAM_header_print_HD(stdout,nworkers,orderedp);
-	SAM_header_print_PG(stdout,argc,argv,optind);
-	Univ_IIT_dump_sam(stdout,chromosome_iit,sam_read_group_id,sam_read_group_name,
-			  sam_read_group_library,sam_read_group_platform);
-      }
-    }
+  if (output_sam_p == true && sam_headers_p == true) {
+    SAM_header_print_HD(output,nworkers,orderedp);
+    SAM_header_print_PG(output,argc,argv,optind_save);
+    Univ_IIT_dump_sam(output,chromosome_iit,sam_read_group_id,sam_read_group_name,
+		      sam_read_group_library,sam_read_group_platform);
   }
-
-  return new;
-}
 
 #else
+  if (printtype == GFF3_GENE || printtype == GFF3_MATCH_CDNA || printtype == GFF3_MATCH_EST) {
+    print_gff_header(output,argc,argv,optind_save);
+      
+#ifndef PMAP
+  } else if (printtype == SAM && sam_headers_p == true) {
+    if (usersegment != NULL) {
+      dump_sam_usersegment(output,usersegment,sam_read_group_id,sam_read_group_name,
+			   sam_read_group_library,sam_read_group_platform);
+    } else {
+      SAM_header_print_HD(output,nworkers,orderedp);
+      SAM_header_print_PG(output,argc,argv,optind_save);
+      Univ_IIT_dump_sam(output,chromosome_iit,sam_read_group_id,sam_read_group_name,
+			sam_read_group_library,sam_read_group_platform);
+    }
+#endif
+
+  }
+#endif
+
+  return;
+}
+
+
+static void
+failedinput_open (char *failedinput_root) {
+  char *filename;
+
+#ifdef GSNAP
+  filename = (char *) MALLOC((strlen(failedinput_root)+strlen(".1")+1) * sizeof(char));
+  sprintf(filename,"%s.1",failedinput_root);
+
+#ifdef USE_MPI
+  if (appendp == true) {
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_APPEND,
+                  MPI_INFO_NULL,&output_failedinput_1);
+  } else {
+    /* Need to remove existing file, if any */
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_DELETE_ON_CLOSE,
+		  MPI_INFO_NULL,&output_failedinput_1);
+    MPI_File_close(&output_failedinput_1);
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY,
+		  MPI_INFO_NULL,&output_failedinput_1);
+  }
+#else
+  if ((output_failedinput_1 = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+#endif
+
+  /* Re-use filename, since it is the same length */
+  sprintf(filename,"%s.2",failedinput_root);
+#ifdef USE_MPI
+  if (appendp == true) {
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_APPEND,
+		  MPI_INFO_NULL,&output_failedinput_2);
+  } else {
+    /* Need to remove existing file, if any */
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_DELETE_ON_CLOSE,
+		  MPI_INFO_NULL,&output_failedinput_2);
+    MPI_File_close(&output_failedinput_2);
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY,
+		  MPI_INFO_NULL,&output_failedinput_2);
+  }
+#else
+  if ((output_failedinput_2 = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+#endif
+  FREE(filename);
+
+#else  /* GMAP */
+  filename = (char *) MALLOC((strlen(failedinput_root)+1) * sizeof(char));
+  sprintf(filename,"%s",failedinput_root);
+#ifdef USE_MPI
+  if (appendp == true) {
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_APPEND,
+		  MPI_INFO_NULL,&output_failedinput);
+  } else {
+    /* Need to remove existing file, if any */
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_DELETE_ON_CLOSE,
+		  MPI_INFO_NULL,&output_failedinput);
+    MPI_File_close(&output_failedinput);
+    MPI_File_open(MPI_COMM_WORLD,filename,MPI_MODE_CREATE | MPI_MODE_WRONLY,
+		  MPI_INFO_NULL,&output_failedinput);
+  }
+#else
+  if ((output_failedinput = fopen(filename,write_mode)) == NULL) {
+    fprintf(stderr,"Cannot open file %s for writing\n",filename);
+    exit(9);
+  }
+#endif
+  FREE(filename);
+
+#endif	/* GSNAP */
+
+  return;
+}
+
+
+void
+Outbuffer_setup (int argc_in, char **argv_in, int optind_in,
+		 Univ_IIT_T chromosome_iit_in, bool any_circular_p_in,
+		 int nworkers_in, bool orderedp_in, bool quiet_if_excessive_p_in,
+#ifdef GSNAP
+		 bool output_sam_p_in, 
+#else
+		 Printtype_T printtype_in, Sequence_T usersegment_in,
+#endif
+		 bool sam_headers_p_in, char *sam_read_group_id_in, char *sam_read_group_name_in,
+		 char *sam_read_group_library_in, char *sam_read_group_platform_in,
+		 bool appendp_in, char *output_file_in, char *split_output_root_in, char *failedinput_root_in) {
+#ifdef USE_MPI
+  SAM_split_output_type split_output;
+#endif
+
+  
+  argc = argc_in;
+  argv = argv_in;
+  optind_save = optind_in;
+
+  chromosome_iit = chromosome_iit_in;
+  any_circular_p = any_circular_p_in;
+
+  nworkers = nworkers_in;
+  orderedp = orderedp_in;
+  quiet_if_excessive_p = quiet_if_excessive_p_in;
+
+#ifdef GSNAP
+  output_sam_p = output_sam_p_in;
+#else
+  printtype = printtype_in;
+  usersegment = usersegment_in;
+#endif
+
+  sam_headers_p = sam_headers_p_in;
+  sam_read_group_id = sam_read_group_id_in;
+  sam_read_group_name = sam_read_group_name_in;
+  sam_read_group_library = sam_read_group_library_in;
+  sam_read_group_platform = sam_read_group_platform_in;
+
+  appendp = appendp_in;
+  split_output_root = split_output_root_in;
+  output_file = output_file_in;
+
+
+  /************************************************************************/
+  /* Output files */
+  /************************************************************************/
+
+#ifdef USE_MPI
+  /* All processes need to run MPI_File_open, and need to open all files now */
+  outputs = (MPI_File *) CALLOC_KEEP(1+N_SPLIT_OUTPUTS,sizeof(MPI_File));
+  if (split_output_root != NULL) {
+    for (split_output = 1; split_output <= N_SPLIT_OUTPUTS; split_output++) {
+      outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+      print_file_headers(outputs[split_output]);
+#endif
+    }
+
+  } else if (output_file != NULL) {
+    outputs[0] = SAM_header_open_file(OUTPUT_NONE,/*split_output_root*/output_file,appendp);
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+    print_file_headers(outputs[0]);
+#endif
+    for (split_output = 1; split_output <= N_SPLIT_OUTPUTS; split_output++) {
+      outputs[split_output] = outputs[0];
+    }
+
+  } else {
+    /* Write to stdout */
+    outputs[0] = (MPI_File) NULL;
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+    print_file_headers(outputs[0]);
+#endif
+    for (split_output = 1; split_output <= N_SPLIT_OUTPUTS; split_output++) {
+      outputs[split_output] = (MPI_File) NULL;
+    }
+  }
+
+#else
+  /* Only the output thread needs to run fopen, and can open files when needed */
+  if (appendp == true) {
+    write_mode = "a";
+  } else {
+    write_mode = "w";
+  }
+  outputs = (FILE **) CALLOC_KEEP(1+N_SPLIT_OUTPUTS,sizeof(FILE *));
+#endif
+
+
+  /************************************************************************/
+  /* Failed input files */
+  /************************************************************************/
+
+  failedinput_root = failedinput_root_in;
+  if (failedinput_root == NULL) {
+#ifdef GSNAP
+    output_failedinput_1 = output_failedinput_2 = NULL;
+#else
+    output_failedinput = NULL;
+#endif
+  } else {
+    failedinput_open(failedinput_root);
+  }
+
+  return;
+}
+
+
+void
+Outbuffer_cleanup () {
+  FREE_KEEP(outputs);		/* Matches CALLOC_KEEP in Outbuffer_setup */
+  return;
+}
+
+
+typedef struct RRlist_T *RRlist_T;
+struct RRlist_T {
+  int id;
+  Filestring_T fp;
+#ifdef GSNAP
+  Filestring_T fp_failedinput_1;
+  Filestring_T fp_failedinput_2;
+#else
+  Filestring_T fp_failedinput;
+#endif
+  RRlist_T next;
+};
+
+
+#ifdef DEBUG1
+static void
+RRlist_dump (RRlist_T head, RRlist_T tail) {
+  RRlist_T this;
+
+  printf("head %p\n",head);
+  for (this = head; this != NULL; this = this->next) {
+    printf("%p: next %p\n",this,this->next);
+  }
+  printf("tail %p\n",tail);
+  printf("\n");
+  return;
+}
+#endif
+
+
+/* Returns new tail */
+static RRlist_T
+RRlist_push (RRlist_T *head, RRlist_T tail, Filestring_T fp,
+#ifdef GSNAP
+	     Filestring_T fp_failedinput_1, Filestring_T fp_failedinput_2
+#else
+	     Filestring_T fp_failedinput
+#endif
+	     ) {
+  RRlist_T new;
+
+  new = (RRlist_T) MALLOC_OUT(sizeof(*new)); /* Called by worker thread */
+  new->fp = fp;
+#ifdef GSNAP
+  new->fp_failedinput_1 = fp_failedinput_1;
+  new->fp_failedinput_2 = fp_failedinput_2;
+#else
+  new->fp_failedinput = fp_failedinput;
+#endif
+  new->next = (RRlist_T) NULL;
+  
+  if (*head == NULL) {		/* Equivalent to tail == NULL, but using *head avoids having to set tail in RRlist_pop */
+    *head = new;
+  } else {
+    tail->next = new;
+  }
+
+  return new;
+}
+
+
+/* Returns new head */
+static RRlist_T
+RRlist_pop (RRlist_T head, Filestring_T *fp,
+#ifdef GSNAP
+	    Filestring_T *fp_failedinput_1, Filestring_T *fp_failedinput_2
+#else
+	    Filestring_T *fp_failedinput
+#endif
+	    ) {
+  RRlist_T newhead;
+
+  *fp = head->fp;
+#ifdef GSNAP
+  *fp_failedinput_1 = head->fp_failedinput_1;
+  *fp_failedinput_2 = head->fp_failedinput_2;
+#else
+  *fp_failedinput = head->fp_failedinput;
+#endif
+
+  newhead = head->next;
+
+  FREE_OUT(head);		/* Called by outbuffer thread */
+  return newhead;
+}
+
+
+static RRlist_T
+RRlist_insert (RRlist_T list, int id, Filestring_T fp,
+#ifdef GSNAP	       
+	       Filestring_T fp_failedinput_1, Filestring_T fp_failedinput_2
+#else
+	       Filestring_T fp_failedinput
+#endif
+	       ) {
+  RRlist_T *p;
+  RRlist_T new;
+  
+  p = &list;
+  while (*p != NULL && id > (*p)->id) {
+    p = &(*p)->next;
+  }
+
+  new = (RRlist_T) MALLOC_OUT(sizeof(*new));
+  new->id = id;
+  new->fp = fp;
+#ifdef GSNAP
+  new->fp_failedinput_1 = fp_failedinput_1;
+  new->fp_failedinput_2 = fp_failedinput_2;
+#else
+  new->fp_failedinput = fp_failedinput;
+#endif
+  
+  new->next = *p;
+  *p = new;
+  return list;
+}
+
+/* Returns new head */
+static RRlist_T
+RRlist_pop_id (RRlist_T head, int *id, Filestring_T *fp,
+#ifdef GSNAP
+	       Filestring_T *fp_failedinput_1, Filestring_T *fp_failedinput_2
+#else
+	       Filestring_T *fp_failedinput
+#endif
+	       ) {
+  RRlist_T newhead;
+
+  *id = head->id;
+  *fp = head->fp;
+#ifdef GSNAP
+  *fp_failedinput_1 = head->fp_failedinput_1;
+  *fp_failedinput_2 = head->fp_failedinput_2;
+#else
+  *fp_failedinput = head->fp_failedinput;
+#endif
+
+  newhead = head->next;
+
+  FREE_OUT(head);		/* Called by outbuffer thread */
+  return newhead;
+}
+
+
+#define T Outbuffer_T
+struct T {
+
+#ifdef HAVE_PTHREAD
+  pthread_mutex_t lock;
+#endif
+
+  unsigned int output_buffer_size;
+  unsigned int nread;
+  unsigned int ntotal;
+  unsigned int nbeyond;		/* MPI request that is beyond the given inputs */
+  unsigned int nprocessed;
+
+  RRlist_T head;
+  RRlist_T tail;
+  
+#ifdef HAVE_PTHREAD
+  pthread_cond_t filestring_avail_p;
+#endif
+};
+
+
+/************************************************************************
+ *   File routines
+ ************************************************************************/
+
 
 T
-Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, char *failedinput_root,
-	       bool appendp, bool chimeras_allowed_p, char *user_genomicseg, Sequence_T usersegment,
-	       char *dbversion, Genome_T genome, Univ_IIT_T chromosome_iit,
-	       char *chrsubset_name, Univ_IIT_T contig_iit, IIT_T altstrain_iit, IIT_T map_iit,
-	       int *map_divint_crosstable, Printtype_T printtype, bool checksump, int chimera_margin,
-#ifndef PMAP
-	       bool sam_headers_p, int quality_shift, bool sam_paired_p,
-	       char *sam_read_group_id, char *sam_read_group_name,
-	       char *sam_read_group_library, char *sam_read_group_platform,
-	       int nworkers, bool orderedp,
-#endif
-	       bool nofailsp, bool failsonlyp, int maxpaths_report, bool quiet_if_excessive_p,
-	       bool map_exons_p, bool map_bothstrands_p, bool print_comment_p, int nflanking,
-	       int proteinmode, int invertmode, bool nointronlenp, int wraplength,
-	       int ngap, int cds_startpos,
-	       bool fulllengthp, bool truncatep, bool strictp, bool diagnosticp, bool maponlyp,
-	       bool stage1debug, bool diag_debug, bool debug_graphic_p,
-	       int argc, char **argv, int optind) {
-
-  T new = (T) MALLOC(sizeof(*new));
-
-  new->chimeras_allowed_p = chimeras_allowed_p;
-
-  new->user_genomicseg = user_genomicseg;
-  new->usersegment = usersegment;
-
-  new->dbversion = dbversion;
-  new->genome = genome;
-  new->chromosome_iit = chromosome_iit;
-  new->chrsubset_name = chrsubset_name;
-  new->contig_iit = contig_iit;
-  new->altstrain_iit = altstrain_iit;
-  new->map_iit = map_iit;
-  new->map_divint_crosstable = map_divint_crosstable;
-
-  new->printtype = printtype;
-  new->checksump = checksump;
-  new->chimera_margin = chimera_margin;
-
-  new->sevenway_root = sevenway_root;
-  new->failedinput_root = failedinput_root;
-  new->appendp = appendp;
-
-  new->fp_failedinput_1 = NULL;
-  new->fp_failedinput_2 = NULL;
-
-  new->fp_nomapping = NULL;
-  new->fp_uniq = NULL;
-  new->fp_circular = NULL;
-  new->fp_transloc = NULL;
-  new->fp_mult = NULL;
-  new->fp_mult_xs = NULL;
-  
-#ifndef PMAP
-  new->sam_headers_p = sam_headers_p;
-  new->quality_shift = quality_shift;
-  new->sam_paired_p = sam_paired_p;
-  new->sam_read_group_id = sam_read_group_id;
-  new->sam_read_group_name = sam_read_group_name;
-  new->sam_read_group_library = sam_read_group_library;
-  new->sam_read_group_platform = sam_read_group_platform;
-  new->nworkers = nworkers;
-  new->orderedp = orderedp;
-  new->argc = argc;
-  new->argv = argv;
-  new->optind = optind;
-#endif
-
-  new->nofailsp = nofailsp;
-  new->failsonlyp = failsonlyp;
-  new->maxpaths_report = maxpaths_report;
-  new->quiet_if_excessive_p = quiet_if_excessive_p;
-
-  new->map_exons_p = map_exons_p;
-  new->map_bothstrands_p = map_bothstrands_p;
-  new->print_comment_p = print_comment_p;
-
-  new->nflanking = nflanking;
-  new->proteinmode = proteinmode;
-  new->invertmode = invertmode;
-  new->nointronlenp = nointronlenp;
-
-  new->wraplength = wraplength;
-  new->ngap = ngap;
-  new->cds_startpos = cds_startpos;
-
-  new->fulllengthp = fulllengthp;
-  new->truncatep = truncatep;
-  new->strictp = strictp;
-  new->diagnosticp = diagnosticp;
-  new->maponlyp = maponlyp;
-
-  new->stage1debug = stage1debug;
-  new->diag_debug = diag_debug;
-  new->debug_graphic_p = debug_graphic_p;
+Outbuffer_new (unsigned int output_buffer_size, unsigned int nread) {
+  T new = (T) MALLOC_KEEP(sizeof(*new));
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_init(&new->lock,NULL);
@@ -1471,74 +557,223 @@ Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenw
 
   new->output_buffer_size = output_buffer_size;
   new->nread = nread;
-  new->ntotal = (unsigned int) -1U; /* Set to infinity until all reads are input */
+
+  /* Set to infinity until all reads are input.  Used for Pthreads version */
+  new->ntotal = (unsigned int) -1U;
+
+  new->nbeyond = 0;
   new->nprocessed = 0;
 
   new->head = (RRlist_T) NULL;
   new->tail = (RRlist_T) NULL;
 
 #ifdef HAVE_PTHREAD
-  pthread_cond_init(&new->result_avail_p,NULL);
+  pthread_cond_init(&new->filestring_avail_p,NULL);
 #endif
-
-  /* Initialize output streams */
-  if (failedinput_root != NULL) {
-    failedinput_open(new);
-  }
-
-  if (sevenway_root != NULL) {
-    sevenway_open(new,nworkers,orderedp,argc,argv,optind);
-
-  } else {
-    new->fp_nomapping = stdout;
-    new->fp_uniq = stdout;
-    new->fp_circular = stdout;
-    new->fp_transloc = stdout;
-    new->fp_mult = stdout;
-    new->fp_mult_xs = stdout;
-
-    if (printtype == GFF3_GENE || printtype == GFF3_MATCH_CDNA || printtype == GFF3_MATCH_EST) {
-      print_gff_header(stdout,argc,argv,optind);
-      
-#ifndef PMAP
-    } else if (printtype == SAM && sam_headers_p == true) {
-      if (usersegment != NULL) {
-	dump_sam_usersegment(stdout,usersegment,sam_read_group_id,sam_read_group_name,
-			     sam_read_group_library,sam_read_group_platform);
-      } else {
-	SAM_header_print_HD(stdout,nworkers,orderedp);
-	SAM_header_print_PG(stdout,argc,argv,optind);
-	Univ_IIT_dump_sam(stdout,chromosome_iit,sam_read_group_id,sam_read_group_name,
-			  sam_read_group_library,sam_read_group_platform);
-      }
-#endif
-
-    }
-  }
 
   return new;
 }
 
+
+
+#ifndef USE_MPI
+/* Open empty files, and add SAM headers if SAM_HEADERS_ON_EMPTY_FILES is set */
+static void
+touch_all_single_outputs (FILE **outputs, char *split_output_root, bool appendp) {
+  SAM_split_output_type split_output;
+
+  split_output = 1;
+  while (split_output <= N_SPLIT_OUTPUTS_SINGLE_STD) {
+    if (outputs[split_output] == NULL) {
+      outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+      print_file_headers(outputs[split_output]);
 #endif
+    }
+    split_output++;
+  }
+
+  if (any_circular_p == false) {
+    split_output = N_SPLIT_OUTPUTS_SINGLE_TOCIRC + 1;
+  } else {
+    while (split_output <= N_SPLIT_OUTPUTS_SINGLE_TOCIRC) {
+      if (outputs[split_output] == NULL) {
+	outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+        print_file_headers(outputs[split_output]);
+#endif
+      }
+      split_output++;
+    }
+  }
+
+  if (quiet_if_excessive_p == true) {
+    while (split_output <= N_SPLIT_OUTPUTS_SINGLE) {
+      if (outputs[split_output] == NULL) {
+	outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+        print_file_headers(outputs[split_output]);
+#endif
+      }
+      split_output++;
+    }
+  }
+
+  return;
+}
+#endif
+
+
+#ifndef USE_MPI
+/* Open empty files, and add SAM headers if SAM_HEADERS_ON_EMPTY_FILES is set */
+static void
+touch_all_paired_outputs (FILE **outputs, char *split_output_root, bool appendp) {
+  SAM_split_output_type split_output;
+
+  split_output = N_SPLIT_OUTPUTS_SINGLE + 1;
+  while (split_output <= N_SPLIT_OUTPUTS_STD) {
+    if (outputs[split_output] == NULL) {
+      outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+      print_file_headers(outputs[split_output]);
+#endif
+    }
+    split_output++;
+  }
+
+  if (any_circular_p == false) {
+    split_output = N_SPLIT_OUTPUTS_TOCIRC + 1;
+  } else {
+    while (split_output <= N_SPLIT_OUTPUTS_TOCIRC) {
+      if (outputs[split_output] == NULL) {
+	outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+        print_file_headers(outputs[split_output]);
+#endif
+      }
+      split_output++;
+    }
+  }
+
+  if (quiet_if_excessive_p == true) {
+    while (split_output <= N_SPLIT_OUTPUTS) {
+      if (outputs[split_output] == NULL) {
+	outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+#ifdef SAM_HEADERS_ON_EMPTY_FILES
+        print_file_headers(outputs[split_output]);
+#endif
+      }
+      split_output++;
+    }
+  }
+
+  return;
+}
+#endif
+
+
+#ifndef USE_MPI
+static bool
+paired_outputs_p (FILE **outputs) {
+  SAM_split_output_type split_output;
+
+  split_output = N_SPLIT_OUTPUTS_SINGLE + 1;
+  while (split_output <= N_SPLIT_OUTPUTS) {
+    if (outputs[split_output] != NULL) {
+      return true;
+    }
+    split_output++;
+  }
+
+  return false;
+}
+#endif
+
+
+#ifndef USE_MPI
+static void
+touch_all_files (FILE **outputs, char *split_output_root, bool appendp) {
+  touch_all_single_outputs(outputs,split_output_root,appendp);
+  if (paired_outputs_p(outputs) == true) {
+    touch_all_paired_outputs(outputs,split_output_root,appendp);
+  }
+  return;
+}
+#endif
+
+
+
+void
+Outbuffer_close_files () {
+  SAM_split_output_type split_output;
+
+  if (failedinput_root != NULL) {
+#ifdef USE_MPI
+#ifdef GSNAP
+    MPI_File_close(&output_failedinput_1);
+    MPI_File_close(&output_failedinput_2);
+#else
+    MPI_File_close(&output_failedinput);
+#endif
+    
+#else
+#ifdef GSNAP
+    fclose(output_failedinput_1);
+    fclose(output_failedinput_2);
+#else
+    fclose(output_failedinput);
+#endif
+#endif
+
+  }
+
+#ifdef USE_MPI
+  if (split_output_root != NULL) {
+    for (split_output = 1; split_output <= N_SPLIT_OUTPUTS; split_output++) {
+      MPI_File_close(&(outputs[split_output]));
+    }
+  } else if (output_file != NULL) {
+    MPI_File_close(&(outputs[0]));
+  } else {
+    /* Wrote to stdout */
+  }
+
+#else
+  if (split_output_root != NULL) {
+    touch_all_files(outputs,split_output_root,appendp);
+
+    for (split_output = 1; split_output <= N_SPLIT_OUTPUTS; split_output++) {
+      if (outputs[split_output] != NULL) {
+	fclose(outputs[split_output]);
+      }
+    }
+  } else if (output_file != NULL) {
+    fclose(outputs[0]);
+  } else {
+    /* Wrote to stdout */
+  }
+#endif
+
+  FREE_KEEP(outputs);
+
+  return;
+}
+
 
 void
 Outbuffer_free (T *old) {
-  if (*old) {
-    failedinput_close(*old);
-    if ((*old)->sevenway_root != NULL) {
-      sevenway_close(*old);
-    }
 
+  if (*old) {
 #ifdef HAVE_PTHREAD
-    pthread_cond_destroy(&(*old)->result_avail_p);
+    pthread_cond_destroy(&(*old)->filestring_avail_p);
     pthread_mutex_destroy(&(*old)->lock);
 #endif
 
-    FREE(*old);
+    FREE_KEEP(*old);
   }
+
   return;
 }
-
 
 
 unsigned int
@@ -1546,6 +781,10 @@ Outbuffer_nread (T this) {
   return this->nread;
 }
 
+unsigned int
+Outbuffer_nbeyond (T this) {
+  return this->nbeyond;
+}
 
 
 void
@@ -1561,11 +800,14 @@ Outbuffer_add_nread (T this, unsigned int nread) {
     debug(fprintf(stderr,"__Outbuffer_add_nread added 0 reads, so setting ntotal to be %u\n",this->ntotal));
 
 #ifdef HAVE_PTHREAD
-    pthread_cond_signal(&this->result_avail_p);
+    pthread_cond_signal(&this->filestring_avail_p);
 #endif
 
   } else {
     this->nread += nread;
+#ifdef USE_MPI
+    this->ntotal = this->nread;
+#endif
     debug(fprintf(stderr,"__Outbuffer_add_nread added %d read, now %d\n",nread,this->nread));
   }
 
@@ -1578,18 +820,16 @@ Outbuffer_add_nread (T this, unsigned int nread) {
 
 
 void
-Outbuffer_put_result (T this, Result_T result, Request_T request) {
+Outbuffer_add_nbeyond (T this) {
 
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&this->lock);
 #endif
 
-  this->tail = RRlist_push(&this->head,this->tail,request,result);
-  debug1(RRlist_dump(this->head,this->tail));
-  this->nprocessed += 1;
+  this->nbeyond += 1;
 
 #ifdef HAVE_PTHREAD
-  pthread_cond_signal(&this->result_avail_p);
+  pthread_cond_signal(&this->filestring_avail_p);
   pthread_mutex_unlock(&this->lock);
 #endif
 
@@ -1597,970 +837,204 @@ Outbuffer_put_result (T this, Result_T result, Request_T request) {
 }
 
 
-
 #ifdef GSNAP
-
-/************************************************************************
- *   Print routines and threads for GSNAP
- ************************************************************************/
-
-static void
-print_header_singleend (T this, FILE *fp, Request_T request, bool translocationp, int npaths) {
-  Shortread_T queryseq1;
-
-  if (this->print_m8_p == false) {
-    queryseq1 = Request_queryseq1(request);
-
-    fprintf(fp,">");
-    Shortread_print_oneline(fp,queryseq1);
-    fprintf(fp,"\t%d",npaths);
-    if (translocationp == true) {
-      fprintf(fp," (transloc)");
-    }
-
-    /* No sequence inversion on single-end reads */
-    if (Shortread_quality_string(queryseq1) != NULL) {
-      fprintf(fp,"\t");
-      Shortread_print_quality(fp,queryseq1,/*hardclip_low*/0,/*hardclip_high*/0,
-			      this->quality_shift,/*show_chopped_p*/true);
-    }
-
-    fprintf(fp,"\t");
-    Shortread_print_header(fp,queryseq1,/*queryseq2*/NULL);
-    /* fprintf(fp,"\n"); -- included in header */
-  }
-
-  return;
-}
-
-
-static void
-print_result_sam (T this, Result_T result, Request_T request) {
-  Resulttype_T resulttype;
-  Shortread_T queryseq1;
-  Stage3end_T *stage3array, stage3;
-  Chrpos_T chrpos;
-  int npaths, pathnum, first_absmq, second_absmq;
-  FILE *fp;
-  char *abbrev;
-
-  resulttype = Result_resulttype(result);
-
-  if (resulttype == SINGLEEND_NOMAPPING) {
-    if (this->nofailsp == true) {
-      /* Skip */
-    } else {
-      queryseq1 = Request_queryseq1(request);
-      SAM_print_nomapping(this->fp_nomapping,ABBREV_NOMAPPING_1,
-			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
-			  /*acc2*/NULL,this->chromosome_iit,resulttype,
-			  /*first_read_p*/true,/*npaths*/0,/*npaths_mate*/0,/*mate_chrpos*/0U,
-			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
-      if (this->failedinput_root != NULL) {
-	if (this->fastq_format_p == true) {
-	  Shortread_print_query_singleend_fastq(this->fp_failedinput_1,queryseq1,/*headerseq*/queryseq1);
-	} else {
-	  Shortread_print_query_singleend_fasta(this->fp_failedinput_1,queryseq1,/*headerseq*/queryseq1);
-	}
-      }
-    }
-
-  } else if (resulttype == SINGLEEND_UNIQ) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
-
-    if (this->failsonlyp == true) {
-      /* Skip */
-    } else {
-      queryseq1 = Request_queryseq1(request);
-      /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
-
-      stage3 = stage3array[0];
-      if (Stage3end_hittype(stage3) == SAMECHR_SPLICE || Stage3end_hittype(stage3) == TRANSLOC_SPLICE) {
-	chrpos = 0;
-      } else {
-	chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,Shortread_fulllength(queryseq1));
-      }
-      if (Stage3end_circularpos(stage3) > 0) {
-	fp = this->fp_unpaired_circular;
-	abbrev = ABBREV_UNPAIRED_CIRCULAR;
-      } else {
-	fp = this->fp_unpaired_uniq;
-	abbrev = ABBREV_UNPAIRED_UNIQ;
-      }
-      SAM_print(fp,abbrev,stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),/*acc2*/NULL,
-		/*pathnum*/1,npaths,Stage3end_absmq_score(stage3array[0]),first_absmq,second_absmq,
-		Stage3end_mapq_score(stage3array[0]),
-		this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
-		/*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
-		/*clipdir*/0,/*hardclip5_low*/0,/*hardclip5_high*/0,/*hardclip3_low*/0,/*hardclip3_high*/0,
-		resulttype,/*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
-		this->sam_read_group_id,this->invert_first_p,this->invert_second_p,
-		this->merge_samechr_p);
-    }
-
-  } else if (resulttype == SINGLEEND_TRANSLOC) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
-
-    if (this->failsonlyp == true) {
-      /* Skip */
-
-    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      queryseq1 = Request_queryseq1(request);
-      /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
-      SAM_print_nomapping(this->fp_unpaired_transloc,ABBREV_UNPAIRED_TRANSLOC,
-			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
-			  /*acc2*/NULL,this->chromosome_iit,resulttype,
-			  /*first_read_p*/true,npaths,/*npaths_mate*/0,/*mate_chrpos*/0U,
-			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
-
-    } else {
-      queryseq1 = Request_queryseq1(request);
-      /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
-      for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths_report; pathnum++) {
-
-	stage3 = stage3array[pathnum-1];
-	if (Stage3end_hittype(stage3) == SAMECHR_SPLICE || Stage3end_hittype(stage3) == TRANSLOC_SPLICE) {
-	  chrpos = 0;
-	} else {
-	  chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,Shortread_fulllength(queryseq1));
-	}
-	SAM_print(this->fp_unpaired_transloc,ABBREV_UNPAIRED_TRANSLOC,
-		  stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
-		  /*acc2*/NULL,pathnum,npaths,
-		  Stage3end_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
-		  Stage3end_mapq_score(stage3array[pathnum-1]),
-		  this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
-		  /*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
-		  /*clipdir*/0,/*hardclip5_low*/0,/*hardclip5_high*/0,/*hardclip3_low*/0,/*hardclip3_high*/0,
-		  resulttype,/*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
-		  this->sam_read_group_id,this->invert_first_p,this->invert_second_p,
-		  this->merge_samechr_p);
-      }
-    }
-
-  } else if (resulttype == SINGLEEND_MULT) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
-
-    if (this->failsonlyp == true) {
-      /* Skip */
-
-    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      queryseq1 = Request_queryseq1(request);
-      /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
-      SAM_print_nomapping(this->fp_unpaired_mult_xs_1,ABBREV_UNPAIRED_MULT_XS,
-			  queryseq1,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
-			  /*acc2*/NULL,this->chromosome_iit,resulttype,
-			  /*first_read_p*/true,npaths,/*npaths_mate*/0,/*mate_chrpos*/0U,
-			  this->quality_shift,this->sam_read_group_id,this->invert_first_p,this->invert_second_p);
-
-    } else {
-      queryseq1 = Request_queryseq1(request);
-      /* Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1); */
-      for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths_report; pathnum++) {
-
-	stage3 = stage3array[pathnum-1];
-	if (Stage3end_hittype(stage3) == SAMECHR_SPLICE || Stage3end_hittype(stage3) == TRANSLOC_SPLICE) {
-	  chrpos = 0;
-	} else {
-	  chrpos = SAM_compute_chrpos(/*hardclip_low*/0,/*hardclip_high*/0,stage3,Shortread_fulllength(queryseq1));
-	}
-	SAM_print(this->fp_unpaired_mult,ABBREV_UNPAIRED_MULT,
-		  stage3,/*mate*/NULL,/*acc1*/Shortread_accession(queryseq1),
-		  /*acc2*/NULL,pathnum,npaths,
-		  Stage3end_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
-		  Stage3end_mapq_score(stage3array[pathnum-1]),
-		  this->chromosome_iit,queryseq1,/*queryseq2*/NULL,
-		  /*pairedlength*/0,chrpos,/*mate_chrpos*/0U,
-		  /*clipdir*/0,/*hardclip5_low*/0,/*hardclip5_high*/0,/*hardclip3_low*/0,/*hardclip3_high*/0,
-		  resulttype,/*first_read_p*/true,/*npaths_mate*/0,this->quality_shift,
-		  this->sam_read_group_id,this->invert_first_p,this->invert_second_p,
-		  this->merge_samechr_p);
-      }
-    }
-
-  } else {
-    if (this->fp_concordant_uniq == NULL) {
-      sevenway_open_paired(this);
-    }
-    SAM_print_paired(result,resulttype,this->chromosome_iit,
-		     Request_queryseq1(request),Request_queryseq2(request),
-		     this->invert_first_p,this->invert_second_p,
-		     this->nofailsp,this->failsonlyp,this->clip_overlap_p,this->merge_overlap_p,
-		     this->merge_samechr_p,this->quality_shift,this->sam_read_group_id);
-  }
-
-  return;
-}
-
-
-static void
-print_result_gsnap (T this, Result_T result, Request_T request) {
-  Resulttype_T resulttype;
-  Shortread_T queryseq1;
-  Stage3end_T *stage3array, stage3;
-  int npaths, pathnum, first_absmq, second_absmq;
-  FILE *fp;
-
-  resulttype = Result_resulttype(result);
-
-  if (resulttype == SINGLEEND_NOMAPPING) {
-    if (this->nofailsp == true) {
-      /* Skip */
-    } else if (this->print_m8_p) {
-      /* Skip */
-    } else {
-      print_header_singleend(this,this->fp_nomapping,request,/*translocationp*/false,/*npaths*/0);
-      fprintf(this->fp_nomapping,"\n");
-
-      if (this->failedinput_root != NULL) {
-	if (this->fastq_format_p == true) {
-	  queryseq1 = Request_queryseq1(request);
-	  Shortread_print_query_singleend_fastq(this->fp_failedinput_1,queryseq1,/*headerseq*/queryseq1);
-	} else {
-	  queryseq1 = Request_queryseq1(request);
-	  Shortread_print_query_singleend_fasta(this->fp_failedinput_1,queryseq1,/*headerseq*/queryseq1);
-	}
-      }
-    }
-
-  } else if (resulttype == SINGLEEND_UNIQ) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
-
-    if (this->failsonlyp == true) {
-      /* Skip */
-    } else {
-      stage3 = stage3array[0];
-      if (Stage3end_circularpos(stage3) > 0) {
-	fp = this->fp_unpaired_circular;
-      } else {
-	fp = this->fp_unpaired_uniq;
-      }
-
-      print_header_singleend(this,fp,request,/*translocationp*/false,/*npaths*/1);
-
-      queryseq1 = Request_queryseq1(request);
-#if 0
-      Stage3end_eval_and_sort(stage3array,/*npaths*/1,this->maxpaths_report,queryseq1);
-#endif
-      Stage3end_print(fp,stage3,Stage3end_score(stage3),
-		      this->chromosome_iit,queryseq1,/*headerseq*/queryseq1,/*acc_suffix*/"",
-		      this->invert_first_p,/*hit5*/(Stage3end_T) NULL,/*hit3*/(Stage3end_T) NULL,
-		      /*pairlength*/0,/*pairscore*/0,/*pairtype*/UNPAIRED,
-		      Stage3end_mapq_score(stage3));
-      if (this->print_m8_p == false) {
-	fprintf(fp,"\n");
-      }
-    }
-
-  } else if (resulttype == SINGLEEND_TRANSLOC) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
-
-    if (this->failsonlyp == true) {
-      /* Skip */
-
-    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      print_header_singleend(this,this->fp_unpaired_transloc,request,/*translocationp*/true,npaths);
-      fprintf(this->fp_unpaired_transloc,"\n");
-
-    } else {
-      print_header_singleend(this,this->fp_unpaired_transloc,request,/*translocationp*/true,npaths);
-
-      queryseq1 = Request_queryseq1(request);
-#if 0
-      Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1);
-#endif
-      for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths_report; pathnum++) {
-	stage3 = stage3array[pathnum-1];
-	Stage3end_print(this->fp_unpaired_transloc,stage3,Stage3end_score(stage3),
-			this->chromosome_iit,queryseq1,/*headerseq*/queryseq1,/*acc_suffix*/"",
-			this->invert_first_p,/*hit5*/(Stage3end_T) NULL,/*hit3*/(Stage3end_T) NULL,
-			/*pairlength*/0,/*pairscore*/0,/*pairtype*/UNPAIRED,
-			Stage3end_mapq_score(stage3));
-      }
-      if (this->print_m8_p == false) {
-	fprintf(this->fp_unpaired_transloc,"\n");
-      }
-    }
-
-  } else if (resulttype == SINGLEEND_MULT) {
-    stage3array = (Stage3end_T *) Result_array(&npaths,&first_absmq,&second_absmq,result);
-
-    if (this->failsonlyp == true) {
-      /* Skip */
-
-    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      print_header_singleend(this,this->fp_unpaired_mult_xs_1,request,/*translocationp*/false,npaths);
-      if (this->print_m8_p == false) {
-	fprintf(this->fp_unpaired_mult_xs_1,"\n");
-      }
-
-    } else {
-      print_header_singleend(this,this->fp_unpaired_mult,request,/*translocationp*/false,npaths);
-
-      queryseq1 = Request_queryseq1(request);
-#if 0
-      Stage3end_eval_and_sort(stage3array,npaths,this->maxpaths_report,queryseq1);
-#endif
-      for (pathnum = 1; pathnum <= npaths && pathnum <= this->maxpaths_report; pathnum++) {
-	stage3 = stage3array[pathnum-1];
-	Stage3end_print(this->fp_unpaired_mult,stage3,Stage3end_score(stage3),
-			this->chromosome_iit,queryseq1,/*headerseq*/queryseq1,/*acc_suffix*/"",
-			this->invert_first_p,/*hit5*/(Stage3end_T) NULL,/*hit3*/(Stage3end_T) NULL,
-			/*pairlength*/0,/*pairscore*/0,/*pairtype*/UNPAIRED,
-			Stage3end_mapq_score(stage3));
-      }
-      if (this->print_m8_p == false) {
-	fprintf(this->fp_unpaired_mult,"\n");
-      }
-    }
-
-  } else {
-    if (this->fp_concordant_uniq == NULL) {
-      sevenway_open_paired(this);
-    }
-    Stage3pair_print(result,resulttype,this->chromosome_iit,
-		     Request_queryseq1(request),Request_queryseq2(request),
-		     this->maxpaths_report,this->quiet_if_excessive_p,
-#if 0
-		     this->invert_first_p,this->invert_second_p,
-#endif
-		     this->nofailsp,this->failsonlyp,this->fastq_format_p,
-		     this->quality_shift);
-  }
-
-  return;
-}
-
-
-static void
-print_result_goby (T this, Result_T result, Request_T request) {
-  Resulttype_T resulttype;
-  Shortread_T queryseq1;
-  Stage3end_T *stage3array1, *stage3array2;
-  Stage3pair_T *stage3pairarray;
-  int npaths1 = 0, npaths2 = 0, first_absmq, second_absmq;
-  bool output_alignment = true;
-
-  resulttype = Result_resulttype(result);
-  queryseq1 = Request_queryseq1(request);
-  switch (resulttype) {
-    /* Determine if we are in a TMH situation or some other condition where we */
-    /* don't want to output the alignment. */
-    case SINGLEEND_NOMAPPING:
-    case PAIREDEND_NOMAPPING:
-      /* Goby does nothing with no-mapping results. */
-      output_alignment = false;
-      break;
-    case SINGLEEND_MULT:
-      /* Check single end Too Many Hits (TMH) */
-      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&first_absmq,&second_absmq,result);
-      if (npaths1 > this->maxpaths_report) {
-        Goby_print_tmh(this->gobywriter,stage3array1[0],queryseq1,npaths1);
-        output_alignment = false;
-      }
-      break;
-    case SINGLEEND_UNIQ:
-    case SINGLEEND_TRANSLOC:
-    case CONCORDANT_UNIQ:
-    case CONCORDANT_TRANSLOC:
-    case UNPAIRED_UNIQ:
-    case UNPAIRED_TRANSLOC:
-    case PAIRED_UNIQ:
-    case HALFMAPPING_UNIQ:
-      /* output alignment but no need to check TMH. */
-      break;
-    case CONCORDANT_MULT:
-    case PAIRED_MULT:
-      stage3pairarray = (Stage3pair_T *) Result_array(&npaths1,&first_absmq,&second_absmq,result);
-      if (npaths1 > this->maxpaths_report) {
-        Goby_print_pair_tmh(this->gobywriter,resulttype,stage3pairarray[0],queryseq1,npaths1);
-        output_alignment = false;
-      }
-      break;
-    case UNPAIRED_MULT:
-    case HALFMAPPING_TRANSLOC:
-    case HALFMAPPING_MULT:
-      stage3array1 = (Stage3end_T *) Result_array(&npaths1,&first_absmq,&second_absmq,result);
-      stage3array2 = (Stage3end_T *) Result_array2(&npaths2,&first_absmq,&second_absmq,result);
-      if (npaths1 >= this->maxpaths_report) {
-        Goby_print_tmh(this->gobywriter,stage3array1[0],queryseq1,npaths1);
-      }
-      if (npaths2 >= this->maxpaths_report) {
-        Goby_print_tmh(this->gobywriter,stage3array2[0],queryseq1,npaths2);
-      }
-      if (npaths1 >= this->maxpaths_report && npaths2 >= this->maxpaths_report) {
-        output_alignment = false;
-      }
-      break;
-  }
-
-  if (output_alignment) {
-    Goby_start_capture(this->gobywriter);
-    print_result_gsnap(this,result,request);
-    Goby_finish_capture(this->gobywriter);
-  }
-  return;
-}
-
-
 void
-Outbuffer_print_result (T this, Result_T result, Request_T request
-#ifdef MEMUSAGE
-			, unsigned int noutput
+Outbuffer_put_filestrings (T this, Filestring_T fp, Filestring_T fp_failedinput_1, Filestring_T fp_failedinput_2) {
+
+#ifdef HAVE_PTHREAD
+  pthread_mutex_lock(&this->lock);
 #endif
-			) {
-  Shortread_T queryseq1;
 
-  if (this->timingp == true) {
-    queryseq1 = Request_queryseq1(request);
-    printf("%s\t%.6f\n",Shortread_accession(queryseq1),Result_worker_runtime(result));
-  } else if (this->output_sam_p == true) {
-    print_result_sam(this,result,request);
-  } else if (this->gobywriter != NULL) {
-    print_result_goby(this,result,request);
-  } else {
-    print_result_gsnap(this,result,request);
-  }
+  this->tail = RRlist_push(&this->head,this->tail,fp,fp_failedinput_1,fp_failedinput_2);
+  debug1(RRlist_dump(this->head,this->tail));
+  this->nprocessed += 1;
 
-#ifdef MEMUSAGE
-  printf("Memusage of IN: %ld.  Memusage of OUT: %ld.  Entries in outbuffer: %d = %d processed - %u output\n",
-	 Mem_usage_report_in(),Mem_usage_report_out(),this->nprocessed - noutput,this->nprocessed,noutput);
+#ifdef HAVE_PTHREAD
+  debug(printf("Signaling that filestring is available\n"));
+  pthread_cond_signal(&this->filestring_avail_p);
+  pthread_mutex_unlock(&this->lock);
 #endif
 
   return;
 }
 
 #else
-
-/************************************************************************
- *   Print routines and threads for GMAP
- ************************************************************************/
-
-static void
-print_npaths (T this, FILE *fp, int npaths, Diagnostic_T diagnostic,
-	      char *chrsubset_name, bool mergedp, Chimera_T chimera, Failure_T failuretype) {
-
-  if (this->diagnosticp == true) {
-    Diagnostic_print(diagnostic);
-  }
-
-  if (npaths == 0) {
-    fprintf(fp,"Paths (0):");
-  } else if (mergedp == true) {
-    fprintf(fp,"Paths (1):");
-  } else {
-    fprintf(fp,"Paths (%d):",npaths);
-  }
-  if (chrsubset_name != NULL) {
-    printf("  [chrsubset: %s]",chrsubset_name);
-  }
-  if (failuretype == NO_FAILURE) {
-    if (chimera != NULL) {
-      Chimera_print(fp,chimera);
-    }
-  } else if (failuretype == EMPTY_SEQUENCE) {
-    fprintf(fp," *** Empty sequence ***");
-  } else if (failuretype == SHORT_SEQUENCE) {
-    fprintf(fp," *** Short sequence < index oligo size ***");
-  } else if (failuretype == POOR_SEQUENCE) {
-    fprintf(fp," *** Poor sequence (use -p flag to change pruning behavior) ***");
-  } else if (failuretype == REPETITIVE) {
-    fprintf(fp," *** Repetitive sequence (use -p flag to change pruning behavior) ***");
-  }
-  fprintf(fp,"\n");
-  if (npaths == 0) {
-    fprintf(fp,"\n");
-  }
-  return;
-}
-
-
 void
-Outbuffer_print_result (T this, Result_T result, Request_T request, Sequence_T headerseq
-#ifdef MEMUSAGE
-			, unsigned int noutput
-#endif
-			) {
-  FILE *fp;
-  char *abbrev;
-  Sequence_T queryseq;
-  Diagnostic_T diagnostic;
-  Stage3_T *stage3array;
-  int npaths, pathnum, effective_maxpaths, first_absmq, second_absmq;
-  Chimera_T chimera = NULL;
-  int chimerapos, chimeraequivpos, chimera_cdna_direction;
-  int querylength;
-  double donor_prob, acceptor_prob;
-  List_T p;
-  Gregion_T gregion;
-  bool printp, mergedp = false;
-#ifdef MEMUSAGE
-  char *comma0, *comma1, *comma2, *comma3;
+Outbuffer_put_filestrings (T this, Filestring_T fp, Filestring_T fp_failedinput) {
+
+#ifdef HAVE_PTHREAD
+  pthread_mutex_lock(&this->lock);
 #endif
 
-  queryseq = Request_queryseq(request);
+  this->tail = RRlist_push(&this->head,this->tail,fp,fp_failedinput);
+  debug1(RRlist_dump(this->head,this->tail));
+  this->nprocessed += 1;
 
-  if (this->stage1debug == true) {
-    putc('>',stdout);
-    Sequence_print_header(stdout,headerseq,this->checksump);
+#ifdef HAVE_PTHREAD
+  debug(printf("Signaling that filestring is available\n"));
+  pthread_cond_signal(&this->filestring_avail_p);
+  pthread_mutex_unlock(&this->lock);
+#endif
 
-    for (p = Result_gregionlist(result); p != NULL; p = List_next(p)) {
-      gregion = (Gregion_T) List_head(p);
-      Gregion_print(gregion);
+  return;
+}
+#endif
+
+
+
+#ifdef GSNAP
+void
+Outbuffer_print_filestrings (Filestring_T fp, Filestring_T fp_failedinput_1, Filestring_T fp_failedinput_2) {
+  SAM_split_output_type split_output;
+#ifdef USE_MPI
+  MPI_File output;
+#else
+  FILE *output;
+#endif
+
+#ifdef USE_MPI
+  split_output = Filestring_split_output(fp);
+  output = outputs[split_output];
+
+#else
+  if (split_output_root != NULL) {
+    split_output = Filestring_split_output(fp);
+    if ((output = outputs[split_output]) == NULL) {
+      output = outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+      if (split_output == OUTPUT_NONE && split_output_root != NULL) {
+	/* Don't print file headers, since no output will go to
+	   stdout.  Must be a nomapping when --nofails is specified */
+      } else {
+	print_file_headers(output);
+      }
     }
-    return;
-
-  } else if (this->diag_debug == true) {
-    putc('>',stdout);
-    Sequence_print_header(stdout,headerseq,this->checksump);
-
-    Diag_print_segments(Result_diagonals(result),/*queryseq_ptr*/NULL,/*genomicseg_ptr*/NULL);
-    return;
+  } else if ((output = outputs[0]) == NULL) {
+    if (output_file == NULL) {
+      output = outputs[0] = stdout;
+      print_file_headers(stdout);
+    } else {
+      output = outputs[0] = SAM_header_open_file(/*split_output*/OUTPUT_NONE,output_file,appendp);
+      print_file_headers(output);
+    }
   }
-
-  stage3array = Result_array(&npaths,&first_absmq,&second_absmq,result);
-  querylength = Sequence_fulllength_given(queryseq);
-
-  chimerapos = chimeraequivpos = -1;
-  chimera_cdna_direction = 0;
-  donor_prob = acceptor_prob = 0.0;
-
-  /* Translation */
-  if (npaths == 0) {
-    effective_maxpaths = 0;
-    fp = this->fp_nomapping;
-    abbrev = ABBREV_NOMAPPING_1;
-
-    if (this->nofailsp == true) {
-      printp = false;
-    } else {
-      printp = true;
-    }
-
-    if (Result_failuretype(result) == POOR_SEQUENCE) {
-      fprintf(stderr,"Accession %s skipped (poor sequence).  Use -p flag to change pruning behavior\n",Sequence_accession(headerseq));
-    } else if (Result_failuretype(result) == REPETITIVE) {
-      fprintf(stderr,"Accession %s skipped (repetitive sequence).  Use -p flag to change pruning behavior\n",Sequence_accession(headerseq));
-    } else {
-      fprintf(stderr,"No paths found for %s\n",Sequence_accession(headerseq));
-    }
-
-  } else if ((mergedp = Result_mergedp(result)) == true) {
-    if (Stage3_circularpos(stage3array[0]) > 0) {
-      fp = this->fp_circular;
-      abbrev = ABBREV_UNPAIRED_CIRCULAR;
-    } else {
-      fp = this->fp_uniq;
-      abbrev = ABBREV_UNPAIRED_UNIQ;
-    }
-    effective_maxpaths = 1;
-
-    if (this->failsonlyp == true) {
-      printp = false;
-    } else {
-      printp = true;
-
-      for (pathnum = 1; pathnum <= /*effective_maxpaths*/1; pathnum++) {
-	Stage3_translate(stage3array[pathnum-1],
-#ifdef PMAP
-			 queryseq,this->diagnosticp,
-#endif
-			 querylength,this->fulllengthp,
-			 this->cds_startpos,this->truncatep,this->strictp,
-			 this->maponlyp);
-      }
-    }
-
-  } else if ((chimera = Result_chimera(result)) != NULL) {
-    if (this->chimeras_allowed_p == true) {
-      effective_maxpaths = 2;
-    } else {
-      effective_maxpaths = 0;
-    }
-    fp = this->fp_transloc;
-    abbrev = ABBREV_UNPAIRED_TRANSLOC;
-
-    if (this->failsonlyp == true) {
-      printp = false;
-
-#if 0
-    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      /* Counting a chimera as a single path */
-      printp = true;
 #endif
 
-    } else {
-      printp = true;
-
-      chimerapos = Chimera_pos(chimera);
-      chimeraequivpos = Chimera_equivpos(chimera);
-      donor_prob = Chimera_donor_prob(chimera);
-      acceptor_prob = Chimera_acceptor_prob(chimera);
-      chimera_cdna_direction = Chimera_cdna_direction(chimera);
-
-      Stage3_translate_chimera(stage3array[0],stage3array[1],
-#ifdef PMAP
-			       queryseq,this->diagnosticp,
+#ifdef USE_MPI
+  /* Prevents output from being broken up */
+  Filestring_stringify(fp);
 #endif
-			       querylength,this->fulllengthp,
-			       this->cds_startpos,this->truncatep,this->strictp,
-			       this->maponlyp);
-    }
+  Filestring_print(output,fp);
+  Filestring_free(&fp);
 
-  } else if (this->maxpaths_report == 0) {
-    effective_maxpaths = 1;
-    if (npaths > 1) {
-      fp = this->fp_mult;
-      abbrev = ABBREV_UNPAIRED_MULT;
-    } else if (Stage3_circularpos(stage3array[0]) > 0) {
-      fp = this->fp_circular;
-      abbrev = ABBREV_UNPAIRED_CIRCULAR;
-    } else {
-      fp = this->fp_uniq;
-      abbrev = ABBREV_UNPAIRED_UNIQ;
-    }
-
-    if (this->failsonlyp == true) {
-      printp = false;
-    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      printp = false;
-    } else {
-      printp = true;
-
-      Stage3_translate(stage3array[0],
-#ifdef PMAP
-		       queryseq,this->diagnosticp,
+  if (failedinput_root != NULL) {
+    if (fp_failedinput_1 != NULL) {
+#ifdef USE_MPI
+      Filestring_stringify(fp_failedinput_1);
 #endif
-		       querylength,this->fulllengthp,
-		       this->cds_startpos,this->truncatep,this->strictp,
-		       this->maponlyp);
+      Filestring_print(output_failedinput_1,fp_failedinput_1);
+      Filestring_free(&fp_failedinput_1);
     }
-
-  } else {
-    if (npaths > 1) {
-      fp = this->fp_mult;
-      abbrev = ABBREV_UNPAIRED_MULT;
-    } else if (Stage3_circularpos(stage3array[0]) > 0) {
-      fp = this->fp_circular;
-      abbrev = ABBREV_UNPAIRED_CIRCULAR;
-    } else {
-      fp = this->fp_uniq;
-      abbrev = ABBREV_UNPAIRED_UNIQ;
-    }
-
-    if (npaths < this->maxpaths_report) {
-      effective_maxpaths = npaths;
-    } else {
-      effective_maxpaths = this->maxpaths_report;
-    }
-
-    if (this->failsonlyp == true) {
-      printp = false;
-    } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-      printp = false;
-    } else {
-      printp = true;
-
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_translate(stage3array[pathnum-1],
-#ifdef PMAP
-			 queryseq,this->diagnosticp,
+    if (fp_failedinput_2 != NULL) {
+#ifdef USE_MPI
+      Filestring_stringify(fp_failedinput_2);
 #endif
-			 querylength,this->fulllengthp,
-			 this->cds_startpos,this->truncatep,this->strictp,
-			 this->maponlyp);
-      }
+      Filestring_print(output_failedinput_2,fp_failedinput_2);
+      Filestring_free(&fp_failedinput_2);
     }
   }
 
-  /* Printing */
-  if (this->debug_graphic_p == true) {
-    printf("q()\n");
+  return;
+}
 
-  } else if (printp == false) {
-    /* No output, either because of --nofails or --quiet-if-excessive */
+#else
+void
+Outbuffer_print_filestrings (Filestring_T fp, Filestring_T fp_failedinput) {
+  SAM_split_output_type split_output;
+#ifdef USE_MPI
+  MPI_File output;
+#else
+  FILE *output;
+#endif
 
-  } else {
-    if (this->failedinput_root != NULL &&
-	(npaths == 0 || (this->quiet_if_excessive_p && npaths > this->maxpaths_report))) {
-      putc('>',this->fp_failedinput_1);
-      Sequence_print_header(this->fp_failedinput_1,headerseq,this->checksump);
-      Sequence_print(this->fp_failedinput_1,queryseq,/*uppercasep*/false,this->wraplength,/*trimmedp*/false);
+#ifdef USE_MPI
+  split_output = Filestring_split_output(fp);
+  output = outputs[split_output];
+
+#else
+  if (split_output_root != NULL) {
+    split_output = Filestring_split_output(fp);
+    if ((output = outputs[split_output]) == NULL) {
+      output = outputs[split_output] = SAM_header_open_file(split_output,split_output_root,appendp);
+      if (split_output == OUTPUT_NONE && split_output_root != NULL) {
+	/* Don't print file headers, since no output will go to
+	   stdout.  Must be a nomapping when --nofails is specified */
+      } else {
+	print_file_headers(output);
+      }
     }
 
-    if (this->printtype == SIMPLE || this->printtype == SUMMARY || this->printtype == ALIGNMENT) {
-      /* Print header, even if no alignment is found */
-      putc('>',fp);
-      Sequence_print_header(fp,headerseq,this->checksump);
-
-      diagnostic = Result_diagnostic(result);
-      if (npaths == 0) {
-	print_npaths(this,fp,0,diagnostic,this->chrsubset_name,
-		     /*mergedp*/false,/*chimera*/NULL,Result_failuretype(result));
-
-
-      } else {
-	print_npaths(this,fp,npaths,diagnostic,this->chrsubset_name,mergedp,chimera,NO_FAILURE);
-	for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	  Stage3_print_pathsummary(fp,stage3array[pathnum-1],pathnum,
-				   this->chromosome_iit,this->contig_iit,
-				   this->altstrain_iit,queryseq,
-				   this->dbversion,/*maxmutations*/1000000,
-				   this->diagnosticp,this->maponlyp);
-	}
-      }
-
-      if (this->printtype != SIMPLE) {
-	fprintf(fp,"Alignments:\n");
-	for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	  fprintf(fp,"  Alignment for path %d:\n\n",pathnum);
-	  Stage3_print_alignment(fp,stage3array[pathnum-1],
-				 this->genome,this->chromosome_iit,this->printtype,
-				 /*continuousp*/false,/*continuous_by_exon_p*/false,
-				 this->diagnosticp,/*flipgenomep*/true,
-				 this->invertmode,this->nointronlenp,
-				 this->wraplength);
-	}
-      }
-
-      if (this->map_iit != NULL) {
-	fprintf(fp,"Maps:\n");
-	for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	  Stage3_print_map(fp,stage3array[pathnum-1],this->map_iit,this->map_divint_crosstable,
-			   this->chromosome_iit,pathnum,this->map_exons_p,this->map_bothstrands_p,
-			   this->nflanking,this->print_comment_p);
-	}
-      }
-
-    } else if (this->printtype == COMPRESSED) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_print_compressed(fp,stage3array[pathnum-1],queryseq,this->chromosome_iit,
-				this->dbversion,this->usersegment,pathnum,npaths,
-				this->checksump,chimerapos,chimeraequivpos,
-				donor_prob,acceptor_prob,chimera_cdna_direction);
-      }
-
-    } else if (this->printtype == CONTINUOUS) {
-      putc('>',fp);
-      Sequence_print_header(fp,headerseq,this->checksump);
-      if (npaths == 0) {
-	fprintf(fp,"\n\n\n");
-      } else {
-	Stage3_print_alignment(fp,stage3array[0],this->genome,this->chromosome_iit,this->printtype,
-			       /*continuousp*/true,/*continuous_by_exon_p*/false,
-			       this->diagnosticp,/*flipgenomep*/true,
-			       this->invertmode,this->nointronlenp,
-			       this->wraplength);
-      }
-
-    } else if (this->printtype == CONTINUOUS_BY_EXON) {
-      diagnostic = Result_diagnostic(result);
-
-      putc('>',fp);
-      Sequence_print_header(fp,headerseq,this->checksump);
-      print_npaths(this,fp,npaths,diagnostic,this->chrsubset_name,mergedp,chimera,NO_FAILURE);
-      if (npaths == 0) {
-	fprintf(fp,"\n\n\n");
-      } else {
-	Stage3_print_pathsummary(fp,stage3array[0],/*pathnum*/1,
-				 this->chromosome_iit,this->contig_iit,
-				 this->altstrain_iit,queryseq,
-				 this->dbversion,/*maxmutations*/1000000,
-				 this->diagnosticp,this->maponlyp);
-	fprintf(fp,"Alignments:\n");
-	fprintf(fp,"  Alignment for path %d:\n\n",/*pathnum*/1);
-	Stage3_print_alignment(fp,stage3array[0],this->genome,this->chromosome_iit,this->printtype,
-			       /*continuousp*/false,/*continuous_by_exon_p*/true,
-			       this->diagnosticp,/*flipgenomep*/true,
-			       this->invertmode,this->nointronlenp,
-			       this->wraplength);
-      }
-
-    } else if (this->printtype == EXONS_CDNA) {
-      putc('>',fp);
-      Sequence_print_header(fp,headerseq,this->checksump);
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	fprintf(fp,"<path %d>\n",pathnum);
-	Pair_print_exons(fp,Stage3_pairarray(stage3array[0]),Stage3_npairs(stage3array[0]),
-			 this->wraplength,this->ngap,/*cdna*/true);
-	fprintf(fp,"</path>\n");
-      }
-
-    } else if (this->printtype == EXONS_GENOMIC) {
-      putc('>',fp);
-      Sequence_print_header(fp,headerseq,this->checksump);
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	fprintf(fp,"<path %d>\n",pathnum);
-	Pair_print_exons(fp,Stage3_pairarray(stage3array[0]),Stage3_npairs(stage3array[0]),
-			 this->wraplength,this->ngap,/*cdna*/false);
-	fprintf(fp,"</path>\n");
-      }
-
-    } else if (this->printtype == CDNA) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	putc('>',fp);
-	Sequence_print_header(fp,headerseq,this->checksump);
-	Stage3_print_cdna(fp,stage3array[pathnum-1],this->wraplength);
-      }
-
-    } else if (this->printtype == PROTEIN_GENOMIC) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	putc('>',fp);
-	Sequence_print_header(fp,headerseq,this->checksump);
-	Stage3_print_protein_genomic(fp,stage3array[pathnum-1],this->wraplength);
-      }
-
-    } else if (this->printtype == PSL_NT) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_print_pslformat_nt(fp,stage3array[pathnum-1],
-				  this->chromosome_iit,this->usersegment,queryseq);
-      }
-
-#ifdef PMAP
-    } else if (this->printtype == PSL_PRO) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_print_pslformat_pro(fp,stage3array[pathnum-1],
-				   this->chromosome_iit,this->usersegment,queryseq,this->strictp);
-      }
-#endif
-
-    } else if (this->printtype == GFF3_GENE || this->printtype == GFF3_MATCH_CDNA ||
-	       this->printtype == GFF3_MATCH_EST) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_print_gff3(fp,stage3array[pathnum-1],pathnum,
-			  this->chromosome_iit,this->usersegment,queryseq,querylength,this->printtype,
-			  /*sourcename*/this->usersegment ? this->user_genomicseg : this->dbversion);
-      }
-
-#ifndef PMAP
-    } else if (this->printtype == SAM) {
-      if (npaths == 0) {
-	Pair_print_sam_nomapping(fp,abbrev,/*acc1*/Sequence_accession(headerseq),/*acc2*/NULL,
-				 Sequence_fullpointer(queryseq),Sequence_quality_string(queryseq),
-				 Sequence_fulllength(queryseq),this->quality_shift,
-				 Sequence_firstp(queryseq),this->sam_paired_p,this->sam_read_group_id);
-
-      } else if (this->quiet_if_excessive_p && npaths > this->maxpaths_report) {
-	Pair_print_sam_nomapping(fp,abbrev,/*acc1*/Sequence_accession(headerseq),/*acc2*/NULL,
-				 Sequence_fullpointer(queryseq),Sequence_quality_string(queryseq),
-				 Sequence_fulllength(queryseq),this->quality_shift,
-				 Sequence_firstp(queryseq),this->sam_paired_p,this->sam_read_group_id);
-
-      } else if (mergedp == true) {
-	Stage3_print_sam(fp,abbrev,stage3array[0],/*pathnum*/1,/*npaths*/1,
-			 Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
-			 Stage3_mapq_score(stage3array[0]),
-			 this->chromosome_iit,this->usersegment,queryseq,
-			 /*chimera_part*/0,/*chimera*/NULL,this->quality_shift,this->sam_paired_p,
-			 this->sam_read_group_id);
-
-      } else if (chimera != NULL) {
-	Stage3_print_sam(fp,abbrev,stage3array[0],/*pathnum*/1,npaths,
-			 Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
-			 Stage3_mapq_score(stage3array[0]),
-			 this->chromosome_iit,this->usersegment,queryseq,
-			 /*chimera_part*/-1,chimera,this->quality_shift,this->sam_paired_p,
-			 this->sam_read_group_id);
-	Stage3_print_sam(fp,abbrev,stage3array[1],/*pathnum*/1,npaths,
-			 Stage3_absmq_score(stage3array[0]),first_absmq,second_absmq,
-			 Stage3_mapq_score(stage3array[0]),
-			 this->chromosome_iit,this->usersegment,queryseq,
-			 /*chimera_part*/+1,chimera,this->quality_shift,this->sam_paired_p,
-			 this->sam_read_group_id);
-
-      } else {
-	for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	  Stage3_print_sam(fp,abbrev,stage3array[pathnum-1],pathnum,npaths,
-			   Stage3_absmq_score(stage3array[pathnum-1]),first_absmq,second_absmq,
-			   Stage3_mapq_score(stage3array[pathnum-1]),
-			   this->chromosome_iit,this->usersegment,queryseq,
-			   /*chimera_part*/0,/*chimera*/NULL,this->quality_shift,this->sam_paired_p,
-			   this->sam_read_group_id);
-	}
-      }
-#endif
-
-    } else if (this->printtype == COORDS) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	fprintf(fp,">");
-	Sequence_print_header(fp,headerseq,this->checksump);
-	Stage3_print_coordinates(fp,stage3array[pathnum-1],this->chromosome_iit,this->invertmode);
-      }
-
-    } else if (this->printtype == SPLICESITES) {
-      /* Print only best path */
-      if (npaths > 0) {
-	Stage3_print_splicesites(fp,stage3array[0],this->chromosome_iit,queryseq);
-      }
-
-    } else if (this->printtype == INTRONS) {
-      /* Print only best path */
-      if (npaths > 0) {
-	Stage3_print_introns(fp,stage3array[0],this->chromosome_iit,queryseq);
-      }
-
-    } else if (this->printtype == MAP_RANGES) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_print_iit_map(fp,stage3array[pathnum-1],this->chromosome_iit,queryseq);
-      }
-      
-    } else if (this->printtype == MAP_EXONS) {
-      for (pathnum = 1; pathnum <= effective_maxpaths; pathnum++) {
-	Stage3_print_iit_exon_map(fp,stage3array[pathnum-1],this->chromosome_iit,queryseq);
-      }
-
+  } else if ((output = outputs[0]) == NULL) {
+    if (output_file == NULL) {
+      output = outputs[0] = stdout;
+      print_file_headers(stdout);
     } else {
-      fprintf(stderr,"Unexpected printtype %d\n",this->printtype);
-      abort();
-
+      output = outputs[0] = SAM_header_open_file(/*split_output*/OUTPUT_NONE,output_file,appendp);
+      print_file_headers(output);
     }
   }
-
-#ifdef MEMUSAGE
-  comma0 = Genomicpos_commafmt(Mem_usage_report_std_stack());
-  comma1 = Genomicpos_commafmt(Mem_usage_report_std_stack_max());
-  comma2 = Genomicpos_commafmt(Mem_usage_report_std_heap());
-  comma3 = Genomicpos_commafmt(Mem_usage_report_std_heap_max());
-  printf("Stack: %s (max %s).  Heap: %s (max %s).\n",comma0,comma1,comma2,comma3);
-  FREE(comma3);
-  FREE(comma2);
-  FREE(comma1);
-  FREE(comma0);
 #endif
+
+#ifdef USE_MPI
+  Filestring_stringify(fp);
+#endif
+  Filestring_print(output,fp);
+  Filestring_free(&fp);
+
+  if (failedinput_root != NULL) {
+    if (fp_failedinput != NULL) {
+#ifdef USE_MPI
+      Filestring_stringify(fp_failedinput);
+#endif
+      Filestring_print(output_failedinput,fp_failedinput);
+      Filestring_free(&fp_failedinput);
+    }
+  }
 
   return;
 }
 
 #endif
+
 
 
 void *
 Outbuffer_thread_anyorder (void *data) {
   T this = (T) data;
   unsigned int output_buffer_size = this->output_buffer_size;
-  unsigned int noutput = 0, ntotal;
-  Result_T result;
-  Request_T request;
-  
-#ifdef MEMUSAGE
-  Mem_usage_set_threadname("outbuffer");
+  unsigned int noutput = 0, ntotal, nbeyond;
+  Filestring_T fp;
+#ifdef GSNAP
+  Filestring_T fp_failedinput_1, fp_failedinput_2;
+#else
+  Filestring_T fp_failedinput;
 #endif
-
+  
   /* Obtain this->ntotal while locked, to prevent race between output thread and input thread */
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&this->lock);
 #endif
   ntotal = this->ntotal;
+  nbeyond = this->nbeyond;
 #ifdef HAVE_PTHREAD
   pthread_mutex_unlock(&this->lock);
 #endif
 
-  while (noutput < ntotal) {	/* Previously check against this->ntotal */
+  while (noutput + nbeyond < ntotal) {	/* Previously check against this->ntotal */
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->lock);
-    while (this->head == NULL && noutput < this->ntotal) {
-      debug(fprintf(stderr,"__outbuffer_thread_anyorder waiting for result_avail_p\n"));
-      pthread_cond_wait(&this->result_avail_p,&this->lock);
+    while (this->head == NULL && noutput + this->nbeyond < this->ntotal) {
+      debug(fprintf(stderr,"__outbuffer_thread_anyorder waiting for filestring_avail_p\n"));
+      pthread_cond_wait(&this->filestring_avail_p,&this->lock);
     }
     debug(fprintf(stderr,"__outbuffer_thread_anyorder woke up\n"));
 #endif
@@ -2572,29 +1046,26 @@ Outbuffer_thread_anyorder (void *data) {
 #endif
 
     } else {
-      this->head = RRlist_pop(this->head,&request,&result);
+#ifdef GSNAP
+      this->head = RRlist_pop(this->head,&fp,&fp_failedinput_1,&fp_failedinput_2);
+#else
+      this->head = RRlist_pop(this->head,&fp,&fp_failedinput);
+#endif
       debug1(RRlist_dump(this->head,this->tail));
 
 #ifdef HAVE_PTHREAD
-      /* Let worker threads put results while we print */
+      /* Let worker threads put filestrings while we print */
       pthread_mutex_unlock(&this->lock);
 #endif
-#ifdef MEMUSAGE
-      Outbuffer_print_result(this,result,request,
-#ifndef GSNAP
-			     Request_queryseq(request),
-#endif
-			     noutput+1);
+
+#ifdef GSNAP
+      Outbuffer_print_filestrings(fp,fp_failedinput_1,fp_failedinput_2);
 #else
-      Outbuffer_print_result(this,result,request
-#ifndef GSNAP
-			     ,Request_queryseq(request)
+      Outbuffer_print_filestrings(fp,fp_failedinput);
 #endif
-			     );
-#endif
-      Result_free(&result);
-      Request_free(&request);
-      noutput++;
+      noutput += 1;
+      /* Result_free(&result); */
+      /* Request_free(&request); */
 
 #ifdef HAVE_PTHREAD
       pthread_mutex_lock(&this->lock);
@@ -2602,38 +1073,37 @@ Outbuffer_thread_anyorder (void *data) {
       if (this->head && this->nprocessed - noutput > output_buffer_size) {
 	/* Clear out backlog */
 	while (this->head && this->nprocessed - noutput > output_buffer_size) {
-	  this->head = RRlist_pop(this->head,&request,&result);
+#ifdef GSNAP
+	  this->head = RRlist_pop(this->head,&fp,&fp_failedinput_1,&fp_failedinput_2);
+#else
+	  this->head = RRlist_pop(this->head,&fp,&fp_failedinput);
+#endif
 	  debug1(RRlist_dump(this->head,this->tail));
 
-#ifdef MEMUSAGE
-	  Outbuffer_print_result(this,result,request,
-#ifndef GSNAP
-				 Request_queryseq(request),
-#endif
-				 noutput+1);
+#ifdef GSNAP
+	  Outbuffer_print_filestrings(fp,fp_failedinput_1,fp_failedinput_2);
 #else
-	  Outbuffer_print_result(this,result,request
-#ifndef GSNAP
-				 ,Request_queryseq(request)
+	  Outbuffer_print_filestrings(fp,fp_failedinput);
 #endif
-				 );
-#endif
-	  Result_free(&result);
-	  Request_free(&request);
-	  noutput++;
+	  noutput += 1;
+	  /* Result_free(&result); */
+	  /* Request_free(&request); */
 	}
       }
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->lock);
 #endif
-
     }
+
+    debug(fprintf(stderr,"__outbuffer_thread_anyorder has noutput %d, nbeyond %d, ntotal %d\n",
+		  noutput,nbeyond,ntotal));
 
     /* Obtain this->ntotal while locked, to prevent race between output thread and input thread */
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->lock);
 #endif
     ntotal = this->ntotal;
+    nbeyond = this->nbeyond;
 #ifdef HAVE_PTHREAD
     pthread_mutex_unlock(&this->lock);
 #endif
@@ -2650,89 +1120,90 @@ void *
 Outbuffer_thread_ordered (void *data) {
   T this = (T) data;
   unsigned int output_buffer_size = this->output_buffer_size;
-  unsigned int noutput = 0, nqueued = 0, ntotal;
-  Result_T result;
-  Request_T request;
+  unsigned int noutput = 0, nqueued = 0, ntotal, nbeyond;
+  Filestring_T fp;
+#ifdef GSNAP
+  Filestring_T fp_failedinput_1, fp_failedinput_2;
+#else
+  Filestring_T fp_failedinput;
+#endif
   RRlist_T queue = NULL;
   int id;
-
-#ifdef MEMUSAGE
-  Mem_usage_set_threadname("outbuffer");
-#endif
 
   /* Obtain this->ntotal while locked, to prevent race between output thread and input thread */
 #ifdef HAVE_PTHREAD
   pthread_mutex_lock(&this->lock);
 #endif
   ntotal = this->ntotal;
+  nbeyond = this->nbeyond;
 #ifdef HAVE_PTHREAD
   pthread_mutex_unlock(&this->lock);
 #endif
 
-  while (noutput < ntotal) {	/* Previously checked against this->ntotal */
+  while (noutput + nbeyond < ntotal) {	/* Previously checked against this->ntotal */
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->lock);
-    while (this->head == NULL && noutput < this->ntotal) {
-      pthread_cond_wait(&this->result_avail_p,&this->lock);
+    while (this->head == NULL && noutput + this->nbeyond < this->ntotal) {
+      pthread_cond_wait(&this->filestring_avail_p,&this->lock);
     }
     debug(fprintf(stderr,"__outbuffer_thread_ordered woke up\n"));
 #endif
 
     if (this->head == NULL) {
 #ifdef HAVE_PTHREAD
-      /* False wake up */
+      /* False wake up, or signal from worker_mpi_process */
+      ntotal = this->ntotal;
+      nbeyond = this->nbeyond;
       pthread_mutex_unlock(&this->lock);
 #endif
 
     } else {
-      this->head = RRlist_pop(this->head,&request,&result);
+#ifdef GSNAP
+      this->head = RRlist_pop(this->head,&fp,&fp_failedinput_1,&fp_failedinput_2);
+#else
+      this->head = RRlist_pop(this->head,&fp,&fp_failedinput);
+#endif
 
 #ifdef HAVE_PTHREAD
       /* Allow workers access to the queue */
       pthread_mutex_unlock(&this->lock);
 #endif
-      if ((id = Result_id(result)) != (int) noutput) {
+      if ((id = Filestring_id(fp)) != (int) noutput) {
 	/* Store in queue */
-	queue = RRlist_insert(queue,id,request,result);
+#ifdef GSNAP
+	queue = RRlist_insert(queue,id,fp,fp_failedinput_1,fp_failedinput_2);
+#else
+	queue = RRlist_insert(queue,id,fp,fp_failedinput);
+#endif
 	nqueued++;
       } else {
-#ifdef MEMUSAGE
-	Outbuffer_print_result(this,result,request,
-#ifndef GSNAP
-			       Request_queryseq(request),
-#endif
-			       noutput+1);
+#ifdef GSNAP
+	Outbuffer_print_filestrings(fp,fp_failedinput_1,fp_failedinput_2);
 #else
-	Outbuffer_print_result(this,result,request
-#ifndef GSNAP
-			       ,Request_queryseq(request)
+	Outbuffer_print_filestrings(fp,fp_failedinput);
 #endif
-			       );
-#endif
-	Result_free(&result);
-	Request_free(&request);
-	noutput++;
+	noutput += 1;
+
+	/* Result_free(&result); */
+	/* Request_free(&request); */
 	
 	/* Print out rest of stored queue */
 	while (queue != NULL && queue->id == (int) noutput) {
-	  queue = RRlist_pop_id(queue,&id,&request,&result);
-	  nqueued--;
-#ifdef MEMUSAGE
-	  Outbuffer_print_result(this,result,request,
-#ifndef GSNAP
-				 Request_queryseq(request),
-#endif
-				 noutput+1);
+#ifdef GSNAP
+	  queue = RRlist_pop_id(queue,&id,&fp,&fp_failedinput_1,&fp_failedinput_2);
 #else
-	  Outbuffer_print_result(this,result,request
-#ifndef GSNAP
-				 ,Request_queryseq(request)
+	  queue = RRlist_pop_id(queue,&id,&fp,&fp_failedinput);
 #endif
-				 );
+	  nqueued--;
+#ifdef GSNAP
+	  Outbuffer_print_filestrings(fp,fp_failedinput_1,fp_failedinput_2);
+#else
+	  Outbuffer_print_filestrings(fp,fp_failedinput);
 #endif
-	  Result_free(&result);
-	  Request_free(&request);
-	  noutput++;
+	  noutput += 1;
+
+	  /* Result_free(&result); */
+	  /* Request_free(&request); */
 	}
       }
 
@@ -2742,64 +1213,64 @@ Outbuffer_thread_ordered (void *data) {
       if (this->head && this->nprocessed - nqueued - noutput > output_buffer_size) {
 	/* Clear out backlog */
 	while (this->head && this->nprocessed - nqueued - noutput > output_buffer_size) {
-	  this->head = RRlist_pop(this->head,&request,&result);
-	  if ((id = Result_id(result)) != (int) noutput) {
+#ifdef GSNAP
+	  this->head = RRlist_pop(this->head,&fp,&fp_failedinput_1,&fp_failedinput_2);
+#else
+	  this->head = RRlist_pop(this->head,&fp,&fp_failedinput);
+#endif
+	  if ((id = Filestring_id(fp)) != (int) noutput) {
 	    /* Store in queue */
-	    queue = RRlist_insert(queue,id,request,result);
+#ifdef GSNAP
+	    queue = RRlist_insert(queue,id,fp,fp_failedinput_1,fp_failedinput_2);
+#else
+	    queue = RRlist_insert(queue,id,fp,fp_failedinput);
+#endif
 	    nqueued++;
 	  } else {
-#ifdef MEMUSAGE
-	    Outbuffer_print_result(this,result,request,
-#ifndef GSNAP
-				   Request_queryseq(request),
-#endif				   
-				   noutput+1);
+#ifdef GSNAP
+	    Outbuffer_print_filestrings(fp,fp_failedinput_1,fp_failedinput_2);
 #else
-	    Outbuffer_print_result(this,result,request
-#ifndef GSNAP
-				   ,Request_queryseq(request)
+	    Outbuffer_print_filestrings(fp,fp_failedinput);
 #endif
-				   );
-#endif
-	    Result_free(&result);
-	    Request_free(&request);
-	    noutput++;
+	    noutput += 1;
+	    /* Result_free(&result); */
+	    /* Request_free(&request); */
 	
 	    /* Print out rest of stored queue */
 	    while (queue != NULL && queue->id == (int) noutput) {
-	      queue = RRlist_pop_id(queue,&id,&request,&result);
-	      nqueued--;
-#ifdef MEMUSAGE
-	      Outbuffer_print_result(this,result,request,
-#ifndef GSNAP
-				     Request_queryseq(request),
-#endif
-				     noutput+1);
+#ifdef GSNAP
+	      queue = RRlist_pop_id(queue,&id,&fp,&fp_failedinput_1,&fp_failedinput_2);
 #else
-	      Outbuffer_print_result(this,result,request
-#ifndef GSNAP
-				     ,Request_queryseq(request)
+	      queue = RRlist_pop_id(queue,&id,&fp,&fp_failedinput);
 #endif
-				     );
+	      nqueued--;
+#ifdef GSNAP
+	      Outbuffer_print_filestrings(fp,fp_failedinput_1,fp_failedinput_2);
+#else
+	      Outbuffer_print_filestrings(fp,fp_failedinput);
 #endif
-	      Result_free(&result);
-	      Request_free(&request);
-	      noutput++;
+	      noutput += 1;
+	      /* Result_free(&result); */
+	      /* Request_free(&request); */
 	    }
 	  }
 	}
       }
+
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->lock);
 #endif
-
     }
+
+    debug(fprintf(stderr,"__outbuffer_thread_ordered has noutput %d, nbeyond %d, ntotal %d\n",
+		  noutput,nbeyond,ntotal));
 
     /* Obtain this->ntotal while locked, to prevent race between output thread and input thread */
 #ifdef HAVE_PTHREAD
     pthread_mutex_lock(&this->lock);
 #endif
     ntotal = this->ntotal;
+    nbeyond = this->nbeyond;
 #ifdef HAVE_PTHREAD
     pthread_mutex_unlock(&this->lock);
 #endif
@@ -2809,5 +1280,4 @@ Outbuffer_thread_ordered (void *data) {
 
   return (void *) NULL;
 }
-
 

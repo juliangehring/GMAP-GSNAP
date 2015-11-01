@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uint8list.c 145990 2014-08-25 21:47:32Z twu $";
+static char rcsid[] = "$Id: uint8list.c 166641 2015-05-29 21:13:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -88,6 +88,41 @@ Uint8list_length (T list) {
     n++;
   }
   return n;
+}
+
+UINT8
+Uint8list_max (T list) {
+  UINT8 m = 0;
+
+  while (list) {
+    if (list->first > m) {
+      m = list->first;
+    }
+    list = list->rest;
+  }
+
+  return m;
+}
+
+UINT8
+Uint8list_min (T list) {
+  UINT8 m;
+
+  if (list == NULL) {
+    return 0;
+
+  } else {
+    m = list->first;
+    list = list->rest;
+    while (list) {
+      if (list->first < m) {
+	m = list->first;
+      }
+      list = list->rest;
+    }
+
+    return m;
+  }
 }
 
 UINT8 *

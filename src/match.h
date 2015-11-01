@@ -1,6 +1,7 @@
-/* $Id: match.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: match.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef MATCH_INCLUDED
 #define MATCH_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "types.h"

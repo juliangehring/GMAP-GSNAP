@@ -1,4 +1,4 @@
-/* $Id: sarray-write.h 140511 2014-07-03 01:50:36Z twu $ */
+/* $Id: sarray-write.h 165971 2015-05-20 00:20:26Z twu $ */
 #ifndef SARRAY_WRITE_INCLUDED
 #define SARRAY_WRITE_INCLUDED
 #include "types.h"
@@ -19,6 +19,10 @@ extern void
 Sarray_write_index_interleaved (char *indexptrsfile, char *indexcompfile,
 				char *sarrayfile, Genome_T genomecomp, UINT4 genomelength, bool compressp,
 				char chartable[]);
+
+extern void
+Sarray_write_csa (char **csaptrfiles, char **csacompfiles, char *sasampleqfile, char *sasamplesfile, char *saindex0file,
+		  char *sarrayfile, char *rankfile, Genome_T genomecomp, UINT4 genomelength, char chartable[]);
 
 extern UINT4 *
 Sarray_compute_lcp (char *rankfile, char *permuted_sarray_file, char *sarrayfile, UINT4 n);

@@ -1,4 +1,4 @@
-/* $Id: request.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: request.h 155282 2014-12-12 19:42:54Z twu $ */
 #ifndef REQUEST_INCLUDED
 #define REQUEST_INCLUDED
 
@@ -31,6 +31,7 @@ extern T
 Request_new (int id, Sequence_T queryseq);
 
 #endif
+
 
 extern void
 Request_free (T *old);

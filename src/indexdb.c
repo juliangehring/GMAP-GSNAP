@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 165782 2015-05-15 18:16:30Z twu $";
+static char rcsid[] = "$Id: indexdb.c 168395 2015-06-26 17:13:13Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -28,6 +28,7 @@ static char rcsid[] = "$Id: indexdb.c 165782 2015-05-15 18:16:30Z twu $";
 #include <string.h>		/* For memset */
 #include <ctype.h>		/* For toupper */
 #include <sys/mman.h>		/* For munmap */
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>		/* For lseek and close */
 #endif
@@ -135,13 +136,22 @@ Indexdb_setup (Width_T index1part_in) {
 void
 Indexdb_free (T *old) {
   if (*old) {
-    if ((*old)->positions_access == ALLOCATED) {
+    if ((*old)->positions_access == ALLOCATED_PRIVATE) {
 #ifdef LARGE_GENOMES
       FREE((*old)->positions_high);
       FREE((*old)->positions_low);
 #else
       FREE((*old)->positions);
 #endif
+
+    } else if ((*old)->positions_access == ALLOCATED_SHARED) {
+#ifdef LARGE_GENOMES
+      Access_deallocate((*old)->positions_high,(*old)->positions_high_shmid);
+      Access_deallocate((*old)->positions_low,(*old)->positions_low_shmid);
+#else
+      Access_deallocate((*old)->positions,(*old)->positions_shmid);
+#endif
+
 #ifdef HAVE_MMAP
     } else if ((*old)->positions_access == MMAPPED) {
 #ifdef LARGE_GENOMES
@@ -166,8 +176,12 @@ Indexdb_free (T *old) {
 #endif
     }
 
-    if ((*old)->offsetsstrm_access == ALLOCATED) {
+    if ((*old)->offsetsstrm_access == ALLOCATED_PRIVATE) {
       FREE((*old)->offsetsstrm);
+
+    } else if ((*old)->offsetsstrm_access == ALLOCATED_SHARED) {
+      Access_deallocate((*old)->offsetsstrm,(*old)->offsetsstrm_shmid);
+
 #ifdef HAVE_MMAP
     } else if ((*old)->offsetsstrm_access == MMAPPED) {
       munmap((void *) (*old)->offsetsstrm,(*old)->offsetsstrm_len);
@@ -175,9 +189,24 @@ Indexdb_free (T *old) {
 #endif
     }
       
-    FREE((*old)->offsetsmeta);	/* Always ALLOCATED */
+    if ((*old)->offsetsmeta_access == ALLOCATED_PRIVATE) {
+      FREE((*old)->offsetsmeta);
+    } else if ((*old)->offsetsmeta_access == ALLOCATED_SHARED) {
+      Access_deallocate((*old)->offsetsmeta,(*old)->offsetsmeta_shmid);
+    } else {
+      /* Always ALLOCATED */
+      abort();
+    }
+
 #ifdef LARGE_GENOMES
-    FREE((*old)->offsetspages);	/* Always ALLOCATED */
+    if ((*old)->offsetspages_access == ALLOCATED_PRIVATE) {
+      FREE((*old)->offsetspages);
+    } else if ((*old)->offsetspages_access == ALLOCATED_SHARED) {
+      Access_deallocate((*old)->offsetspages,(*old)->offsetspages_shmid);
+    } else {
+      /* Always ALLOCATED */
+      abort();
+    }
 #endif
 
     FREE(*old);
@@ -231,11 +260,8 @@ Indexdb_mean_size (T this, Mode_T mode, Width_T index1part) {
 #endif
 
 #ifdef WORDS_BIGENDIAN
-  if (this->offsetsstrm_access == ALLOCATED) {
-    return (double) this->offsetsstrm[this->offsetsmeta[oligospace/this->blocksize]]/(double) n;
-  } else {
-    return (double) Bigendian_convert_uint(this->offsetsstrm[this->offsetsmeta[oligospace/this->blocksize]])/(double) n;
-  }
+  /* Also holds for ALLOCATED_PRIVATE and ALLOCATED_SHARED */
+  return (double) Bigendian_convert_uint(this->offsetsstrm[Bigendian_convert_uint(this->offsetsmeta[oligospace/this->blocksize])])/(double) n;
 #else
   return (double) this->offsetsstrm[this->offsetsmeta[oligospace/this->blocksize]]/(double) n;
 #endif
@@ -296,7 +322,7 @@ Indexdb_get_filenames_no_compression (Width_T *index1part, Width_T *index1interv
 
   char *base_filename, *filename;
   char *pattern, interval_char, digit_string[2], *p, *q;
-  char tens, ones, ones0;
+  char tens, ones;
   Width_T found_index1part, found_interval;
   int rootlength, patternlength;
 
@@ -564,13 +590,13 @@ Indexdb_get_filenames_bitpack (Width_T *index1part, Width_T *index1interval,
   Alphabet_T found_alphabet;
 #else
   char *pattern;
-  char tens0, tens;
+  char tens;
 #endif
   char interval_char, digit_string[2], *p, *q;
   Width_T found_index1part = 0, found_interval = 0;
   int rootlength, patternlength;
 
-  char ones0, ones;
+  char ones;
   char *offsetspages_suffix, *offsetsmeta_suffix, *offsetsstrm_suffix,
     *positions_high_suffix, *positions_low_suffix;
   struct dirent *entry;
@@ -1000,14 +1026,64 @@ Indexdb_get_filenames (int *compression_type,
 }
 
 
+void
+Indexdb_shmem_remove (char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+#ifdef PMAP
+		      Alphabet_T *alphabet, int *alphabet_size, Alphabet_T required_alphabet,
+#endif
+		      Width_T required_index1part, Width_T required_interval, bool expand_offsets_p) {
+  Filenames_T filenames;
+  int index1part, index1interval;
+
+  if ((filenames = Indexdb_get_filenames_no_compression(&index1part,&index1interval,
+							genomesubdir,fileroot,idx_filesuffix,snps_root,
+							required_interval,/*offsets_only_p*/false)) != NULL) {
+    /* Try non-compressed files */
+    Access_shmem_remove(filenames->offsets_filename);
+
+  } else if ((filenames = Indexdb_get_filenames_bitpack(
+#ifdef PMAP
+							&(*alphabet),required_alphabet,
+#endif
+							&index1part,&index1interval,
+							genomesubdir,fileroot,idx_filesuffix,snps_root,
+							required_index1part,required_interval,
+							/*blocksize*/64,/*offsets_only_p*/false)) != NULL) {
+    if (expand_offsets_p == true) {
+      /* ALLOCATED_PRIVATE */
+
+    } else {
+      Access_shmem_remove(filenames->pointers_filename);
+      Access_shmem_remove(filenames->offsets_filename);
+#ifdef LARGE_GENOMES
+      if (filenames->pages_filename != NULL) {
+	Access_shmem_remove(filenames->pages_filename);
+      }
+#endif
+    }
+  }
+
+#ifdef LARGE_GENOMES
+  Access_shmem_remove(filenames->positions_high_filename);
+  Access_shmem_remove(filenames->positions_low_filename);
+#else
+  Access_shmem_remove(filenames->positions_low_filename);
+#endif
+
+  Filenames_free(&filenames);
+
+  return;
+}
+
+
 T
 Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 		    char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
 #ifdef PMAP
 		    Alphabet_T *alphabet, int *alphabet_size, Alphabet_T required_alphabet,
 #endif
-		    Width_T required_index1part, Width_T required_interval,
-		    bool expand_offsets_p, Access_mode_T offsetsstrm_access, Access_mode_T positions_access) {
+		    Width_T required_index1part, Width_T required_interval, bool expand_offsets_p,
+		    Access_mode_T offsetsstrm_access, Access_mode_T positions_access, bool sharedp) {
   T new = (T) MALLOC(sizeof(*new));
   Filenames_T filenames;
   Oligospace_T basespace, base;
@@ -1046,7 +1122,7 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
     for (base = 0; base <= basespace; base++) {
       new->offsetsmeta[base] = base;
     }
-
+    new->offsetsmeta_access = ALLOCATED_PRIVATE;
 
     if (offsetsstrm_access == USE_ALLOCATE) {
       if (snps_root) {
@@ -1056,8 +1132,8 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 	fprintf(stderr,"Allocating memory for %s offsets, kmer %d, interval %d...",
 		idx_filesuffix,new->index1part,new->index1interval);
       }
-      new->offsetsstrm = (UINT4 *) Access_allocated(&new->offsetsstrm_len,&seconds,
-							    filenames->offsets_filename,sizeof(UINT4));
+      new->offsetsstrm = (UINT4 *) Access_allocate(&new->offsetsstrm_shmid,&new->offsetsstrm_len,&seconds,
+						   filenames->offsets_filename,sizeof(UINT4),sharedp);
       if (new->offsetsstrm == NULL) {
 	fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
 	exit(9);
@@ -1065,7 +1141,11 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 	comma = Genomicpos_commafmt(new->offsetsstrm_len);
 	fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
 	FREE(comma);
-	new->offsetsstrm_access = ALLOCATED;
+	if (sharedp == true) {
+	  new->offsetsstrm_access = ALLOCATED_SHARED;
+	} else {
+	  new->offsetsstrm_access = ALLOCATED_PRIVATE;
+	}
       }
 
 #ifdef HAVE_MMAP
@@ -1150,6 +1230,7 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
       for (base = 0; base <= basespace; base++) {
 	new->offsetsmeta[base] = base;
       }
+      new->offsetsmeta_access = ALLOCATED_PRIVATE;
 
 #ifdef PMAP
       new->offsetsstrm = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,
@@ -1158,7 +1239,7 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
       new->offsetsstrm = Indexdb_offsets_from_bitpack(filenames->pointers_filename,filenames->offsets_filename,
 						      new->index1part);
 #endif
-      new->offsetsstrm_access = ALLOCATED;
+      new->offsetsstrm_access = ALLOCATED_PRIVATE;
 
 #endif
 
@@ -1200,8 +1281,13 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 	fprintf(stderr,"Allocating memory for %s offset pointers, kmer %d, interval %d...",
 		idx_filesuffix,new->index1part,new->index1interval);
       }
-      new->offsetsmeta = (UINT4 *) Access_allocated(&new->offsetsmeta_len,&seconds,
-							 filenames->pointers_filename,sizeof(UINT4));
+      new->offsetsmeta = (UINT4 *) Access_allocate(&new->offsetsmeta_shmid,&new->offsetsmeta_len,&seconds,
+						   filenames->pointers_filename,sizeof(UINT4),sharedp);
+      if (sharedp == true) {
+	new->offsetsmeta_access = ALLOCATED_SHARED;
+      } else {
+	new->offsetsmeta_access = ALLOCATED_PRIVATE;
+      }
 
       comma = Genomicpos_commafmt(new->offsetsmeta_len);
       fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
@@ -1216,8 +1302,8 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 	  fprintf(stderr,"Allocating memory for %s offsets, kmer %d, interval %d...",
 		  idx_filesuffix,new->index1part,new->index1interval);
 	}
-	new->offsetsstrm = (UINT4 *) Access_allocated(&new->offsetsstrm_len,&seconds,
-							      filenames->offsets_filename,sizeof(UINT4));
+	new->offsetsstrm = (UINT4 *) Access_allocate(&new->offsetsstrm_shmid,&new->offsetsstrm_len,&seconds,
+						     filenames->offsets_filename,sizeof(UINT4),sharedp);
 	if (new->offsetsstrm == NULL) {
 	  fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
 	  exit(9);
@@ -1225,7 +1311,11 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 	  comma = Genomicpos_commafmt(new->offsetsstrm_len);
 	  fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
 	  FREE(comma);
-	  new->offsetsstrm_access = ALLOCATED;
+	  if (sharedp == true) {
+	    new->offsetsstrm_access = ALLOCATED_SHARED;
+	  } else {
+	    new->offsetsstrm_access = ALLOCATED_PRIVATE;
+	  }
 	}
 
 #ifdef HAVE_MMAP
@@ -1238,7 +1328,7 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 		  idx_filesuffix,new->index1part,new->index1interval);
 	}
 	new->offsetsstrm = (UINT4 *) Access_mmap_and_preload(&new->offsetsstrm_fd,&new->offsetsstrm_len,&npages,&seconds,
-								     filenames->offsets_filename,sizeof(UINT4));
+							     filenames->offsets_filename,sizeof(UINT4));
 	if (new->offsetsstrm == NULL) {
 	  fprintf(stderr,"insufficient memory (will use disk file instead, but program may not run)\n");
 #ifdef PMAP
@@ -1255,7 +1345,7 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 
       } else if (offsetsstrm_access == USE_MMAP_ONLY) {
 	new->offsetsstrm = (UINT4 *) Access_mmap(&new->offsetsstrm_fd,&new->offsetsstrm_len,
-							 filenames->offsets_filename,sizeof(UINT4),/*randomp*/false);
+						 filenames->offsets_filename,sizeof(UINT4),/*randomp*/false);
 	if (new->offsetsstrm == NULL) {
 	  fprintf(stderr,"Insufficient memory for mmap of %s (will use disk file instead, but program may not run)\n",
 		  filenames->offsets_filename);
@@ -1283,8 +1373,14 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
       /* Sanity check on positions filesize */
 #ifdef LARGE_GENOMES
       if (filenames->pages_filename != NULL) {
-	new->offsetspages = (UINT4 *) Access_allocated(&offsetspages_len,&seconds,filenames->pages_filename,sizeof(UINT4));
+	new->offsetspages = (UINT4 *) Access_allocate(&new->offsetspages_shmid,&offsetspages_len,&seconds,filenames->pages_filename,sizeof(UINT4),sharedp);
+	if (sharedp == true) {
+	  new->offsetspages_access = ALLOCATED_SHARED;
+	} else {
+	  new->offsetspages_access = ALLOCATED_PRIVATE;
+	}
       } else {
+	new->offsetspages_access = ALLOCATED_PRIVATE;
 	new->offsetspages = (UINT4 *) MALLOC(1*sizeof(UINT4));
 	new->offsetspages[0] = -1U;
       }
@@ -1329,8 +1425,8 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 	      idx_filesuffix,new->index1part,new->index1interval);
     }
 #ifdef LARGE_GENOMES
-    new->positions_high = (unsigned char *) Access_allocated(&new->positions_high_len,&seconds,
-							     filenames->positions_high_filename,sizeof(unsigned char));
+    new->positions_high = (unsigned char *) Access_allocate(&new->positions_high_shmid,&new->positions_high_len,&seconds,
+							    filenames->positions_high_filename,sizeof(unsigned char),sharedp);
     if (new->positions_high == NULL) {
       fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B)\n");
       exit(9);
@@ -1339,8 +1435,8 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
       fprintf(stderr,"done (%s bytes, %.2f sec), ",comma,seconds);
       FREE(comma);
 
-      new->positions_low = (UINT4 *) Access_allocated(&new->positions_low_len,&seconds,
-						      filenames->positions_low_filename,sizeof(UINT4));
+      new->positions_low = (UINT4 *) Access_allocate(&new->positions_low_shmid,&new->positions_low_len,&seconds,
+						     filenames->positions_low_filename,sizeof(UINT4),sharedp);
       if (new->positions_low == NULL) {
 	fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B)\n");
 	exit(9);
@@ -1349,12 +1445,16 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 	fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
 	FREE(comma);
 
-	new->positions_access = ALLOCATED;
+	if (sharedp == true) {
+	  new->positions_access = ALLOCATED_SHARED;
+	} else {
+	  new->positions_access = ALLOCATED_PRIVATE;
+	}
       }
     }
 #else
-    new->positions = (UINT4 *) Access_allocated(&new->positions_len,&seconds,
-						filenames->positions_low_filename,sizeof(UINT4));
+    new->positions = (UINT4 *) Access_allocate(&new->positions_shmid,&new->positions_len,&seconds,
+					       filenames->positions_low_filename,sizeof(UINT4),sharedp);
     if (new->positions == NULL) {
       fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B)\n");
       exit(9);
@@ -1362,7 +1462,11 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
       comma = Genomicpos_commafmt(new->positions_len);
       fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
       FREE(comma);
-      new->positions_access = ALLOCATED;
+      if (sharedp == true) {
+	new->positions_access = ALLOCATED_SHARED;
+      } else {
+	new->positions_access = ALLOCATED_PRIVATE;
+      }
     }
 #endif
     
@@ -1695,13 +1799,16 @@ positions_read_backward (int positions_fd) {
 
 /* Used by non-utility programs */
 Positionsptr_T *
-Indexdb_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile, 
+Indexdb_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile,
 #ifdef PMAP
 			      int alphabet_size, Width_T index1part_aa
 #else
 			      Width_T index1part
 #endif
 			      ) {
+#ifndef HAVE_MMAP
+  int shmid;
+#endif
   UINT4 *offsetsmeta;
   UINT4 *offsetsstrm;
   int offsetsmeta_fd, offsetsstrm_fd;
@@ -1725,8 +1832,8 @@ Indexdb_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile,
   offsetsmeta = (UINT4 *) Access_mmap(&offsetsmeta_fd,&offsetsmeta_len,offsetsmetafile,sizeof(UINT4),/*randomp*/false);
   offsetsstrm = (UINT4 *) Access_mmap(&offsetsstrm_fd,&offsetsstrm_len,offsetsstrmfile,sizeof(UINT4),/*randomp*/false);
 #else
-  offsetsmeta = (UINT4 *) Access_allocated(&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4));
-  offsetsstrm = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4));
+  offsetsmeta = (UINT4 *) Access_allocate(&shmid,&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4),/*sharedp*/false);
+  offsetsstrm = (UINT4 *) Access_allocate(&shmid,&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4),/*sharedp*/false);
 #endif
 
 #ifdef OLIGOSPACE_NOT_LONG
@@ -1786,7 +1893,7 @@ Indexdb_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile,
 
 
 #if defined(HAVE_64_BIT) && defined(UTILITYP)
-/* Used by utility programs */
+/* Used by utility programs for writing indexdb */
 Hugepositionsptr_T *
 Indexdb_offsets_from_bitpack_huge (char *offsetspagesfile, char *offsetsmetafile, char *offsetsstrmfile,
 #ifdef PMAP
@@ -1798,6 +1905,8 @@ Indexdb_offsets_from_bitpack_huge (char *offsetspagesfile, char *offsetsmetafile
   UINT4 *offsetspages;
   UINT4 *offsetsmeta;
   UINT4 *offsetsstrm;
+
+  int shmid;
   int offsetsmeta_fd, offsetsstrm_fd;
   size_t offsetspages_len, offsetsmeta_len, offsetsstrm_len;
   Hugepositionsptr_T *offsets = NULL;
@@ -1814,22 +1923,21 @@ Indexdb_offsets_from_bitpack_huge (char *offsetspagesfile, char *offsetsmetafile
 #endif
 
   if (blocksize == 1) {
-    return (Hugepositionsptr_T *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(Hugepositionsptr_T));
+    return (Hugepositionsptr_T *) Access_allocate(&shmid,&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(Hugepositionsptr_T),/*sharedp*/false);
 
   } else {
-
     if (offsetspagesfile == NULL) {
       offsetspages = (UINT4 *) MALLOC(1*sizeof(UINT4));
       offsetspages[0] = -1U;
     } else {
-      offsetspages = (UINT4 *) Access_allocated(&offsetspages_len,&seconds,offsetspagesfile,sizeof(UINT4));
+      offsetspages = (UINT4 *) Access_allocate(&shmid,&offsetspages_len,&seconds,offsetspagesfile,sizeof(UINT4),/*sharedp*/false);
     }
 #ifdef HAVE_MMAP
     offsetsmeta = (UINT4 *) Access_mmap(&offsetsmeta_fd,&offsetsmeta_len,offsetsmetafile,sizeof(UINT4),/*randomp*/false);
     offsetsstrm = (UINT4 *) Access_mmap(&offsetsstrm_fd,&offsetsstrm_len,offsetsstrmfile,sizeof(UINT4),/*randomp*/false);
 #else
-    offsetsmeta = (UINT4 *) Access_allocated(&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4));
-    offsetsstrm = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4));
+    offsetsmeta = (UINT4 *) Access_allocate(&shmid,&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4),/*sharedp*/false);
+    offsetsstrm = (UINT4 *) Access_allocate(&shmid,&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4),/*sharedp*/false);
 #endif
 
 #ifdef OLIGOSPACE_NOT_LONG
@@ -1902,13 +2010,9 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T aaindex) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetsstrm_access == ALLOCATED) {
-      ptr0 = this->offsetsstrm[aaindex];
-      end0 = this->offsetsstrm[aaindex+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsetsstrm[aaindex]);
-      end0 = Bigendian_convert_uint(this->offsetsstrm[aaindex+1]);
-    }
+    /* Also holds for ALLOCATED_PRIVATE and ALLOCATED_SHARED */
+    ptr0 = Bigendian_convert_uint(this->offsetsstrm[aaindex]);
+    end0 = Bigendian_convert_uint(this->offsetsstrm[aaindex+1]);
 #else
     ptr0 = this->offsetsstrm[aaindex];
     end0 = this->offsetsstrm[aaindex+1];
@@ -1965,7 +2069,7 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T aaindex) {
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
 
-    } else if (this->positions_access == ALLOCATED) {
+    } else if (this->positions_access == ALLOCATED_PRIVATE || this->positions_access == ALLOCATED_SHARED) {
 #ifdef LARGE_GENOMES
       positions_copy_multiple_large(positions,&(this->positions_high[ptr0]),&(this->positions_low[ptr0]),*nentries);
 #else
@@ -2057,13 +2161,9 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetsstrm_access == ALLOCATED) {
-      ptr0 = this->offsetsstrm[part0];
-      end0 = this->offsetsstrm[part0+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsetsstrm[part0]);
-      end0 = Bigendian_convert_uint(this->offsetsstrm[part0+1]);
-    }
+    /* Also holds for ALLOCATED_PRIVATE and ALLOCATED_SHARED */
+    ptr0 = Bigendian_convert_uint(this->offsetsstrm[part0]);
+    end0 = Bigendian_convert_uint(this->offsetsstrm[part0+1]);
 #else
     ptr0 = this->offsetsstrm[part0];
     end0 = this->offsetsstrm[part0+1];
@@ -2123,7 +2223,7 @@ Indexdb_read (int *nentries, T this, Storedoligomer_T oligo) {
 #ifdef HAVE_PTHREAD
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
-    } else if (this->positions_access == ALLOCATED) {
+    } else if (this->positions_access == ALLOCATED_PRIVATE || this->positions_access == ALLOCATED_SHARED) {
 #ifdef LARGE_GENOMES
       positions_copy_multiple_large(positions,&(this->positions_high[ptr0]),&(this->positions_low[ptr0]),*nentries);
 #else
@@ -2210,13 +2310,9 @@ Indexdb_read_inplace (int *nentries,
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetsstrm_access == ALLOCATED) {
-      ptr0 = this->offsetsstrm[part0];
-      end0 = this->offsetsstrm[part0+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsetsstrm[part0]);
-      end0 = Bigendian_convert_uint(this->offsetsstrm[part0+1]);
-    }
+    /* Also holds for ALLOCATED_PRIVATE and ALLOCATED_SHARED */
+    ptr0 = Bigendian_convert_uint(this->offsetsstrm[part0]);
+    end0 = Bigendian_convert_uint(this->offsetsstrm[part0+1]);
 #else
     ptr0 = this->offsetsstrm[part0];
     end0 = this->offsetsstrm[part0+1];
@@ -2283,13 +2379,9 @@ Indexdb_read_with_diagterm (int *nentries, T this, Storedoligomer_T oligo, int d
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetsstrm_access == ALLOCATED) {
-      ptr0 = this->offsetsstrm[oligo];
-      end0 = this->offsetsstrm[oligo+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsetsstrm[oligo]);
-      end0 = Bigendian_convert_uint(this->offsetsstrm[oligo+1]);
-    }
+    /* Also holds for ALLOCATED_PRIVATE and ALLOCATED_SHARED */
+    ptr0 = Bigendian_convert_uint(this->offsetsstrm[oligo]);
+    end0 = Bigendian_convert_uint(this->offsetsstrm[oligo+1]);
 #else
     ptr0 = this->offsetsstrm[oligo];
     end0 = this->offsetsstrm[oligo+1];
@@ -2328,7 +2420,7 @@ Indexdb_read_with_diagterm (int *nentries, T this, Storedoligomer_T oligo, int d
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
 
-    } else if (this->positions_access == ALLOCATED) {
+    } else if (this->positions_access == ALLOCATED_PRIVATE || this->positions_access == ALLOCATED_SHARED) {
 #ifdef LARGE_GENOMES
       for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
 	positions[i++] = ((Univcoord_T) this->positions_high[ptr] << 32) + this->positions_low[ptr] + diagterm;
@@ -2387,13 +2479,9 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
 
   if (this->compression_type == NO_COMPRESSION) {
 #ifdef WORDS_BIGENDIAN
-    if (this->offsetsstrm_access == ALLOCATED) {
-      ptr0 = this->offsetsstrm[oligo];
-      end0 = this->offsetsstrm[oligo+1];
-    } else {
-      ptr0 = Bigendian_convert_uint(this->offsetsstrm[oligo]);
-      end0 = Bigendian_convert_uint(this->offsetsstrm[oligo+1]);
-    }
+    /* Also holds for ALLOCATED_PRIVATE and ALLOCATED_SHARED */
+    ptr0 = Bigendian_convert_uint(this->offsetsstrm[oligo]);
+    end0 = Bigendian_convert_uint(this->offsetsstrm[oligo+1]);
 #else
     ptr0 = this->offsetsstrm[oligo];
     end0 = this->offsetsstrm[oligo+1];
@@ -2439,7 +2527,7 @@ Indexdb_read_with_diagterm_sizelimit (int *nentries, T this, Storedoligomer_T ol
       pthread_mutex_unlock(&this->positions_read_mutex);
 #endif
 
-    } else if (this->positions_access == ALLOCATED) {
+    } else if (this->positions_access == ALLOCATED_PRIVATE || this->positions_access == ALLOCATED_SHARED) {
 #ifdef LARGE_GENOMES
       for (ptr = ptr0, i = 0; ptr < end0; ptr++) {
 	positions[i++] = ((Univcoord_T) this->positions_high[ptr] << 32) + this->positions_low[ptr] + diagterm;
@@ -2540,8 +2628,10 @@ Indexdb_new_segment (char *genomicseg,
   for (oligoi = 0; oligoi <= oligospace; oligoi++) {
     new->offsetsmeta[oligoi] = oligoi;
   }
+  new->offsetsmeta_access = ALLOCATED_PRIVATE;
 
   new->offsetsstrm = (UINT4 *) CALLOC(oligospace+1,sizeof(UINT4));
+  new->offsetsstrm_access = ALLOCATED_PRIVATE;
 
   p = genomicseg;
   while ((c = *(p++)) != '\0') {
@@ -2677,7 +2767,7 @@ Indexdb_new_segment (char *genomicseg,
     exit(9);
   }
   new->positions = (Univcoord_T *) CALLOC(totalcounts,sizeof(Univcoord_T));
-  new->positions_access = ALLOCATED;
+  new->positions_access = ALLOCATED_PRIVATE;
 
   p = genomicseg;
   while ((c = *(p++)) != '\0') {

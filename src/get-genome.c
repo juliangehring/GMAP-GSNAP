@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: get-genome.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: get-genome.c 170023 2015-07-17 16:47:21Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -72,6 +72,8 @@ static bool vareffect_p = false;
 
 /* Dump options */
 static bool dumpallp = false;
+static bool stream_chars_p = false;
+static bool stream_ints_p = false;
 static bool dumpchrp = false;
 static bool dumpchr_forsam_p = false;
 static bool dumpsegsp = false;
@@ -105,6 +107,7 @@ static struct option long_options[] = {
 
   /* Dump options */
   {"dump", no_argument, 0, 'A'},	/* dumpallp */
+  {"stream-chars", no_argument, 0, 0},	/* stream_chars_p */
   {"chromosomes", no_argument, 0, 'L'},	/* dumpchrp */
   {"forsam", no_argument, 0, 0},	/* dumpchr_forsam_p */
   {"contigs", no_argument, 0, 'I'}, /* dumpsegsp */
@@ -176,6 +179,7 @@ External map file options\n\
 \n\
 Dump options\n\
   -A, --dump              Dump entire genome in FASTA format\n\
+  --stream                Dump entire genome as a single stream of ACGTX bytes\n\
   -L, --chromosomes       List all chromosomes with universal coordinates\n\
   --forsam                List all chromosomes for use in a SAM file\n\
   -I, --contigs           List all contigs with universal coordinates\n\
@@ -393,7 +397,9 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
   Chrpos_T chrpos;
 
   /* Handle reference strain */
-  if (vareffect_p == true) {
+  if (stream_chars_p == true || stream_ints_p == true) {
+    /* Don't print a header */
+  } else if (vareffect_p == true) {
     /* Don't print a header */
   } else if (user_typestring != NULL) {
     /* Don't print a header */
@@ -475,13 +481,23 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
     Sequence_free(&genomicseg);
     FREE(chromosome1);
 
+  } else if (stream_chars_p == true) {
+    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp);
+    Sequence_stdout_stream_chars(genomicseg);
+    Sequence_free(&genomicseg);
+
+  } else if (stream_ints_p == true) {
+    genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp);
+    Sequence_stdout_stream_ints(genomicseg);
+    Sequence_free(&genomicseg);
+
   } else if (snps_root == NULL || print_snps_mode == 0 || print_snps_mode == 2) {
     genomicseg = Genome_get_segment(genome,genomicstart,genomiclength,chromosome_iit,revcomp);
     if (user_typestring == NULL) {
       if (rawp == true) {
-	Sequence_print_raw(genomicseg);
+	Sequence_stdout_raw(genomicseg);
       } else {
-	Sequence_print(stdout,genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	Sequence_stdout(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
       }
       Sequence_free(&genomicseg);
     }
@@ -493,9 +509,9 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
     genomicseg_snp = Genome_get_segment_snp(genomealt,genomicstart,genomiclength,chromosome_iit,revcomp);
     if (user_typestring == NULL) {
       if (rawp == true) {
-	Sequence_print_raw(genomicseg);
+	Sequence_stdout_raw(genomicseg);
       } else {
-	Sequence_print_alt(genomicseg,genomicseg_alt,genomicseg_snp,uppercasep,wraplength);
+	Sequence_stdout_alt(genomicseg,genomicseg_alt,genomicseg_snp,uppercasep,wraplength);
       }
       Sequence_free(&genomicseg_snp);
       Sequence_free(&genomicseg_alt);
@@ -508,9 +524,9 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
     genomicseg_snp = Genome_get_segment_snp(genomealt,genomicstart,genomiclength,chromosome_iit,revcomp);
     if (user_typestring == NULL) {
       if (rawp == true) {
-	Sequence_print_raw(genomicseg);
+	Sequence_stdout_raw(genomicseg);
       } else {
-	Sequence_print_two(genomicseg,genomicseg_snp,uppercasep,wraplength);
+	Sequence_stdout_two(genomicseg,genomicseg_snp,uppercasep,wraplength);
       }
       Sequence_free(&genomicseg_snp);
       Sequence_free(&genomicseg);
@@ -554,9 +570,9 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
 	if (nindices == 0) {
 	  /* Print reference strain */
 	  if (rawp == true) {
-	    Sequence_print_raw(genomicseg);
+	    Sequence_stdout_raw(genomicseg);
 	  } else {
-	    Sequence_print(stdout,genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	    Sequence_stdout(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
 	  }
 	  Sequence_free(&genomicseg);
 	}
@@ -601,9 +617,9 @@ print_sequence (Genome_T genome, Genome_T genomealt, Univcoord_T genomicstart, C
 		 dbversion,genomicstart+1,SEPARATOR,genomicstart+genomiclength,strain);
 	}
 	if (rawp == true) {
-	  Sequence_print_raw(genomicseg);
+	  Sequence_stdout_raw(genomicseg);
 	} else {
-	  Sequence_print(stdout,genomicseg,uppercasep,wraplength,/*trimmedp*/false);
+	  Sequence_stdout(genomicseg,uppercasep,wraplength,/*trimmedp*/false);
 	}
 	Sequence_free(&genomicseg);
 	FREE(gbuffer3);
@@ -1047,7 +1063,6 @@ int
 main (int argc, char *argv[]) {
   char *snpsdir = NULL;
   char *iitfile;
-  FILE *fp;
   Genome_T genome = NULL, genomealt = NULL;
   Univcoord_T genomicstart, chroffset;
   Chrpos_T genomiclength, chrlength, chrstart, chrend;
@@ -1062,6 +1077,10 @@ main (int argc, char *argv[]) {
   int fieldint = -1;
   int *matches, nmatches, ndivs, i, *leftflanks, *rightflanks, nleftflanks = 0, nrightflanks = 0;
   int sign;
+
+  int circular_typeint;
+  bool *circularp = NULL;
+  bool any_circular_p;
 
   char *chr, *with_colon;
   int indx;
@@ -1097,6 +1116,12 @@ main (int argc, char *argv[]) {
 
       } else if (!strcmp(long_name,"vareffect")) {
 	vareffect_p = true;
+
+      } else if (!strcmp(long_name,"stream-chars")) {
+	stream_chars_p = true;
+
+      } else if (!strcmp(long_name,"stream-ints")) {
+	stream_ints_p = true;
 
       } else {
 	/* Shouldn't reach here */
@@ -1157,7 +1182,47 @@ main (int argc, char *argv[]) {
     snpsdir = user_snpsdir;
   }
 
-  if (dumpallp == true) {
+  if (stream_chars_p == true || stream_ints_p == true) {
+    iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
+			      strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
+    sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
+    chromosome_iit = Univ_IIT_read(iitfile,/*readonlyp*/true,/*add_iit_p*/false);
+    FREE(iitfile);
+
+    circular_typeint = Univ_IIT_typeint(chromosome_iit,"circular");
+    circularp = Univ_IIT_circularp(&any_circular_p,chromosome_iit);
+
+    genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
+			uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
+
+    for (indx = 1; indx <= Univ_IIT_total_nintervals(chromosome_iit); indx++) {
+      chr = Univ_IIT_label(chromosome_iit,indx,&allocp);
+      with_colon = (char *) CALLOC(strlen(chr)+strlen(":")+1,sizeof(char));
+      sprintf(with_colon,"%s:",chr);
+      if (allocp == true) {
+	FREE(chr);
+      }
+      if (Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
+			       &chroffset,&chrlength,with_colon,genomesubdir,fileroot) == true) {
+	print_sequence(genome,/*genomealt*/NULL,genomicstart,genomiclength,chromosome_iit,
+		       /*whole_chromosome_p*/true);
+	if (circularp[indx] == true) {
+	  /* Print again, since internal genome represents circular chromosomes twice */
+	  print_sequence(genome,/*genomealt*/NULL,genomicstart,genomiclength,chromosome_iit,
+			 /*whole_chromosome_p*/true);
+	}
+      }
+      FREE(with_colon);
+    }
+
+    Genome_free(&genome);
+
+    Univ_IIT_free(&chromosome_iit);
+
+    return 0;
+
+
+  } else if (dumpallp == true) {
     iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+
 			      strlen(fileroot)+strlen(".chromosome.iit")+1,sizeof(char));
     sprintf(iitfile,"%s/%s.chromosome.iit",genomesubdir,fileroot);
@@ -1166,15 +1231,15 @@ main (int argc, char *argv[]) {
 
     if (snps_root == NULL || print_snps_mode == 0) {
       genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			  uncompressedp,/*access*/USE_MMAP_ONLY);
+			  uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     } else if (print_snps_mode == 2) {
       genome = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-			  uncompressedp,/*access*/USE_MMAP_ONLY);
+			  uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     } else if (print_snps_mode == 1 || print_snps_mode == 3) {
       genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			  uncompressedp,/*access*/USE_MMAP_ONLY);
+			  uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
       genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-			     uncompressedp,/*access*/USE_MMAP_ONLY);
+			     uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     }
 
     for (indx = 1; indx <= Univ_IIT_total_nintervals(chromosome_iit); indx++) {
@@ -1264,15 +1329,15 @@ main (int argc, char *argv[]) {
 
       if (snps_root == NULL || print_snps_mode == 0) {
 	genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			    uncompressedp,/*access*/USE_MMAP_ONLY);
+			    uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
       } else if (print_snps_mode == 2) {
 	genome = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-			    uncompressedp,/*access*/USE_MMAP_ONLY);
+			    uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
       } else if (print_snps_mode == 1 || print_snps_mode == 3) {
 	genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			    uncompressedp,/*access*/USE_MMAP_ONLY);
+			    uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
 	genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-			       uncompressedp,/*access*/USE_MMAP_ONLY);
+			       uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
       }
 
       if (Parserange_universal(&segment,&revcomp,&genomicstart,&genomiclength,&chrstart,&chrend,
@@ -1305,16 +1370,16 @@ main (int argc, char *argv[]) {
       if (exonsp == true || sequencep == true) {
 	if (snps_root == NULL || print_snps_mode == 0) {
 	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			      uncompressedp,/*access*/USE_MMAP_ONLY);
+			      uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
 	} else if (print_snps_mode == 2) {
 	  genome = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-			      uncompressedp,/*access*/USE_MMAP_ONLY);
+			      uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
 	} else if (print_snps_mode == 1 || print_snps_mode == 3) {
 	  genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			      uncompressedp,/*access*/USE_MMAP_ONLY);
+			      uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
 #if 0
 	  genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-				 uncompressedp,/*access*/USE_MMAP_ONLY);
+				 uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
 #endif
 	}
       }
@@ -1462,15 +1527,15 @@ main (int argc, char *argv[]) {
 
     if (snps_root == NULL || print_snps_mode == 0) {
       genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			  uncompressedp,/*access*/USE_MMAP_ONLY);
+			  uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     } else if (print_snps_mode == 2) {
       genome = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-			  uncompressedp,/*access*/USE_MMAP_ONLY);
+			  uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     } else if (print_snps_mode == 1 || print_snps_mode == 3) {
       genome = Genome_new(genomesubdir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			  uncompressedp,/*access*/USE_MMAP_ONLY);
+			  uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
       genomealt = Genome_new(snpsdir,fileroot,snps_root,/*genometype*/GENOME_OLIGOS,
-			     uncompressedp,/*access*/USE_MMAP_ONLY);
+			     uncompressedp,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     }
 
     iitfile = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+

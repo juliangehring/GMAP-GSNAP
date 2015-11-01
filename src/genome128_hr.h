@@ -1,4 +1,4 @@
-/* $Id: genome128_hr.h 133760 2014-04-20 05:16:56Z twu $ */
+/* $Id: genome128_hr.h 166739 2015-06-02 01:23:18Z twu $ */
 #ifndef GENOME128_HR_INCLUDED
 #define GENOME128_HR_INCLUDED
 #include "types.h"
@@ -57,11 +57,11 @@ Genome_mismatches_right_trim (int *mismatch_positions, int max_mismatches, Compr
 
 extern int
 Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_compress,
-			    Univcoord_T left, int pos5, int pos3, int mismatch_offset,
+			    Univcoord_T left, int pos5, int pos3,
 			    bool plusp, int genestrand, bool first_read_p);
 extern int
 Genome_mark_mismatches (char *genomic, int querylength, Compress_T query_compress,
-			Univcoord_T left, int pos5, int pos3, int mismatch_offset,
+			Univcoord_T left, int pos5, int pos3,
 			bool plusp, int genestrand, bool first_read_p);
 
 extern int

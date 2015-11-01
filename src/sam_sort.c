@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sam_sort.c 154454 2014-12-02 19:30:27Z twu $";
+static char rcsid[] = "$Id: sam_sort.c 155408 2014-12-16 07:00:44Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -23,6 +23,7 @@ static char rcsid[] = "$Id: sam_sort.c 154454 2014-12-02 19:30:27Z twu $";
 #include "samflags.h"
 #include "stopwatch.h"
 #include "datadir.h"
+#include "filestring.h"
 #include "getopt.h"
 
 
@@ -128,7 +129,7 @@ static bool multiple_primaries_p = false;
 
 static Stopwatch_T stopwatch = NULL;
 
-static char *sevenway_root = NULL;
+static char *split_output_root = NULL;
 static bool appendp = false;
 static FILE **outputs = NULL;
 
@@ -234,12 +235,13 @@ struct T {
   Univcoord_T genomicpos;
   Univcoord_T genomicpos_extend_softclip;
   Univcoord_T mate_genomicpos;
+  int filei;
   off_t linestart;
   int linelen;
 
   char *acc;			/* Needed for ACC_SECONDARY_SORT */
 
-  int readindex;		/* Needed only for marking duplicates to find the other queryseq */
+  int readindex;		/* inputi or outputi.  Needed for marking duplicates to find the other queryseq */
   char *queryseq5;
   char *queryseq3;
 
@@ -275,8 +277,8 @@ Cell_standardize_queryseqs (T this) {
 /* initial_softclip needs to be determined only if we are marking duplicates */
 static void
 Cell_fill (struct T *this, int readindex, unsigned int flag, SAM_split_output_type split_output,
-	   bool query_lowp, int initial_softclip, Univcoord_T genomicpos, off_t fileposition,
-	   int linelen) {
+	   bool query_lowp, int initial_softclip, Univcoord_T genomicpos,
+	   int filei, off_t fileposition, int linelen) {
 
   this->readindex = readindex;
 
@@ -287,6 +289,7 @@ Cell_fill (struct T *this, int readindex, unsigned int flag, SAM_split_output_ty
   this->genomicpos = genomicpos;
   this->genomicpos_extend_softclip = this->genomicpos - initial_softclip;
 
+  this->filei = filei;
   this->linestart = fileposition;
   this->linelen = linelen;
 
@@ -299,7 +302,7 @@ Cell_fill (struct T *this, int readindex, unsigned int flag, SAM_split_output_ty
 /* initial_softclip needs to be determined only if we are marking duplicates */
 static void
 Cell_fill_nodups (struct T *this, unsigned int flag, SAM_split_output_type split_output,
-		  Univcoord_T genomicpos, off_t fileposition, int linelen) {
+		  Univcoord_T genomicpos, int filei, off_t fileposition, int linelen) {
 
   this->readindex = 0;
 
@@ -310,6 +313,7 @@ Cell_fill_nodups (struct T *this, unsigned int flag, SAM_split_output_type split
   this->genomicpos = genomicpos;
   this->genomicpos_extend_softclip = genomicpos;
 
+  this->filei = filei;
   this->linestart = fileposition;
   this->linelen = linelen;
 
@@ -341,16 +345,40 @@ print_fromfile (FILE *fp, off_t fileposition, int linelength) {
 #endif
 
 
+
 static void
-Cell_print_fromfile (FILE *fp_input, T this) {
+Cell_print_fromfile (FILE *fp_input, T this, Filestring_T headers) {
   char buffer[CHUNK];
   int linelength = this->linelen;
   FILE *fp_output;
 
-  if (outputs == NULL) {
-    fp_output = stdout;
+#if 0
+  if (nofailsp == true && this->split_output == OUTPUT_NM) {
+    /* Skip */
+    return;
+
+  } else if (failsonlyp == true && this->split_output != OUTPUT_NM &&
+	     this->split_output != OUTPUT_HX && this->split_output != OUTPUT_UX &&
+	     this->split_output != OUTPUT_PX && this->split_output != OUTPUT_CX) {
+    return;
+  }
+
+  if (failedinput_root != NULL && primaryp(this->flag) == true) {
+    /* Convert SAM line to FASTA or FASTQ and write to a failedinput file */
+  }
+#endif
+
+  if (split_output_root == NULL) {
+    if ((fp_output = outputs[0]) == NULL) {
+      fp_output = outputs[0] = stdout;
+      Filestring_print(fp_output,headers);
+    }
+
   } else {
-    fp_output = outputs[this->split_output];
+    if ((fp_output = outputs[this->split_output]) == NULL) {
+      fp_output = outputs[this->split_output] = SAM_header_open_file(this->split_output,split_output_root,/*appendp*/false);
+      Filestring_print(fp_output,headers);
+    }
   }
 
   moveto(fp_input,this->linestart);
@@ -553,9 +581,12 @@ Cell_find (int lowi, int highi, T *cells, Univcoord_T goal, int readindex) {
 
 
 static void
-process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncells,
-		      Univ_IIT_T chromosome_iit, Univcoord_T *chroffsets) {
+process_without_dups (FILE **sam_inputs, int *headerlengths, int *ncells, int ninputs,
+		      Intlist_T linelengths, int ncells_total, Univ_IIT_T chromosome_iit,
+		      Univcoord_T *chroffsets, Filestring_T headers) {
   T *cells;
+  FILE *fp_sam;
+  int filei, linei;
   int n_mappers = 0, n_nomappers = 0;
   Intlist_T l;
   struct T *cells_allocated, *ptr;
@@ -569,61 +600,72 @@ process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int nc
 
   int acclength;
 
-  ptr = cells_allocated = (struct T *) MALLOC(ncells * sizeof(struct T));
-  cells = (T *) MALLOC(ncells * sizeof(T));
-  for (i = 0; i < ncells; i++) {
+  ptr = cells_allocated = (struct T *) MALLOC(ncells_total * sizeof(struct T));
+  cells = (T *) MALLOC(ncells_total * sizeof(T));
+  for (i = 0; i < ncells_total; i++) {
     cells[i] = &(ptr[i]);
   }
 
-  k = 0;
-  fileposition = headerlen;
-  for (l = linelengths; l != NULL; l = Intlist_next(l)) {
-    linelen = Intlist_head(l);
-    moveto(fp_sam,fileposition);
-    genomicpos = Samread_parse_genomicpos_fromfile(fp_sam,&flag,&split_output,
-						   chromosome_iit,chroffsets,linelen);
-    Cell_fill_nodups(cells[k++],flag,split_output,genomicpos,fileposition,linelen);
-    if (flag & QUERY_UNMAPPED) {
-      n_nomappers++;
-    } else {
-      n_mappers++;
-    }
-    fileposition += linelen;
-  }
+  fprintf(stderr,"Reading SAM files...\n");
 
+  k = 0;
+  l = linelengths;
+  for (filei = 0; filei < ninputs; filei++) {
+    fprintf(stderr,"  Reading file %d...",filei+1);
+    fp_sam = sam_inputs[filei];
+    fileposition = headerlengths[filei];
+    for (linei = 0; linei < ncells[filei]; linei++) {
+      linelen = Intlist_head(l);
+      moveto(fp_sam,fileposition);
+      genomicpos = Samread_parse_genomicpos_fromfile(fp_sam,&flag,&split_output,
+						     chromosome_iit,chroffsets,linelen);
+      Cell_fill_nodups(cells[k++],flag,split_output,genomicpos,filei,fileposition,linelen);
+      if (flag & QUERY_UNMAPPED) {
+	n_nomappers++;
+      } else {
+	n_mappers++;
+      }
+      fileposition += linelen;
+      l = Intlist_next(l);
+    }
+
+    fprintf(stderr,"done\n");
+  }
 
   /* Sort and print */
   if (secondary_sort_method == NO_SECONDARY_SORT) {
     Stopwatch_start(stopwatch);
     fprintf(stderr,"Sorting entries by genomicpos...");
-    qsort(cells,ncells,sizeof(T),Cell_genomicpos_cmp);
+    qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_cmp);
     fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
     Stopwatch_start(stopwatch);
     fprintf(stderr,"Printing entries...");
-    for (k = 0; k < ncells; k++) {
+    for (k = 0; k < ncells_total; k++) {
       debug(printf("%u\t%u\t%d\n",cells[k]->genomicpos,cells[k]->linestart,cells[k]->linelen));
-      Cell_print_fromfile(fp_sam,cells[k]);
+      fp_sam = sam_inputs[cells[k]->filei];
+      Cell_print_fromfile(fp_sam,cells[k],headers);
     }
     fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
   } else if (secondary_sort_method == ORIG_SECONDARY_SORT) {
     Stopwatch_start(stopwatch);
     fprintf(stderr,"Sorting entries by genomicpos and original file position...");
-    qsort(cells,ncells,sizeof(T),Cell_genomicpos_linestart_cmp);
+    qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_linestart_cmp);
     fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
     Stopwatch_start(stopwatch);
     fprintf(stderr,"Printing entries...");
-    for (k = 0; k < ncells; k++) {
-      Cell_print_fromfile(fp_sam,cells[k]);
+    for (k = 0; k < ncells_total; k++) {
+      fp_sam = sam_inputs[cells[k]->filei];
+      Cell_print_fromfile(fp_sam,cells[k],headers);
     }
     fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
   } else if (secondary_sort_method == ACC_SECONDARY_SORT) {
     Stopwatch_start(stopwatch);
     fprintf(stderr,"Sorting entries by genomicpos...");
-    qsort(cells,ncells,sizeof(T),Cell_genomicpos_cmp);
+    qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_cmp);
     fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
     Stopwatch_start(stopwatch);
@@ -637,6 +679,7 @@ process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int nc
       
       if (j > i + 1) {
 	for (k = i; k < j; k++) {
+	  fp_sam = sam_inputs[cells[k]->filei];
 	  moveto(fp_sam,cells[k]->linestart);
 	  cells[k]->acc = Samread_get_acc_fromfile(&acclength,fp_sam,cells[k]->linelen);
 	}
@@ -648,33 +691,36 @@ process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int nc
       }
       
       for (k = i; k < j; k++) {
-	Cell_print_fromfile(fp_sam,cells[k]);
+	fp_sam = sam_inputs[cells[k]->filei];
+	Cell_print_fromfile(fp_sam,cells[k],headers);
       }
       
       i = j;
     }
     
-    if (ncells > n_mappers + 1) {
-      for (k = n_mappers; k < ncells; k++) {
+    if (ncells_total > n_mappers + 1) {
+      for (k = n_mappers; k < ncells_total; k++) {
+	fp_sam = sam_inputs[cells[k]->filei];
 	moveto(fp_sam,cells[k]->linestart);
 	cells[k]->acc = Samread_get_acc_fromfile(&acclength,fp_sam,cells[k]->linelen);
       }
 	
       qsort(&(cells[n_mappers]),n_nomappers,sizeof(T),Cell_accession_cmp);
-      for (k = n_mappers; k < ncells; k++) {
+      for (k = n_mappers; k < ncells_total; k++) {
 	FREE(cells[k]->acc);
       }
     }
       
-    for (k = n_mappers; k < ncells; k++) {
-      Cell_print_fromfile(fp_sam,cells[k]);
+    for (k = n_mappers; k < ncells_total; k++) {
+      fp_sam = sam_inputs[cells[k]->filei];
+      Cell_print_fromfile(fp_sam,cells[k],headers);
     }
     fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
   } else if (secondary_sort_method == MATEFWD_SECONDARY_SORT || secondary_sort_method == MATEREV_SECONDARY_SORT) {
     Stopwatch_start(stopwatch);
     fprintf(stderr,"Sorting entries by genomicpos...");
-    qsort(cells,ncells,sizeof(T),Cell_genomicpos_cmp);
+    qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_cmp);
     fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
     Stopwatch_start(stopwatch);
@@ -700,14 +746,15 @@ process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int nc
       }
       
       for (k = i; k < j; k++) {
-	Cell_print_fromfile(fp_sam,cells[k]);
+	fp_sam = sam_inputs[cells[k]->filei];
+	Cell_print_fromfile(fp_sam,cells[k],headers);
       }
 
       i = j;
     }
       
-    if (ncells > n_mappers + 1) {
-      for (k = n_mappers; k < ncells; k++) {
+    if (ncells_total > n_mappers + 1) {
+      for (k = n_mappers; k < ncells_total; k++) {
 	moveto(fp_sam,cells[k]->linestart);
 	cells[k]->mate_genomicpos = Samread_parse_mate_genomicpos_fromfile(fp_sam,chromosome_iit,chroffsets,cells[k]->linelen);
       }
@@ -719,8 +766,9 @@ process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int nc
       }
     }
       
-    for (k = n_mappers; k < ncells; k++) {
-      Cell_print_fromfile(fp_sam,cells[k]);
+    for (k = n_mappers; k < ncells_total; k++) {
+      fp_sam = sam_inputs[cells[k]->filei];
+      Cell_print_fromfile(fp_sam,cells[k],headers);
     }
     fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
@@ -737,8 +785,11 @@ process_without_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int nc
 
 
 static int
-process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncells,
-		   Univ_IIT_T chromosome_iit, Univcoord_T *chroffsets) {
+process_with_dups (FILE **sam_inputs, int *headerlengths, int *ncells, int ninputs,
+		   Intlist_T linelengths, int ncells_total, Univ_IIT_T chromosome_iit,
+		   Univcoord_T *chroffsets, Filestring_T headers) {
+  FILE *fp_sam;
+  int filei, linei;
   int nmarked = 0;
   int n_mappers = 0, n_nomappers = 0;
   T *cells, mate;
@@ -766,12 +817,12 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 
 
   /* Actually, array lengths should be nreads, but we don't know that yet */
-  queryseq5_index = (int *) CALLOC(ncells,sizeof(int));
-  queryseq3_index = (int *) CALLOC(ncells,sizeof(int));
+  queryseq5_index = (int *) CALLOC(ncells_total,sizeof(int));
+  queryseq3_index = (int *) CALLOC(ncells_total,sizeof(int));
 
-  ptr = cells_allocated = (struct T *) MALLOC(ncells * sizeof(struct T));
-  cells = (T *) MALLOC(ncells * sizeof(T));
-  for (i = 0; i < ncells; i++) {
+  ptr = cells_allocated = (struct T *) MALLOC(ncells_total * sizeof(struct T));
+  cells = (T *) MALLOC(ncells_total * sizeof(T));
+  for (i = 0; i < ncells_total; i++) {
     cells[i] = &(ptr[i]);
   }
     
@@ -781,58 +832,68 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
   last_acclength = 0;
   readindex = -1;		/* readindex is 0-based */
 
+  fprintf(stderr,"Reading SAM files...\n");
+
   k = 0;
-  fileposition = headerlen;
-  for (l = linelengths; l != NULL; l = Intlist_next(l)) {
-    linelen = Intlist_head(l);
-    moveto(fp_sam,fileposition);
-    acc = Samread_parse_acc_and_softclip_fromfile(&acclength,&flag,&split_output,&hiti,
-						  &genomicpos,&initial_softclip,&query_lowp,
-						  fp_sam,chromosome_iit,chroffsets,linelen);
-    if (acclength != last_acclength) {
-      readindex++;
-    } else if (strcmp(acc,last_acc)) {
-      readindex++;
-    }
-    FREE(last_acc);
-    last_acc = acc;
-    last_acclength = acclength;
+  l = linelengths;
+  for (filei = 0; filei < ninputs; filei++) {
+    fprintf(stderr,"  Reading file %d...",filei+1);
+    fp_sam = sam_inputs[filei];
+    fileposition = headerlengths[filei];
+    for (linei = 0; linei < ncells[filei]; linei++) {
+      linelen = Intlist_head(l);
+      moveto(fp_sam,fileposition);
+      acc = Samread_parse_acc_and_softclip_fromfile(&acclength,&flag,&split_output,&hiti,
+						    &genomicpos,&initial_softclip,&query_lowp,
+						    fp_sam,chromosome_iit,chroffsets,linelen);
+      if (acclength != last_acclength) {
+	readindex++;
+      } else if (strcmp(acc,last_acc)) {
+	readindex++;
+      }
+      FREE(last_acc);
+      last_acc = acc;
+      last_acclength = acclength;
 
-    if (flag & QUERY_UNMAPPED) {
-      n_nomappers++;
-    } else {
-      n_mappers++;
-    }
+      if (flag & QUERY_UNMAPPED) {
+	n_nomappers++;
+      } else {
+	n_mappers++;
+      }
 
-    /* debug(printf("Read readindex %d, chrnum %d, chrpos %u, linelen %d\n",readindex,chrnum,chrpos,linelen)); */
-    if (flag & NOT_PRIMARY) {
+      /* debug(printf("Read readindex %d, chrnum %d, chrpos %u, linelen %d\n",readindex,chrnum,chrpos,linelen)); */
+      if (flag & NOT_PRIMARY) {
       /* Don't use secondary hit for accessing reads */
 
-    } else if (multiple_primaries_p == true) {
+      } else if (multiple_primaries_p == true) {
 #if 0
-      /* Now always parsed */
-      hiti = Samread_parse_aux_fromfile(fp_sam,/*auxfield*/"HI",linelen);
+	/* Now always parsed */
+	hiti = Samread_parse_aux_fromfile(fp_sam,/*auxfield*/"HI",linelen);
 #endif
-      if (strcmp(hiti,"1")) {
-	/* Don't use second or later primary hit for accessing reads */
-      } else if (flag & FIRST_READ_P) {
-	queryseq5_index[readindex] = k;
+	if (strcmp(hiti,"1")) {
+	  /* Don't use second or later primary hit for accessing reads */
+	} else if (flag & FIRST_READ_P) {
+	  queryseq5_index[readindex] = k;
+	} else {
+	  queryseq3_index[readindex] = k;
+	}
+	
       } else {
-	queryseq3_index[readindex] = k;
+	if (flag & FIRST_READ_P) {
+	  queryseq5_index[readindex] = k;
+	} else {
+	  queryseq3_index[readindex] = k;
+	}
       }
+      
+      FREE(hiti);
+      Cell_fill(cells[k++],readindex,flag,split_output,query_lowp,initial_softclip,genomicpos,filei,fileposition,linelen);
 
-    } else {
-      if (flag & FIRST_READ_P) {
-	queryseq5_index[readindex] = k;
-      } else {
-	queryseq3_index[readindex] = k;
-      }
+      fileposition += linelen;
+      l = Intlist_next(l);
     }
 
-    FREE(hiti);
-    Cell_fill(cells[k++],readindex,flag,split_output,query_lowp,initial_softclip,genomicpos,fileposition,linelen);
-
-    fileposition += linelen;
+    fprintf(stderr,"done\n");
   }
   FREE(last_acc);
 
@@ -842,7 +903,7 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
   /* Sort entries, based on genomicpos_extend_softclip */
   Stopwatch_start(stopwatch);
   fprintf(stderr,"Sorting SAM lines...");
-  qsort(cells,ncells,sizeof(T),Cell_genomicpos_extend_softclip_lowhigh_cmp);
+  qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_extend_softclip_lowhigh_cmp);
   fprintf(stderr,"done (%.1f seconds)\n",Stopwatch_stop(stopwatch));
 
   /* Mark all duplicates within mappers, based on genomicpos_extend_softclip */
@@ -869,8 +930,9 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
       /* Multiple low hits with same chrpos, so opportunity to mark duplicatep */
       /* Find queryseqs for each */
       for (k = i; k < j_low; k++) {
+	fp_sam = sam_inputs[cells[k]->filei];
 	debug9(printf("Looking for queryseqs for "));
-	debug9(Cell_print_fromfile(fp_sam,cells[k]));
+	debug9(Cell_print_fromfile(fp_sam,cells[k],headers));
 
 	if (cells[k]->flag & FIRST_READ_P) {
 	  debug9(printf("Flag for entry %d is %u, indicating a first read\n",k,cells[k]->flag));
@@ -885,8 +947,9 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 	    
 	  mate_allocated = queryseq3_index[cells[k]->readindex];
 	  mate = &(cells_allocated[mate_allocated]);
+
 	  debug9(printf("Mate is "));
-	  debug9(Cell_print_fromfile(fp_sam,mate));
+	  debug9(Cell_print_fromfile(fp_sam,mate,headers));
 	  moveto(fp_sam,mate->linestart);
 	  Samread_parse_read_fromfile(fp_sam,&flag,&readlength,&read,mate->linelen);
 	  if (mate->flag & QUERY_MINUSP) {
@@ -910,7 +973,7 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 	  mate_allocated = queryseq5_index[cells[k]->readindex];
 	  mate = &(cells_allocated[mate_allocated]);
 	  debug9(printf("Mate is "));
-	  debug9(Cell_print_fromfile(fp_sam,mate));
+	  debug9(Cell_print_fromfile(fp_sam,mate,headers));
 	  moveto(fp_sam,mate->linestart);
 	  Samread_parse_read_fromfile(fp_sam,&flag,&readlength,&read,mate->linelen);
 	  if (mate->flag & QUERY_MINUSP) {
@@ -965,8 +1028,9 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 	/* Multiple high hits with same chrpos, so opportunity to mark duplicatep */
         /* Find queryseqs for each */
 	for (k = j_low; k < j_high; k++) {
+	  fp_sam = sam_inputs[cells[k]->filei];
 	  debug9(printf("Looking for queryseqs for "));
-	  debug9(Cell_print_fromfile(fp_sam,cells[k]));
+	  debug9(Cell_print_fromfile(fp_sam,cells[k],headers));
 
 	  if (cells[k]->flag & FIRST_READ_P) {
 	    debug9(printf("Flag for entry %d is %u, indicating a first read\n",k,cells[k]->flag));
@@ -982,7 +1046,7 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 	    mate_allocated = queryseq3_index[cells[k]->readindex];
 	    mate = &(cells_allocated[mate_allocated]);
 	    debug9(printf("Mate is "));
-	    debug9(Cell_print_fromfile(fp_sam,mate));
+	    debug9(Cell_print_fromfile(fp_sam,mate,headers));
 	    moveto(fp_sam,mate->linestart);
 	    Samread_parse_read_fromfile(fp_sam,&flag,&readlength,&read,mate->linelen);
 	    if (mate->flag & QUERY_MINUSP) {
@@ -1006,7 +1070,7 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 	    mate_allocated = queryseq5_index[cells[k]->readindex];
 	    mate = &(cells_allocated[mate_allocated]);
 	    debug9(printf("Mate is "));
-	    debug9(Cell_print_fromfile(fp_sam,mate));
+	    debug9(Cell_print_fromfile(fp_sam,mate,headers));
 	    moveto(fp_sam,mate->linestart);
 	    Samread_parse_read_fromfile(fp_sam,&flag,&readlength,&read,mate->linelen);
 	    if (mate->flag & QUERY_MINUSP) {
@@ -1047,11 +1111,12 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
   }
 
   /* Mark all duplicates within nomappers, based on queryseq */
-  for (k = n_mappers; k < ncells; k++) {
+  for (k = n_mappers; k < ncells_total; k++) {
     if (duplicatep[cells[k]->readindex] == true) {
       cells[k]->queryseq5 = cells[k]->queryseq3 = NULL; /* Will be sorted to end of list */
 
     } else if (cells[k]->flag & FIRST_READ_P) {
+      fp_sam = sam_inputs[cells[k]->filei];
       moveto(fp_sam,cells[k]->linestart);
       Samread_parse_read_fromfile(fp_sam,&flag,&readlength,&read,cells[k]->linelen);
       if (cells[k]->flag & QUERY_MINUSP) {
@@ -1071,6 +1136,7 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
       Cell_standardize_queryseqs(cells[k]);
 
     } else {
+      fp_sam = sam_inputs[cells[k]->filei];
       moveto(fp_sam,cells[k]->linestart);
       Samread_parse_read_fromfile(fp_sam,&flag,&readlength,&read,cells[k]->linelen);
       if (cells[k]->flag & QUERY_MINUSP) {
@@ -1098,7 +1164,7 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
   /* Sort non-mapping entries based on queryseqs */
   qsort(&(cells[n_mappers]),n_nomappers,sizeof(T),Cell_queryseq_cmp);
 
-  for (k = n_mappers + 1; k < ncells; k++) {
+  for (k = n_mappers + 1; k < ncells_total; k++) {
     debug(printf("Comparing cell %d with %d => cmp %d\n",k,k-1,Cell_queryseq_cmp(&(cells[k]),&(cells[k-1]))));
     if (Cell_queryseq_cmp(&(cells[k]),&(cells[k-1])) == 0) {
       readindex = cells[k]->readindex;
@@ -1110,7 +1176,7 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
     }
   }
 
-  for (k = n_mappers; k < ncells; k++) {
+  for (k = n_mappers; k < ncells_total; k++) {
     FREE(cells[k]->queryseq5);
     FREE(cells[k]->queryseq3);
   }
@@ -1121,23 +1187,24 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
   Stopwatch_start(stopwatch);
   fprintf(stderr,"Re-sorting entries...");
   if (secondary_sort_method == NO_SECONDARY_SORT) {
-    qsort(cells,ncells,sizeof(T),Cell_genomicpos_cmp);
+    qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_cmp);
 
   } else if (secondary_sort_method == ORIG_SECONDARY_SORT) {
-    qsort(cells,ncells,sizeof(T),Cell_genomicpos_linestart_cmp);
+    qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_linestart_cmp);
 
   } else if (secondary_sort_method == ACC_SECONDARY_SORT) {
-    qsort(cells,ncells,sizeof(T),Cell_genomicpos_cmp);
+    qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_cmp);
 
     i = 0;
-    while (i < ncells) {
+    while (i < ncells_total) {
       j = i + 1;
-      while (j < ncells && cells[j]->genomicpos == cells[i]->genomicpos) {
+      while (j < ncells_total && cells[j]->genomicpos == cells[i]->genomicpos) {
 	j++;
       }
 
       if (j > i + 1) {
 	for (k = i; k < j; k++) {
+	  fp_sam = sam_inputs[cells[k]->filei];
 	  moveto(fp_sam,cells[k]->linestart);
 	  cells[k]->acc = Samread_get_acc_fromfile(&acclength,fp_sam,cells[k]->linelen);
 	}
@@ -1152,17 +1219,18 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 
   } else if (secondary_sort_method == MATEFWD_SECONDARY_SORT ||
 	     secondary_sort_method == MATEREV_SECONDARY_SORT) {
-    qsort(cells,ncells,sizeof(T),Cell_genomicpos_cmp);
+    qsort(cells,ncells_total,sizeof(T),Cell_genomicpos_cmp);
 
     i = 0;
-    while (i < ncells) {
+    while (i < ncells_total) {
       j = i + 1;
-      while (j < ncells && cells[j]->genomicpos == cells[i]->genomicpos) {
+      while (j < ncells_total && cells[j]->genomicpos == cells[i]->genomicpos) {
 	j++;
       }
 
       if (j > i + 1) {
 	for (k = i; k < j; k++) {
+	  fp_sam = sam_inputs[cells[k]->filei];
 	  moveto(fp_sam,cells[k]->linestart);
 	  cells[k]->mate_genomicpos = Samread_parse_mate_genomicpos_fromfile(fp_sam,chromosome_iit,chroffsets,cells[k]->linelen);
 	}
@@ -1182,9 +1250,10 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
   Stopwatch_start(stopwatch);
   fprintf(stderr,"Printing results...");
 
-  for (k = 0; k < ncells; k++) {
+  for (k = 0; k < ncells_total; k++) {
     if (duplicatep[cells[k]->readindex] == true) {
       if (print_duplicates_p == true) {
+	fp_sam = sam_inputs[cells[k]->filei];
 	moveto(fp_sam,cells[k]->linestart);
 	Samread_print_as_duplicate_fromfile(fp_sam,cells[k]->linelen);
       }
@@ -1192,7 +1261,8 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
     } else {
       if (print_unique_p == true) {
 	/* Non-duplicate */
-	Cell_print_fromfile(fp_sam,cells[k]);
+	fp_sam = sam_inputs[cells[k]->filei];
+	Cell_print_fromfile(fp_sam,cells[k],headers);
       }
     }
   }
@@ -1207,222 +1277,13 @@ process_with_dups (FILE *fp_sam, int headerlen, Intlist_T linelengths, int ncell
 }
 
 
-/* output 0 is stdout */
-#define N_SPLIT_OUTPUTS 22
-
-static void
-split_output_open (char *sevenway_root, bool appendp) {
-  char *filename;
-  char *write_mode;
-
-  if (appendp == true) {
-    write_mode = "a";
-  } else {
-    write_mode = "w";
-  }
-
-  outputs = (FILE **) MALLOC((1+N_SPLIT_OUTPUTS) * sizeof(FILE *));
-  outputs[OUTPUT_NONE] = stdout;
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".nomapping")+1,sizeof(char));
-  sprintf(filename,"%s.nomapping",sevenway_root);
-  if ((outputs[OUTPUT_NM] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_uniq")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_uniq",sevenway_root);
-  if ((outputs[OUTPUT_HU] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_circular")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_circular",sevenway_root);
-  if ((outputs[OUTPUT_HC] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_transloc")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_transloc",sevenway_root);
-  if ((outputs[OUTPUT_HT] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_mult")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_mult",sevenway_root);
-  if ((outputs[OUTPUT_HM] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".halfmapping_mult_xs")+1,sizeof(char));
-  sprintf(filename,"%s.halfmapping_mult_xs",sevenway_root);
-  if ((outputs[OUTPUT_HX] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-    
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_uniq")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_uniq",sevenway_root);
-  if ((outputs[OUTPUT_UU] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_circular")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_circular",sevenway_root);
-  if ((outputs[OUTPUT_UC] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_transloc")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_transloc",sevenway_root);
-  if ((outputs[OUTPUT_UT] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_mult")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_mult",sevenway_root);
-  if ((outputs[OUTPUT_UM] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".unpaired_mult_xs")+1,sizeof(char));
-  sprintf(filename,"%s.unpaired_mult_xs",sevenway_root);
-  if ((outputs[OUTPUT_UX] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_uniq")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_uniq",sevenway_root);
-  if ((outputs[OUTPUT_CU] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_circular")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_circular",sevenway_root);
-  if ((outputs[OUTPUT_CC] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_transloc")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_transloc",sevenway_root);
-  if ((outputs[OUTPUT_CT] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_mult")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_mult",sevenway_root);
-  if ((outputs[OUTPUT_CM] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".concordant_mult_xs")+1,sizeof(char));
-  sprintf(filename,"%s.concordant_mult_xs",sevenway_root);
-  if ((outputs[OUTPUT_CX] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_uniq_circular")+1,sizeof(char));
-  sprintf(filename,"%s.paired_uniq_circular",sevenway_root);
-  if ((outputs[OUTPUT_PC] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_uniq_inv")+1,sizeof(char));
-  sprintf(filename,"%s.paired_uniq_inv",sevenway_root);
-  if ((outputs[OUTPUT_PI] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_uniq_scr")+1,sizeof(char));
-  sprintf(filename,"%s.paired_uniq_scr",sevenway_root);
-  if ((outputs[OUTPUT_PS] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_uniq_long")+1,sizeof(char));
-  sprintf(filename,"%s.paired_uniq_long",sevenway_root);
-  if ((outputs[OUTPUT_PL] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_mult")+1,sizeof(char));
-  sprintf(filename,"%s.paired_mult",sevenway_root);
-  if ((outputs[OUTPUT_PM] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  filename = (char *) CALLOC(strlen(sevenway_root)+strlen(".paired_mult_xs")+1,sizeof(char));
-  sprintf(filename,"%s.paired_mult_xs",sevenway_root);
-  if ((outputs[OUTPUT_PX] = fopen(filename,write_mode)) == NULL) {
-    fprintf(stderr,"Cannot open file %s for writing\n",filename);
-    exit(9);
-  }
-  FREE(filename);
-
-  return;
-}
-
-static void
-split_output_close ( ) {
-  int i;
-
-  for (i = 1; i <= N_SPLIT_OUTPUTS; i++) {
-    fclose(outputs[i]);
-  }
-  return;
-}
-
-
 
 #define BUFFERLEN 1024
 
 int
 main (int argc, char *argv[]) {
-  FILE *fp_sam;
+  FILE **sam_inputs, *fp_sam;
+  int ninputs, filei;
   int nchromosomes, i;
   Univcoord_T *chroffsets;
   Chrpos_T *chrlengths;
@@ -1431,7 +1292,8 @@ main (int argc, char *argv[]) {
 
   char buffer[BUFFERLEN], *lastp, *p;
   Intlist_T linelengths;
-  int headerlen, linelen;
+  int *headerlengths, linelen;
+  Filestring_T headers = NULL;
 #ifdef DEBUG14
   Intlist_T linelengths_goldstd;
   int linelen_goldstd;
@@ -1439,7 +1301,7 @@ main (int argc, char *argv[]) {
 
   char *fileroot = NULL, *iitfile;
   Univ_IIT_T chromosome_iit;
-  int ncells, nmarked;
+  int *ncells, ncells_total, nmarked;
 
   int opt;
   extern int optind;
@@ -1460,7 +1322,7 @@ main (int argc, char *argv[]) {
 	exit(0);
 
       } else if (!strcmp(long_name,"split-output")) {
-	sevenway_root = optarg;
+	split_output_root = optarg;
       } else if (!strcmp(long_name,"append-output")) {
 	appendp = true;
 
@@ -1554,128 +1416,116 @@ main (int argc, char *argv[]) {
     FREE(chrlengths);
   }
     
-  if (sevenway_root != NULL) {
-    split_output_open(sevenway_root,appendp);
+  /* Open all outputs, even if --split-output is not used */
+  outputs = (FILE **) CALLOC((1+N_SPLIT_OUTPUTS),sizeof(FILE *));
+
+
+  /* Inputs */
+  ninputs = argc;
+  sam_inputs = (FILE **) CALLOC(ninputs,sizeof(FILE *));
+  headerlengths = (int *) CALLOC(ninputs,sizeof(int));
+  ncells = (int *) CALLOC(ninputs,sizeof(int));
+  for (filei = 0; filei < ninputs; filei++) {
+    if ((sam_inputs[filei] = fopen(argv[filei],"r")) == NULL) {
+      fprintf(stderr,"Cannot open SAM file %s\n",argv[i]);
+      exit(9);
+    }
   }
 
-
-  /* SAM file */
   stopwatch = Stopwatch_new();
-  if ((fp_sam = fopen(argv[0],"r")) == NULL) {
-    fprintf(stderr,"Cannot open SAM file %s\n",argv[0]);
-    exit(9);
-  } else {
-    Stopwatch_start(stopwatch);
-    fprintf(stderr,"Analyzing SAM file...");
-    headerlen = SAM_header_length(&lastchar,fp_sam);
-  }
-
-  /* Compute number of mappers and non-mappers */
-#ifdef DEBUG14
-  if (!feof(fp_sam)) {
-    if ((linelen = Samread_parse_linelen_fromfile(fp_sam)) > 0) {
-      linelen += 1;	/* Add 1 for char read by SAM_header_length */
-      linelengths_goldstd = Intlist_push(NULL,linelen);
-    }
-  }
-
-  while (!feof(fp_sam)) {
-    if ((linelen = Samread_parse_linelen_fromfile(fp_sam)) > 0) {
-      linelengths_goldstd = Intlist_push(linelengths_goldstd,linelen);
-    }
-  }
-  linelengths_goldstd = Intlist_reverse(linelengths_goldstd);
-
-  moveto(fp_sam,headerlen+1);	/* Simulate SAM_header_length */
-#endif
-  
-  /* Take care of char read by SAM_header_length */
-#ifdef HAVE_FSEEKO
-  fseeko(fp_sam,-1,SEEK_CUR);
-#else
-  fseek(fp_sam,-1,SEEK_CUR);
-#endif
+  Stopwatch_start(stopwatch);
+  fprintf(stderr,"Analyzing %d SAM files...\n",ninputs);
 
   linelengths = (Intlist_T) NULL;
-  ncells = 0;
-  linelen = 0;
-  fileposition = headerlen;
-  while (fgets(buffer,BUFFERLEN,fp_sam) != NULL) {
-    /* printf("Read %s\n",buffer); */
-    lastp = buffer;
-    while ((p = index(lastp,'\n')) != NULL) {
-      linelen += (p - lastp)/sizeof(char) + 1;
-#ifdef DEBUG14
-      linelengths_goldstd = Intlist_pop(linelengths_goldstd,&linelen_goldstd);
-      if (linelen == linelen_goldstd) {
-	/* fprintf(stderr,"Correct and observed linelen are %d\n",linelen); */
-      } else {
-	fprintf(stderr,"Correct linelen is %d.  Observed is %d\n",linelen_goldstd,linelen);
-	fprintf(stderr,"%s\n",buffer);
-	exit(9);
+  ncells_total = 0;
+  for (filei = 0; filei < ninputs; filei++) {
+    fp_sam = sam_inputs[filei];
+    fileposition = headerlengths[filei] = SAM_header_length(&lastchar,fp_sam); /* Ignore lastchar */
+
+    /* Take care of char read by SAM_header_length */
+#ifdef HAVE_FSEEKO
+    fseeko(fp_sam,-1,SEEK_CUR);
+#else
+    fseek(fp_sam,-1,SEEK_CUR);
+#endif
+
+    linelen = 0;
+    ncells[filei] = 0;
+    while (fgets(buffer,BUFFERLEN,fp_sam) != NULL) {
+      /* printf("Read %s\n",buffer); */
+      lastp = buffer;
+      while ((p = index(lastp,'\n')) != NULL) {
+	linelen += (p - lastp)/sizeof(char) + 1;
+
+	linelengths = Intlist_push(linelengths,linelen);
+	fileposition += linelen;
+	ncells[filei] += 1;
+
+	linelen = 0;
+	lastp = p + 1;
       }
-#endif
-      linelengths = Intlist_push(linelengths,linelen);
-      fileposition += linelen;
-      ncells++;
-
-      linelen = 0;
-      lastp = p + 1;
+      linelen += strlen(lastp);
+      /* printf("Adding %d to get linelen %d\n",strlen(buffer),linelen); */
     }
-    linelen += strlen(lastp);
-    /* printf("Adding %d to get linelen %d\n",strlen(buffer),linelen); */
-  }
 
-#ifdef DEBUG14
-  if (linelengths_goldstd != NULL) {
-    while (linelengths_goldstd != NULL) {
-      linelengths_goldstd = Intlist_pop(linelengths_goldstd,&linelen_goldstd);
-      fprintf(stderr,"Correct linelength %d is missing\n",linelen_goldstd);
+    ncells_total += ncells[filei];
+
+    if (fileposition != Access_filesize(argv[filei])) {
+      fprintf(stderr,"Something is wrong with parsing of SAM file %s\n",argv[filei]);
+      fprintf(stderr,"Final file position using sortinfo: %llu\n",(unsigned long long) fileposition);
+      fprintf(stderr,"File size of SAM output file:       %llu\n",(unsigned long long) Access_filesize(argv[0]));
+      exit(9);
+    } else {
+      fprintf(stderr,"  File %d has %d SAM lines.\n",filei+1,ncells[filei]);
     }
-    exit(9);
-  }
-#endif
-  fprintf(stderr,"done (%.1f seconds).  Found %d SAM lines.\n",Stopwatch_stop(stopwatch),ncells);
 
-  if (fileposition != Access_filesize(argv[0])) {
-    fprintf(stderr,"Something is wrong with parsing of SAM file\n");
-    fprintf(stderr,"Final file position using sortinfo: %llu\n",(unsigned long long) fileposition);
-    fprintf(stderr,"File size of SAM output file:       %llu\n",(unsigned long long) Access_filesize(argv[0]));
-    exit(9);
   }
 
-  if (ncells == 0) {
+  fprintf(stderr,"Done with analysis (%.1f seconds).  Found %d SAM lines total.\n",
+	  Stopwatch_stop(stopwatch),ncells_total);
+
+  if (ncells_total == 0) {
     /* Exit without printing header */
 
   } else if (sam_headers_p == false) {
     /* Don't print SAM headers */
 
-  } else if (sevenway_root == NULL) {
-    /* Print SAM headers to stdout */
-    moveto(fp_sam,0);
-    SAM_header_change_HD_tosorted_stdout(fp_sam,headerlen);
-
   } else {
-    /* Print SAM headers to each output */
-    moveto(fp_sam,0);
-    SAM_header_change_HD_tosorted_split(fp_sam,headerlen,outputs,N_SPLIT_OUTPUTS);
+    moveto(sam_inputs[0],0);
+    headers = SAM_header_change_HD_tosorted(sam_inputs[0],headerlengths[0]);
   }
 
   linelengths = Intlist_reverse(linelengths);
 
   if (mark_duplicates_p == false) {
-    process_without_dups(fp_sam,headerlen,linelengths,ncells,chromosome_iit,chroffsets);
+    process_without_dups(sam_inputs,headerlengths,ncells,ninputs,linelengths,ncells_total,
+			 chromosome_iit,chroffsets,headers);
   } else {
-    nmarked = process_with_dups(fp_sam,headerlen,linelengths,ncells,chromosome_iit,chroffsets);
+    nmarked = process_with_dups(sam_inputs,headerlengths,ncells,ninputs,linelengths,ncells_total,
+				chromosome_iit,chroffsets,headers);
     fprintf(stderr,"Marked %d out of %d SAM lines as duplicates (%.1f%%)\n",
-	    nmarked,ncells,100.0*(double) nmarked/(double) (ncells));
+	    nmarked,ncells_total,100.0*(double) nmarked/(double) (ncells_total));
   }
 
-  fclose(fp_sam);
-
-  if (sevenway_root != NULL) {
-    split_output_close();
+  for (filei = 0; filei < ninputs; filei++) {
+    fclose(sam_inputs[filei]);
   }
+  FREE(sam_inputs);
+  FREE(headerlengths);
+  FREE(ncells);
+
+  if (headers != NULL) {
+    Filestring_free(&headers);
+  }
+
+  /* SAM_header_touch(outputs,split_output_root,appendp); -- Don't want to destroy other SAM files */
+  for (i = 1; i <= N_SPLIT_OUTPUTS; i++) {
+    if (outputs[i] != NULL) {
+      fclose(outputs[i]);
+    }
+  }
+  FREE(outputs);
+
 
   Intlist_free(&linelengths);
 

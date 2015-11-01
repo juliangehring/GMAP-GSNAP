@@ -1,4 +1,4 @@
-/* $Id: stage1hr.h 154778 2014-12-06 03:32:33Z twu $ */
+/* $Id: stage1hr.h 173896 2015-09-12 00:11:40Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
 
@@ -58,8 +58,9 @@ Stage1_free (T *old, int querylength);
 extern Stage3end_T *
 Stage1_single_read (int *npaths, int *first_absmq, int *second_absmq,
 		    Shortread_T queryseq, Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev,
-		    int indexdb_size_threshold, Genome_T genome, Floors_T *floors_array,
-		    double usermax_level_float, int indel_penalty_middle, int indel_penalty_end,
+		    int indexdb_size_threshold, Floors_T *floors_array,
+		    double user_maxlevel_float, double user_mincoverage_float,
+		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
 		    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
@@ -73,8 +74,9 @@ Stage1_paired_read (int *npaths, int *first_absmq, int *second_absmq, Pairtype_T
 		    Stage3end_T **stage3array3, int *nhits3, int *first_absmq3, int *second_absmq3,
 		    Shortread_T queryseq5, Shortread_T queryseq3,
 		    Indexdb_T indexdb_fwd, Indexdb_T indexdb_rev, int indexdb_size_threshold,
-		    Genome_T genome, Floors_T *floors_array,
-		    double usermax_level_float, int indel_penalty_middle, int indel_penalty_end,
+		    Floors_T *floors_array,
+		    double usermax_level_float, double user_mincoverage_float,
+		    int indel_penalty_middle, int indel_penalty_end,
 		    bool allow_end_indels_p, int max_end_insertions, int max_end_deletions, int min_indel_end_matches,
 		    int localsplicing_penalty, int distantsplicing_penalty, int min_shortend,
 		    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
@@ -88,14 +90,14 @@ Stage1hr_cleanup ();
 extern void
 Stage1hr_setup (bool use_sarray_p_in, bool use_only_sarray_p_in, int index1part_in, int index1interval_in,
 		int spansize_in, Univ_IIT_T chromosome_iit_in, int nchromosomes_in,
-		Genome_T genomealt, Mode_T mode_in, int maxpaths_search_in,
-		int terminal_threshold_in, int reject_trimlength,
+		Genome_T genome_in, Genome_T genomealt, Mode_T mode_in, int maxpaths_search_in,
 
 		Univcoord_T *splicesites_in, Splicetype_T *splicetypes_in,
 		Chrpos_T *splicedists_in, int nsplicesites_in,
 
-		bool novelsplicingp_in, bool knownsplicingp_in, bool distances_observed_p_in,
-		int subopt_levels_in, Chrpos_T max_middle_insertions_in, Chrpos_T max_middle_deletions_in,
+		bool novelsplicingp_in, bool knownsplicingp_in, bool find_dna_chimeras_p_in,
+		bool distances_observed_p_in, int subopt_levels_in,
+		Chrpos_T max_middle_insertions_in, Chrpos_T max_middle_deletions_in,
 		Chrpos_T shortsplicedist_in, Chrpos_T shortsplicedist_known_in, Chrpos_T shortsplicedist_novelend_in,
 		Chrpos_T min_intronlength_in,
 

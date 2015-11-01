@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: segmentpos.c 138719 2014-06-11 17:07:13Z twu $";
+static char rcsid[] = "$Id: segmentpos.c 155282 2014-12-12 19:42:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -86,8 +86,8 @@ Segmentpos_free (T *old) {
 }
 
 void
-Segmentpos_print (FILE *fp, T this, char *acc, Univcoord_T chroffset) {
-  fprintf(fp,"%s\t%u\t%s\t%u\t%u\n",acc,chroffset+this->chrpos1,Chrom_string(this->chrom),this->chrpos1,this->length);
+Segmentpos_print (Filestring_T fp, T this, char *acc, Univcoord_T chroffset) {
+  FPRINTF(fp,"%s\t%u\t%s\t%u\t%u\n",acc,chroffset+this->chrpos1,Chrom_string(this->chrom),this->chrpos1,this->length);
   return;
 }
 
@@ -227,7 +227,7 @@ contig_print_p (Univ_IIT_T contig_iit, int contig_straintype, bool referencealig
 
 
 void
-Segmentpos_print_accessions (FILE *fp, Univ_IIT_T contig_iit, Univcoord_T position1,
+Segmentpos_print_accessions (Filestring_T fp, Univ_IIT_T contig_iit, Univcoord_T position1,
 			     Univcoord_T position2, bool referencealignp, 
                              char *align_strain) {
   Univcoord_T contig_start;
@@ -239,7 +239,7 @@ Segmentpos_print_accessions (FILE *fp, Univ_IIT_T contig_iit, Univcoord_T positi
   Univinterval_T interval;
   bool printreferencep, printaltp, firstprintp = false, allocp;
 
-  fprintf(fp,"    Accessions: ");
+  FPRINTF(fp,"    Accessions: ");
 
   indices = Univ_IIT_get(&nindices,contig_iit,position1,position2);
   if (referencealignp == true) {
@@ -276,39 +276,26 @@ Segmentpos_print_accessions (FILE *fp, Univ_IIT_T contig_iit, Univcoord_T positi
       comma2 = Genomicpos_commafmt((Univcoord_T) (relend + ONEBASEDP));
       
       if (firstprintp == true) {
-	printf("; ");
+	FPRINTF(fp,"; ");
       } else {
 	firstprintp = true;
       }
 
-#if 0
-      if (IIT_version(contig_iit) <= 1) {
-	firstchar = IIT_annotation_firstchar(contig_iit,index);
-	if (firstchar == '-') {
-	  printf("[-]");
-	}
-      } else {
-	if (Interval_sign(interval) < 0) {
-	  printf("[-]");
-	}
-      }
-#else
       firstchar = Univ_IIT_annotation_firstchar(contig_iit,index);
       if (firstchar == '-') {
-	printf("[-]");
+	FPRINTF(fp,"[-]");
       }
-#endif
 
       label = Univ_IIT_label(contig_iit,index,&allocp);
-      fprintf(fp,"%s",label);
+      FPRINTF(fp,"%s",label);
       if (allocp == true) {
 	FREE(label);
       }
 
       if (referencealignp == false && contig_straintype == 0) {
-	fprintf(fp,"[reference strain]");
+	FPRINTF(fp,"[reference strain]");
       }
-      fprintf(fp,":%s%s%s (out of %u bp)",comma1,SEPARATOR,comma2,contig_length);
+      FPRINTF(fp,":%s%s%s (out of %u bp)",comma1,SEPARATOR,comma2,contig_length);
 
       FREE(comma2);
       FREE(comma1);
@@ -317,7 +304,7 @@ Segmentpos_print_accessions (FILE *fp, Univ_IIT_T contig_iit, Univcoord_T positi
     }
     j++;
   }
-  fprintf(fp,"\n");
+  FPRINTF(fp,"\n");
 
   if (indices != NULL) {
     FREE(indices);

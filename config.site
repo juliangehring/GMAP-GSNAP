@@ -100,6 +100,11 @@
 ## CFLAGS='-O3 -m64'   (for Macintosh machines)
 
 
+## Debugging and optimization options for the MPICC compiler, used
+## for the MPI versions of the programs.
+## MPI_CFLAGS='-mpitrace'
+
+
 ## Search directory for header files ('-IDIR') and any other
 ## miscellaneous options for the C preprocessor and compiler.
 ## CPPFLAGS=-I/usr/local/include

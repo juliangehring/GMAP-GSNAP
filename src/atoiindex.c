@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: atoiindex.c 142098 2014-07-22 03:11:00Z twu $";
+static char rcsid[] = "$Id: atoiindex.c 167263 2015-06-10 23:59:15Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -100,6 +100,7 @@ static struct option long_options[] = {
   {"sampling", required_argument, 0, 'q'}, /* required_interval */
   {"db", required_argument, 0, 'd'}, /* dbroot */
   {"usesnps", required_argument, 0, 'v'}, /* snps_root */
+  {"build-sarray", required_argument, 0, 0}, /* build_suffix_array_p */
 
   /* Help options */
   {"version", no_argument, 0, 0}, /* print_program_version */
@@ -769,6 +770,7 @@ main (int argc, char *argv[]) {
   UINT4 *ref_positions4;
   Oligospace_T oligospace;
   bool coord_values_8p;
+  int shmid;
 
   /* For suffix array */
   Univcoord_T genomelength;
@@ -815,6 +817,17 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(long_name,"help")) {
 	print_program_usage();
 	exit(0);
+
+      } else if (!strcmp(long_name,"build-sarray")) {
+	if (!strcmp(optarg,"0")) {
+	  build_suffix_array_p = false;
+	} else if (!strcmp(optarg,"1")) {
+	  build_suffix_array_p = true;
+	} else {
+	  fprintf(stderr,"Argument to --build-sarray must be 0 or 1\n");
+	  exit(9);
+	}
+
       } else {
 	/* Shouldn't reach here */
 	fprintf(stderr,"Don't recognize option %s.  For usage, run 'atoiindex --help'",long_name);
@@ -890,10 +903,12 @@ main (int argc, char *argv[]) {
     ref_positions8_low = (UINT4 *) Access_mmap(&ref_positions_low_fd,&ref_positions_low_len,
 					       filenames->positions_low_filename,sizeof(UINT4),/*randomp*/false);
 #else
-    ref_positions8_high = (unsigned char *) Access_allocated(&ref_positions_high_len,&seconds,
-							     filenames->positions_high_filename,sizeof(unsigned char));
-    ref_positions8_low = (UINT4 *) Access_allocated(&ref_positions_low_len,&seconds,
-						     filenames->positions_low_filename,sizeof(UINT4));
+    ref_positions8_high = (unsigned char *) Access_allocate(&shmid,&ref_positions_high_len,&seconds,
+							    filenames->positions_high_filename,sizeof(unsigned char),
+							    /*sharedp*/false);
+    ref_positions8_low = (UINT4 *) Access_allocate(&shmid,&ref_positions_low_len,&seconds,
+						   filenames->positions_low_filename,sizeof(UINT4),
+						   /*sharedp*/false);
 #endif
     /* Unpack */
     totalcounts = ref_positions_high_len/sizeof(unsigned char);
@@ -920,8 +935,9 @@ main (int argc, char *argv[]) {
     ref_positions4 = (UINT4 *) Access_mmap(&ref_positions_low_fd,&ref_positions_low_len,
 					   filenames->positions_low_filename,sizeof(UINT4),/*randomp*/false);
 #else
-    ref_positions4 = (UINT4 *) Access_allocated(&ref_positions_low_len,&seconds,
-						filenames->positions_low_filename,sizeof(UINT4));
+    ref_positions4 = (UINT4 *) Access_allocate(&shmid,&ref_positions_low_len,&seconds,
+					       filenames->positions_low_filename,sizeof(UINT4),
+					       /*sharedp*/false);
 #endif
   }
 
@@ -971,7 +987,7 @@ main (int argc, char *argv[]) {
     sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.sarray")+1,sizeof(char));
     sprintf(sarrayfile,"%s/%s.a2iag.sarray",destdir,fileroot);
     genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
-			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     gbuffer = (unsigned char *) CALLOC(genomelength+1,sizeof(unsigned char));
     Genome_fill_buffer_int_string(genomecomp,/*left*/0,/*length*/genomelength,gbuffer,ag_conversion);
     gbuffer[genomelength] = 0;	/* Tried N/X, but SACA_K fails */
@@ -993,7 +1009,7 @@ main (int argc, char *argv[]) {
     /* Not needed if we already have gbuffer */
     /* Required for computing LCP, but uses non-SIMD instructions */
     genomebits = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
-			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/NULL,
 		    /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/false,
 		    /*mode*/ATOI_STRANDED);
@@ -1025,12 +1041,13 @@ main (int argc, char *argv[]) {
     /* Assume we have lcp_bytes already in memory.  Don't need to use guide for speed. */
     lcpguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.salcpguide1024")+1,sizeof(char));
     sprintf(lcpguidefile,"%s/%s.a2iag.salcpguide1024",destdir,fileroot);
-    lcp_guide = (UINT4 *) Access_allocated(&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4));
+    lcp_guide = (UINT4 *) Access_allocate(&shmid,&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4),
+					  /*sharedp*/false);
     FREE(lcpguidefile);
 
     lcpexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2iag.salcpexc")+1,sizeof(char));
     sprintf(lcpexcfile,"%s/%s.a2iag.salcpexc",destdir,fileroot);
-    lcp_exceptions = (UINT4 *) Access_allocated(&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4));
+    lcp_exceptions = (UINT4 *) Access_allocate(&shmid,&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4),/*sharedp*/false);
     n_lcp_exceptions = lcpexc_len/(sizeof(UINT4) + sizeof(UINT4));
     FREE(lcpexcfile);
 
@@ -1134,7 +1151,7 @@ main (int argc, char *argv[]) {
     /* Not needed if we already have gbuffer */
     /* Required for computing LCP, but uses non-SIMD instructions */
     genomebits = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
-			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
+			    /*uncompressedp*/false,/*access*/USE_MMAP_ONLY,/*sharedp*/false);
     Genome_hr_setup(Genome_blocks(genomebits),/*snp_blocks*/NULL,
 		    /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/false,
 		    /*mode*/ATOI_STRANDED);
@@ -1166,12 +1183,12 @@ main (int argc, char *argv[]) {
     /* Assume we have lcp_bytes already in memory.  Don't need to use guide for speed. */
     lcpguidefile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.salcpguide1024")+1,sizeof(char));
     sprintf(lcpguidefile,"%s/%s.a2itc.salcpguide1024",destdir,fileroot);
-    lcp_guide = (UINT4 *) Access_allocated(&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4));
+    lcp_guide = (UINT4 *) Access_allocate(&shmid,&lcpguide_len,&seconds,lcpguidefile,sizeof(UINT4),/*sharedp*/false);
     FREE(lcpguidefile);
 
     lcpexcfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".a2itc.salcpexc")+1,sizeof(char));
     sprintf(lcpexcfile,"%s/%s.a2itc.salcpexc",destdir,fileroot);
-    lcp_exceptions = (UINT4 *) Access_allocated(&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4));
+    lcp_exceptions = (UINT4 *) Access_allocate(&shmid,&lcpexc_len,&seconds,lcpexcfile,sizeof(UINT4),/*sharedp*/false);
     n_lcp_exceptions = lcpexc_len/(sizeof(UINT4) + sizeof(UINT4));
     FREE(lcpexcfile);
 

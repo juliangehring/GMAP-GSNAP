@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: list.c 161598 2015-03-21 02:37:54Z twu $";
+static char rcsid[] = "$Id: list.c 166641 2015-05-29 21:13:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -307,6 +307,16 @@ List_last_value (T this) {
     last = r;
   }
   return last->first;
+}
+
+T
+List_last_item (T this) {
+  T last = NULL, r;
+
+  for (r = this; r != NULL; r = r->rest) {
+    last = r;
+  }
+  return last;
 }
 
 void *

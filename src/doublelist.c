@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: doublelist.c 155502 2014-12-16 22:22:35Z twu $";
+static char rcsid[] = "$Id: doublelist.c 166641 2015-05-29 21:13:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -195,5 +195,16 @@ Doublelist_min (T this) {
     }
   }
   return minvalue;
+}  
+
+
+void
+Doublelist_print (T this) {
+  T p;
+
+  for (p = this; p; p = p->rest) {
+    printf("%f\n",this->first);
+  }
+  return;
 }  
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb-write.c 153955 2014-11-24 17:54:45Z twu $";
+static char rcsid[] = "$Id: indexdb-write.c 165969 2015-05-20 00:18:07Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,6 +24,7 @@ static char rcsid[] = "$Id: indexdb-write.c 153955 2014-11-24 17:54:45Z twu $";
 #include <string.h>		/* For memset */
 #include <ctype.h>		/* For toupper */
 #include <sys/mman.h>		/* For munmap */
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>		/* For lseek and close */
 #endif
@@ -116,6 +117,7 @@ power (int base, int exponent) {
 static void
 check_bitpack (char *offsetsmetafile, char *offsetsstrmfile,
 	       Oligospace_T oligospace, Blocksize_T blocksize) {
+  int shmid;
   UINT4 *offsetsmeta, *offsetsstrm, *info;
   int offsetsmeta_fd, offsetsstrm_fd;
   size_t offsetsmeta_len, offsetsstrm_len;
@@ -130,8 +132,8 @@ check_bitpack (char *offsetsmetafile, char *offsetsstrmfile,
   offsetsmeta = (UINT4 *) Access_mmap(&offsetsmeta_fd,&offsetsmeta_len,offsetsmetafile,sizeof(UINT4),/*randomp*/false);
   offsetsstrm = (UINT4 *) Access_mmap(&offsetsstrm_fd,&offsetsstrm_len,offsetsstrmfile,sizeof(UINT4),/*randomp*/false);
 #else
-  offsetsmeta = (UINT4 *) Access_allocated(&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4));
-  offsetsstrm = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4));
+  offsetsmeta = (UINT4 *) Access_allocate(&shmid,&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4),/*sharedp*/false);
+  offsetsstrm = (UINT4 *) Access_allocate(&shmid,&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4),/*sharedp*/false);
 #endif
 
   for (oligo = 0; oligo < oligospace; oligo += blocksize) {
@@ -165,6 +167,7 @@ check_bitpack (char *offsetsmetafile, char *offsetsstrmfile,
 static void
 check_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile, Positionsptr_T *offsets,
 			    Oligospace_T oligospace, Blocksize_T blocksize) {
+  int shmid;
   UINT4 *offsetsmeta;
   UINT4 *offsetsstrm;
   Positionsptr_T offsets_decoded[MAX_BITPACK_BLOCKSIZE+1];
@@ -180,8 +183,8 @@ check_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile, Positi
   offsetsmeta = (UINT4 *) Access_mmap(&offsetsmeta_fd,&offsetsmeta_len,offsetsmetafile,sizeof(UINT4),/*randomp*/false);
   offsetsstrm = (UINT4 *) Access_mmap(&offsetsstrm_fd,&offsetsstrm_len,offsetsstrmfile,sizeof(UINT4),/*randomp*/false);
 #else
-  offsetsmeta = (UINT4 *) Access_allocated(&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4));
-  offsetsstrm = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4));
+  offsetsmeta = (UINT4 *) Access_allocate(&shmid,&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4),/*sharedp*/false);
+  offsetsstrm = (UINT4 *) Access_allocate(&shmid,&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4),/*sharedp*/false);
 #endif
 
   for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
@@ -220,6 +223,7 @@ check_offsets_from_bitpack (char *offsetsmetafile, char *offsetsstrmfile, Positi
 static void
 check_offsets_from_bitpack_huge (char *offsetspagesfile, char *offsetsmetafile, char *offsetsstrmfile,
 				 Hugepositionsptr_T *offsets, Oligospace_T oligospace, Blocksize_T blocksize) {
+  int shmid;
   UINT4 *offsetspages;
   UINT4 *offsetsmeta;
   UINT4 *offsetsstrm;
@@ -230,13 +234,13 @@ check_offsets_from_bitpack_huge (char *offsetspagesfile, char *offsetsmetafile, 
   double seconds;
 
 
-  offsetspages = (UINT4 *) Access_allocated(&offsetspages_len,&seconds,offsetspagesfile,sizeof(UINT4));
+  offsetspages = (UINT4 *) Access_allocate(&shmid,&offsetspages_len,&seconds,offsetspagesfile,sizeof(UINT4),/*sharedp*/false);
 #ifdef HAVE_MMAP
   offsetsmeta = (UINT4 *) Access_mmap(&offsetsmeta_fd,&offsetsmeta_len,offsetsmetafile,sizeof(UINT4),/*randomp*/false);
   offsetsstrm = (UINT4 *) Access_mmap(&offsetsstrm_fd,&offsetsstrm_len,offsetsstrmfile,sizeof(UINT4),/*randomp*/false);
 #else
-  offsetsmeta = (UINT4 *) Access_allocated(&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4));
-  offsetsstrm = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4));
+  offsetsmeta = (UINT4 *) Access_allocate(&shmid,&offsetsmeta_len,&seconds,offsetsmetafile,sizeof(UINT4),/*sharedp*/false);
+  offsetsstrm = (UINT4 *) Access_allocate(&shmid,&offsetsstrm_len,&seconds,offsetsstrmfile,sizeof(UINT4),/*sharedp*/false);
 #endif
 
   for (oligoi = 0UL; oligoi < oligospace; oligoi += blocksize) {
@@ -1961,9 +1965,10 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
 #else
 			 int index1part,
 #endif
-			 int index1interval, bool genome_lc_p, bool writefilep,
+			 int index1interval, Univcoord_T genomelength, bool genome_lc_p, bool writefilep,
 			 char *fileroot, bool mask_lowercase_p, int compression_type,
 			 bool coord_values_8p) {
+  int shmid;
   FILE *positions_high_fp, *positions_low_fp; /* For building positions in memory */
   int positions_high_fd, positions_low_fd; /* For building positions in file */
   Positionsptr_T *offsets = NULL, totalcounts, count;
@@ -1986,21 +1991,37 @@ Indexdb_write_positions (char *positionsfile_high, char *positionsfile_low, char
   if (compression_type == BITPACK64_COMPRESSION) {
     offsets = Indexdb_offsets_from_bitpack(pointersfile,offsetsfile,alphabet_size,index1part_aa);
   } else {
-    offsets = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsfile,sizeof(UINT4));
+    offsets = (UINT4 *) Access_allocate(&shmid,&offsetsstrm_len,&seconds,offsetsfile,sizeof(UINT4),/*sharedp*/false);
   }
   oligospace = power(alphabet_size,index1part_aa);
 #else
   if (compression_type == BITPACK64_COMPRESSION) {
     offsets = Indexdb_offsets_from_bitpack(pointersfile,offsetsfile,index1part);
   } else {
-    offsets = (UINT4 *) Access_allocated(&offsetsstrm_len,&seconds,offsetsfile,sizeof(UINT4));
+    offsets = (UINT4 *) Access_allocate(&shmid,&offsetsstrm_len,&seconds,offsetsfile,sizeof(UINT4),/*sharedp*/false);
   }
   oligospace = power(4,index1part);
 #endif
   totalcounts = offsets[oligospace];
   if (totalcounts == 0) {
-    fprintf(stderr,"Something is wrong with the offsets file.  Total counts is zero.\n");
-    exit(9);
+    if (genomelength > index1part) {
+      fprintf(stderr,"Something is wrong with the offsets file.  Total counts is zero.\n");
+      exit(9);
+    } else {
+      FREE(offsets);
+#if 0
+      if ((positions_high_fp = FOPEN_WRITE_BINARY(positionsfile_high)) == NULL) {
+	fprintf(stderr,"Can't open file %s\n",positionsfile_high);
+	exit(9);
+      } else if ((positions_low_fp = FOPEN_WRITE_BINARY(positionsfile_low)) == NULL) {
+	fprintf(stderr,"Can't open file %s\n",positionsfile_low);
+	exit(9);
+      }
+      fclose(positions_high_fp);
+      fclose(positions_low_fp);
+#endif
+      return;
+    }
   }
 
   if (writefilep == true) {
@@ -2213,7 +2234,7 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 #else
 			      int index1part,
 #endif
-			      int index1interval, bool genome_lc_p, bool writefilep,
+			      int index1interval, Univcoord_T genomelength, bool genome_lc_p, bool writefilep,
 			      char *fileroot, bool mask_lowercase_p, int compression_type,
 			      bool coord_values_8p) {
   FILE *positions_high_fp, *positions_low_fp; /* For building positions in memory */
@@ -2242,8 +2263,24 @@ Indexdb_write_positions_huge (char *positionsfile_high, char *positionsfile_low,
 #endif
   totalcounts = offsets[oligospace];
   if (totalcounts == 0) {
-    fprintf(stderr,"Something is wrong with the offsets file.  Total counts is zero.\n");
-    exit(9);
+    if (genomelength > index1part) {
+      fprintf(stderr,"Something is wrong with the offsets file.  Total counts is zero.\n");
+      exit(9);
+    } else {
+      FREE(offsets);
+#if 0
+      if ((positions_high_fp = FOPEN_WRITE_BINARY(positionsfile_high)) == NULL) {
+	fprintf(stderr,"Can't open file %s\n",positionsfile_high);
+	exit(9);
+      } else if ((positions_low_fp = FOPEN_WRITE_BINARY(positionsfile_low)) == NULL) {
+	fprintf(stderr,"Can't open file %s\n",positionsfile_low);
+	exit(9);
+      }
+      fclose(positions_high_fp);
+      fclose(positions_low_fp);
+#endif
+      return;
+    }
   }
 
   if (writefilep == true) {

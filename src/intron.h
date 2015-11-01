@@ -1,6 +1,7 @@
-/* $Id: intron.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: intron.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef INTRON_INCLUDED
 #define INTRON_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "iit-read.h"

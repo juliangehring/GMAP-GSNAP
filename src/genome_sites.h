@@ -1,6 +1,7 @@
-/* $Id: genome_sites.h 106198 2013-08-28 23:07:34Z twu $ */
+/* $Id: genome_sites.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef GENOME_SITES_INCLUDED
 #define GENOME_SITES_INCLUDED
+
 #include "bool.h"
 #include "types.h"
 #include "genomicpos.h"

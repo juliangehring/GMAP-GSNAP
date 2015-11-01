@@ -1,10 +1,11 @@
-static char rcsid[] = "$Id: resulthr.c 109569 2013-09-30 22:55:30Z twu $";
+static char rcsid[] = "$Id: resulthr.c 155282 2014-12-12 19:42:54Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
 #include "resulthr.h"
 #include <stdlib.h>
+#include "assert.h"
 #include "mem.h"
 #include "stage3hr.h"
 
@@ -31,6 +32,10 @@ struct T {
   int first_absmq2;
   int second_absmq2;
   double worker_runtime;
+
+  SAM_split_output_type split_output;
+  int strlength;
+  char *string;
 };
 
 
@@ -119,8 +124,7 @@ Result_worker_runtime (T this) {
 
 
 T
-Result_single_read_new (int id, void **resultarray, int npaths, int first_absmq, int second_absmq,
-			double worker_runtime) {
+Result_single_read_new (int id, void **resultarray, int npaths, int first_absmq, int second_absmq) {
   T new = (T) MALLOC_OUT(sizeof(*new));
   Stage3end_T stage3end;
 
@@ -156,14 +160,13 @@ Result_single_read_new (int id, void **resultarray, int npaths, int first_absmq,
   new->npaths = npaths;
   new->first_absmq = first_absmq;
   new->second_absmq = second_absmq;
-  new->worker_runtime = worker_runtime;
 
   return new;
 }
 
 T
 Result_paired_read_new (int id, void **resultarray, int npaths, int first_absmq, int second_absmq,
-			Pairtype_T final_pairtype, double worker_runtime) {
+			Pairtype_T final_pairtype) {
   T new = (T) MALLOC_OUT(sizeof(*new));
   Stage3pair_T stage3pair;
 
@@ -211,15 +214,13 @@ Result_paired_read_new (int id, void **resultarray, int npaths, int first_absmq,
   new->npaths = npaths;
   new->first_absmq = first_absmq;
   new->second_absmq = second_absmq;
-  new->worker_runtime = worker_runtime;
 
   return new;
 }
 
 T
 Result_paired_as_singles_new (int id, void **hits5, int npaths5, int first_absmq5, int second_absmq5,
-			      void **hits3, int npaths3, int first_absmq3, int second_absmq3,
-			      double worker_runtime) {
+			      void **hits3, int npaths3, int first_absmq3, int second_absmq3) {
   T new = (T) MALLOC_OUT(sizeof(*new));
   Stage3end_T stage3end_5, stage3end_3;
 
@@ -271,7 +272,6 @@ Result_paired_as_singles_new (int id, void **hits5, int npaths5, int first_absmq
   new->npaths2 = npaths3;
   new->first_absmq2 = first_absmq3;
   new->second_absmq2 = second_absmq3;
-  new->worker_runtime = worker_runtime;
 
   return new;
 }
@@ -319,5 +319,6 @@ Result_free (T *old) {
 
   return;
 }
+
 
 

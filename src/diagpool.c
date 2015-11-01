@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diagpool.c 128119 2014-02-20 22:07:04Z twu $";
+static char rcsid[] = "$Id: diagpool.c 166641 2015-05-29 21:13:04Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -181,6 +181,7 @@ Diagpool_push (List_T list, T this, int diagonal, int querystart, int queryend, 
   diag->queryend = queryend;
   diag->nconsecutive = nconsecutive;
   diag->dominatedp = false;
+  diag->score = 0.0;
 
   debug(printf("Creating %p: %d %d..%d\n",diag,diag->diagonal,diag->querystart,diag->queryend));
 
@@ -216,3 +217,25 @@ Diagpool_pop (List_T list, Diag_T *x) {
 }
 
 
+List_T
+Diagpool_push_existing (List_T list, T this, Diag_T diag) {
+  List_T listcell;
+  List_T p;
+  int n;
+
+  if (this->listcellctr >= this->nlistcells) {
+    this->listcellptr = add_new_listcellchunk(this);
+  } else if ((this->listcellctr % CHUNKSIZE) == 0) {
+    for (n = this->nlistcells - CHUNKSIZE, p = this->listcellchunks;
+	 n > this->listcellctr; p = p->rest, n -= CHUNKSIZE) ;
+    this->listcellptr = (struct List_T *) p->first;
+    debug1(printf("Located listcell %d at %p\n",this->listcellctr,this->listcellptr));
+  }
+  listcell = this->listcellptr++;
+  this->listcellctr++;
+
+  listcell->first = (void *) diag;
+  listcell->rest = list;
+
+  return listcell;
+}

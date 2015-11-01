@@ -1,4 +1,4 @@
-/* $Id: indexdbdef.h 157232 2015-01-22 18:55:31Z twu $ */
+/* $Id: indexdbdef.h 161940 2015-03-25 20:36:59Z twu $ */
 #ifndef INDEXDBDEF_INCLUDED
 #define INDEXDBDEF_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -34,27 +34,37 @@ struct T {
   Blocksize_T blocksize;	/* e.g., 64 = 4^(15-12) */
 
 #ifdef LARGE_GENOMES
+  Access_T offsetspages_access;
+  int offsetspages_shmid;
   UINT4 *offsetspages;
 #endif
 
+  Access_T offsetsmeta_access;
+  int offsetsmeta_shmid;
   int offsetsmeta_fd;
   size_t offsetsmeta_len;
   UINT4 *offsetsmeta;
 
   Access_T offsetsstrm_access;
+  int offsetsstrm_shmid;
   int offsetsstrm_fd;
   size_t offsetsstrm_len;
   UINT4 *offsetsstrm;
 
   Access_T positions_access;
 #ifdef LARGE_GENOMES
+  int positions_high_shmid;
   int positions_high_fd;
   size_t positions_high_len;
+
+  int positions_low_shmid;
   int positions_low_fd;
   size_t positions_low_len;
+
   unsigned char *positions_high;
   UINT4 *positions_low;
 #else
+  int positions_shmid;
   int positions_fd;
   size_t positions_len;
   UINT4 *positions;		/* For small genomes, same as Univcoord_T */

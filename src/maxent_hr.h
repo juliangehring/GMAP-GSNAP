@@ -1,5 +1,7 @@
+/* $Id: maxent_hr.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef MAXENT_HR_INCLUDED
 #define MAXENT_HR_INCLUDED
+
 #include "genomicpos.h"
 #include "types.h"
 

@@ -1,6 +1,7 @@
-/* $Id: reader.h 57095 2012-02-03 19:43:00Z twu $ */
+/* $Id: reader.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef READER_INCLUDED
 #define READER_INCLUDED
+
 #include <stdio.h>
 #include "bool.h"
 

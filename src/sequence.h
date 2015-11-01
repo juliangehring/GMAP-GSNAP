@@ -1,13 +1,13 @@
-/* $Id: sequence.h 157232 2015-01-22 18:55:31Z twu $ */
+/* $Id: sequence.h 170023 2015-07-17 16:47:21Z twu $ */
 #ifndef SEQUENCE_INCLUDED
 #define SEQUENCE_INCLUDED
-
 #ifdef HAVE_CONFIG_H
 #include <config.h>		/* For HAVE_ZLIB, HAVE_BZLIB */
 #endif
 
 #include <stdio.h>
 #include "bool.h"
+#include "filestring.h"
 
 #ifdef HAVE_ZLIB
 #include <zlib.h>
@@ -82,13 +82,13 @@ Sequence_free (T *old);
 extern T
 Sequence_genomic_new (char *contents, int length, bool copyp);
 extern T
-Sequence_read (int *nextchar, FILE *input, bool maponlyp);
+Sequence_read (int *nextchar, FILE *input);
 extern T
-Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles, bool maponlyp);
-
-
+Sequence_read_multifile (int *nextchar, FILE **input, char ***files, int *nfiles);
 extern T
 Sequence_read_unlimited (int *nextchar, FILE *input);
+
+
 #ifdef PMAP
 extern char
 Sequence_codon_char (char aa, int codonpos);
@@ -109,26 +109,26 @@ Sequence_alias (T this);
 
 
 extern void
-Sequence_print_digest (FILE *fp, T this);
+Sequence_print_digest (Filestring_T fp, T this);
 extern void
-Sequence_print_header (FILE *fp, T this, bool checksump);
-extern void
-Sequence_print_header_revcomp (T this);
+Sequence_print_header (Filestring_T fp, T this, bool checksump);
 
 extern void
-Sequence_print (FILE *fp, T this, bool uppercasep, int wraplength, bool trimmedp);
-extern void
-Sequence_print_alt (T ref, T alt, T snp, bool uppercasep, int wraplength);
-extern void
-Sequence_print_two (T ref, T alt, bool uppercasep, int wraplength);
+Sequence_print (Filestring_T fp, T this, bool uppercasep, int wraplength, bool trimmedp);
 
 extern void
-Sequence_print_oneline (FILE *fp, T this);
+Sequence_stdout (T this, bool uppercasep, int wraplength, bool trimmedp);
 extern void
-Sequence_print_oneline_revcomp (FILE *fp, T this);
+Sequence_stdout_alt (T ref, T alt, T snp, bool uppercasep, int wraplength);
+extern void
+Sequence_stdout_two (T ref, T alt, bool uppercasep, int wraplength);
 
 extern void
-Sequence_print_raw (T this);
+Sequence_stdout_raw (T this);
+extern void
+Sequence_stdout_stream_chars (T this);
+extern void
+Sequence_stdout_stream_ints (T this);
 
 extern T
 Sequence_substring (T usersegment, unsigned int left, unsigned int length, 

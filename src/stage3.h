@@ -1,4 +1,4 @@
-/* $Id: stage3.h 157977 2015-02-03 18:46:53Z twu $ */
+/* $Id: stage3.h 166641 2015-05-29 21:13:04Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -30,6 +30,8 @@ typedef struct Stage3_T *Stage3_T;
 #else
 #include "oligoindex_hr.h"
 #endif
+#include "filestring.h"
+
 
 #ifndef GSNAP
 #include "gregion.h"
@@ -56,6 +58,10 @@ Stage3_setup (bool splicingp_in, bool novelsplicingp_in, bool require_splicedir_
 	      int donor_typeint_in, int acceptor_typeint_in,
 	      Univcoord_T *splicesites_in,
 	      int min_intronlength_in, int max_deletionlength_in, int min_indel_end_matches_in,
+	      int maxpeelback_distalmedial_in, int nullgap_in,
+	      int extramaterial_end_in, int extramaterial_paired_in,
+	      int extraband_single_in, int extraband_end_in, int extraband_paired_in,
+	      int ngap_in, int maxintronlen_in,
 	      bool output_sam_p_in, bool homopolymerp_in, Stage3debug_T stage3debug_in);
 
 extern bool
@@ -171,7 +177,7 @@ Stage3_test_bounds (T this, int minpos, int maxpos);
 extern void
 Stage3_translate_cdna (T this, Sequence_T queryaaseq, bool strictp);
 extern void
-Stage3_backtranslate_cdna (T this, bool diagnosticp);
+Stage3_backtranslate_cdna (T this);
 #else
 extern void
 Stage3_translate_genomic (T this, int npairs, bool fulllengthp, int cds_startpos, int querylength,
@@ -184,73 +190,69 @@ Stage3_fix_cdna_direction (T this, T reference);
 extern void
 Stage3_translate (T this,
 #ifdef PMAP
-		  Sequence_T queryseq, bool diagnosticp,
+		  Sequence_T queryseq,
 #endif
 		  int querylength, bool fulllengthp,
-		  int cds_startpos, bool truncatep, bool strictp,
-		  bool maponlyp);
+		  int cds_startpos, bool truncatep, bool strictp);
 extern void
 Stage3_translate_chimera (T this, T mate,
 #ifdef PMAP
-			  Sequence_T queryseq, bool diagnosticp,
+			  Sequence_T queryseq,
 #endif
 			  int querylength, bool fulllengthp,
-			  int cds_startpos, bool truncatep, bool strictp,
-			  bool maponlyp);
+			  int cds_startpos, bool truncatep, bool strictp);
 extern void
-Stage3_print_pathsummary (FILE *fp, T this, int pathnum, Univ_IIT_T chromosome_iit, Univ_IIT_T contig_iit, 
-			  IIT_T altstrain_iit, Sequence_T queryseq,
-			  char *dbversion, int maxmutations, bool diagnosticp, bool maponlyp);
+Stage3_print_pathsummary (Filestring_T fp, T this, int pathnum, Univ_IIT_T chromosome_iit, Univ_IIT_T contig_iit, 
+			  IIT_T altstrain_iit, Sequence_T queryseq, char *dbversion, int maxmutations);
 extern void
-Stage3_print_pslformat_nt (FILE *fp, T this, Univ_IIT_T chromosome_iit, Sequence_T usersegment, Sequence_T queryseq);
+Stage3_print_pslformat_nt (Filestring_T fp, T this, Univ_IIT_T chromosome_iit, Sequence_T usersegment, Sequence_T queryseq);
 #ifdef PMAP
 extern void
-Stage3_print_pslformat_pro (FILE *fp, T this, Univ_IIT_T chromosome_iit, Sequence_T usersegment, Sequence_T queryseq, bool strictp);
+Stage3_print_pslformat_pro (Filestring_T fp, T this, Univ_IIT_T chromosome_iit, Sequence_T usersegment, Sequence_T queryseq, bool strictp);
 #endif
 extern void
-Stage3_print_gff3 (FILE *fp, T this, int pathnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
+Stage3_print_gff3 (Filestring_T fp, T this, int pathnum, Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		   Sequence_T queryseq, int querylength, Printtype_T printtype, char *sourcename);
 #ifndef PMAP
 extern void
-Stage3_print_sam (FILE *fp, char *abbrev, T this, int pathnum, int npaths,
+Stage3_print_sam (Filestring_T fp, char *abbrev, T this, int pathnum, int npaths,
 		  int absmq_score, int first_absmq, int second_absmq, int mapq_score,
 		  Univ_IIT_T chromosome_iit, Sequence_T usersegment,
 		  Sequence_T queryseq, int chimera_part, Chimera_T chimera,
 		  int quality_shift, bool sam_paired_p, char *sam_read_group_id);
 #endif
 extern void
-Stage3_print_iit_map (FILE *fp, T this, Univ_IIT_T chromosome_iit, Sequence_T queryseq);
+Stage3_print_iit_map (Filestring_T fp, T this, Univ_IIT_T chromosome_iit, Sequence_T queryseq);
 extern void
-Stage3_print_iit_exon_map (FILE *fp, T this, Univ_IIT_T chromosome_iit, Sequence_T queryseq);
+Stage3_print_iit_exon_map (Filestring_T fp, T this, Univ_IIT_T chromosome_iit, Sequence_T queryseq);
 extern void
-Stage3_print_splicesites (FILE *fp, T this, Univ_IIT_T chromosome_iit, Sequence_T queryseq);
+Stage3_print_splicesites (Filestring_T fp, T this, Univ_IIT_T chromosome_iit, Sequence_T queryseq);
 extern void
-Stage3_print_introns (FILE *fp, T this, Univ_IIT_T chromosome_iit, Sequence_T queryseq);
+Stage3_print_introns (Filestring_T fp, T this, Univ_IIT_T chromosome_iit, Sequence_T queryseq);
 
 extern void
-Stage3_print_mutations (FILE *fp, T this, T reference, Univ_IIT_T chromosome_iit, Sequence_T queryseq,
-			char *dbversion, bool showalignp, bool diagnosticp,
-			int invertmode, bool nointronlenp, int wraplength,
-			int maxmutations);
+Stage3_print_mutations (Filestring_T fp, T this, T reference, Univ_IIT_T chromosome_iit, Sequence_T queryseq,
+			char *dbversion, bool showalignp,
+			int invertmode, bool nointronlenp, int wraplength, int maxmutations);
 extern void
-Stage3_print_map (FILE *fp, T this, IIT_T map_iit, int *map_divint_crosstable, Univ_IIT_T chromosome_iit,
+Stage3_print_map (Filestring_T fp, T this, IIT_T map_iit, int *map_divint_crosstable, Univ_IIT_T chromosome_iit,
 		  int pathnum, bool map_exons_p, bool map_bothstrands_p, int nflanking, bool print_comment_p);
 extern void
-Stage3_print_alignment (FILE *fp, T this, Genome_T genome,
+Stage3_print_alignment (Filestring_T fp, T this, Genome_T genome,
 			Univ_IIT_T chromosome_iit, Printtype_T printtype,
-			bool continuousp, bool continuous_by_exon_p, bool diagnosticp, bool genomefirstp,
+			bool continuousp, bool continuous_by_exon_p, bool genomefirstp,
 			int invertmode, bool nointronlenp, int wraplength);
 
 extern void
-Stage3_print_coordinates (FILE *fp, T this, Univ_IIT_T chromosome_iit, int invertmode);
+Stage3_print_coordinates (Filestring_T fp, T this, Univ_IIT_T chromosome_iit, int invertmode);
 extern void
-Stage3_print_cdna (FILE *fp, T this, int wraplength);
+Stage3_print_cdna (Filestring_T fp, T this, int wraplength);
 
 extern void
-Stage3_print_protein_genomic (FILE *fp, T this, int wraplength);
+Stage3_print_protein_genomic (Filestring_T fp, T this, int wraplength);
 
 extern void
-Stage3_print_compressed (FILE *fp, T this, Sequence_T queryseq, Univ_IIT_T chromosome_iit,
+Stage3_print_compressed (Filestring_T fp, T this, Sequence_T queryseq, Univ_IIT_T chromosome_iit,
 			 char *dbversion, Sequence_T usersegment, int pathnum, int npaths,
 			 bool checksump, int chimerapos, int chimeraequivpos,
 			 double donor_prob, double acceptor_prob, int chimera_cdna_direction);
@@ -280,7 +282,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *goodness, int *cdna_direction, 
 		double *ambig_prob_5, double *ambig_prob_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
 		int *ncanonical, int *nsemicanonical, int *nnoncanonical, double *min_splice_prob,
-		Stage2_T stage2,
+		List_T stage2pairs, List_T all_stage2_starts, List_T all_stage2_ends,
 #ifdef PMAP
 		char *queryaaseq_ptr,
 #endif
@@ -289,15 +291,10 @@ Stage3_compute (List_T *pairs, int *npairs, int *goodness, int *cdna_direction, 
 		Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh,
 		Univcoord_T knownsplice_limit_low, Univcoord_T knownsplice_limit_high,
 		bool watsonp, int genestrand, bool jump_late_p,
-		int maxpeelback, int maxpeelback_distalmedial, int nullgap,
-		int extramaterial_end, int extramaterial_paired,
-		int extraband_single, int extraband_end, int extraband_paired, int minendexon,
+		int maxpeelback,
 		Pairpool_T pairpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		int ngap, bool diagnosticp, bool checkp,
-		bool do_final_p, int sense_try, int sense_filter,
-		Oligoindex_array_T oligoindices_minor, Diagpool_T diagpool, Cellpool_T cellpool,
-		int sufflookback, int nsufflookback, int maxintronlen, int close_indels_mode,
-		int paired_favor_mode, int zero_offset);
+		int sense_try, int sense_filter,
+		Oligoindex_array_T oligoindices_minor, Diagpool_T diagpool, Cellpool_T cellpool);
 
 #ifndef GSNAP
 extern T
@@ -312,25 +309,23 @@ Stage3_direct (Gregion_T gregion,
 #endif
 
 extern bool
-Stage3_mergeable (Stage3_T firstpart, Stage3_T secondpart,
-		  int exonexonpos, int queryntlength, int maxintronlen_bound);
+Stage3_mergeable (Stage3_T firstpart, Stage3_T secondpart, int exonexonpos, int queryntlength);
 
 extern bool
 Stage3_merge_chimera (T this_left, T this_right,
 		      int minpos1, int maxpos1, int minpos2, int maxpos2,
 		      char *queryseq_ptr, char *queryuc_ptr, Pairpool_T pairpool, 
-		      Dynprog_T dynprogL, Dynprog_T dynprogR, int maxpeelback, int maxpeelback_distalmedial,
-		      int nullgap, int extramaterial_end, int extraband_end, int ngap);
+		      Dynprog_T dynprogL, Dynprog_T dynprogR, int maxpeelback);
 extern void
 Stage3_extend_right (T this, int goal, int querylength,
 		     char *queryseq_ptr, char *queryuc_ptr,
 		     bool max_extend_p, Pairpool_T pairpool,
-		     int ngap, int maxpeelback);
+		     int maxpeelback);
 extern void
 Stage3_extend_left (T this, int goal,
 		    char *queryseq_ptr, char *queryuc_ptr,
 		    bool max_extend_p, Pairpool_T pairpool,
-		    int ngap, int maxpeelback);
+		    int maxpeelback);
 
 extern bool
 Stage3_merge_local (T this_left, T this_right,
@@ -338,13 +333,10 @@ Stage3_merge_local (T this_left, T this_right,
 #ifdef PMAP
 		    char *queryaaseq_ptr,
 #endif
-		    Sequence_T queryseq, char *queryseq_ptr, char *queryuc_ptr,
+		    char *queryseq_ptr, char *queryuc_ptr,
 		    Pairpool_T pairpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		    int maxpeelback, int nullgap,
-		    Oligoindex_array_T oligoindices_minor, Diagpool_T diagpool, Cellpool_T cellpool,
-		    int sufflookback, int nsufflookback, int maxintronlen_bound,
-		    int extramaterial_paired, int extraband_paired, int extraband_single, int ngap,
-		    int paired_favor_mode, int zero_offset);
+		    int maxpeelback,
+		    Oligoindex_array_T oligoindices_minor, Diagpool_T diagpool, Cellpool_T cellpool);
 
 #ifndef PMAP
 extern void

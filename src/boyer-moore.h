@@ -1,6 +1,7 @@
-/* $Id: boyer-moore.h 145990 2014-08-25 21:47:32Z twu $ */
+/* $Id: boyer-moore.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef BOYER_MOORE_INCLUDED
 #define BOYER_MOORE_INCLUDED
+
 #include "intlist.h"
 #include "genomicpos.h"
 

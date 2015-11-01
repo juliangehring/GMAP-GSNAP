@@ -1,6 +1,7 @@
-/* $Id: pairdef.h 115496 2013-11-19 01:08:40Z twu $ */
+/* $Id: pairdef.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef PAIRDEF_INCLUDED
 #define PAIRDEF_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 

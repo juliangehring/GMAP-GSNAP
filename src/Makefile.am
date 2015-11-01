@@ -1,6 +1,8 @@
 # Copied from ../util so "gmap_setup -B src" works during "make check"
 CLEANFILES = fa_coords gmap_process
 
+# Include master.c and master.h, so they get included in distribution
+EXTRA_DIST = mpidebug.c mpidebug.h master.c master.h
 
 # -DUTILITYP=1 needed for iit_store, iit_dump, iit_get, gmapindex, and
 # get-genome so they can handle both small and large genomes at run
@@ -17,6 +19,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  littleendian.c littleendian.h bigendian.c bigendian.h \
  univinterval.c univinterval.h interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h compress-write.c compress-write.h \
@@ -42,7 +45,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  dynprog_single.c dynprog_single.h dynprog_genome.c dynprog_genome.h dynprog_cdna.c dynprog_cdna.h dynprog_end.c dynprog_end.h \
  translation.c translation.h \
  pbinom.c pbinom.h changepoint.c changepoint.h sense.h fastlog.h stage3.c stage3.h \
- request.c request.h result.c result.h \
+ request.c request.h result.c result.h output.c output.h \
  inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  chimera.c chimera.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
@@ -64,6 +67,7 @@ GMAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  littleendian.c littleendian.h bigendian.c bigendian.h \
  univinterval.c univinterval.h interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h compress-write.c compress-write.h \
@@ -89,7 +93,7 @@ GMAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  dynprog_single.c dynprog_single.h dynprog_genome.c dynprog_genome.h dynprog_cdna.c dynprog_cdna.h dynprog_end.c dynprog_end.h \
  translation.c translation.h \
  pbinom.c pbinom.h changepoint.c changepoint.h sense.h fastlog.h stage3.c stage3.h \
- request.c request.h result.c result.h \
+ request.c request.h result.c result.h output.c output.h \
  inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  chimera.c chimera.h datadir.c datadir.h \
  getopt.c getopt1.c getopt.h gmap.c
@@ -113,6 +117,7 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  univinterval.c univinterval.h interval.c interval.h \
  uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
@@ -124,8 +129,7 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h \
  maxent_hr.c maxent_hr.h samflags.h samprint.c samprint.h \
- mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
- goby.c goby.h \
+ mapq.c mapq.h shortread.c shortread.h substring.c substring.h junction.c junction.h stage3hr.c stage3hr.h \
  spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h cellpool.c cellpool.h stage2.c stage2.h \
@@ -137,20 +141,21 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
  chimera.c chimera.h sense.h fastlog.h stage3.c stage3.h \
  splicestringpool.c splicestringpool.h splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
  splice.c splice.h indel.c indel.h bitpack64-access.c bitpack64-access.h \
- bytecoding.c bytecoding.h sarray-read.c sarray-read.h \
+ bytecoding.c bytecoding.h univdiagdef.h univdiag.c univdiag.h sarray-read.c sarray-read.h \
  stage1hr.c stage1hr.h \
- request.c request.h resulthr.c resulthr.h \
+ request.c request.h resulthr.c resulthr.h output.c output.h \
  inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h gsnap.c
 
 
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
+# Previously included -lrt for shm_open, but we are not calling that
 
 gsnap_CC = $(PTHREAD_CC)
-gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
-gsnap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(GOBY_LDFLAGS)
-gsnap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS) $(GOBY_LIBS)
+gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
+gsnap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+gsnap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 
 dist_gsnap_SOURCES = $(GSNAP_FILES)
 
@@ -162,6 +167,7 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  univinterval.c univinterval.h interval.c interval.h \
  uintlist.c uintlist.h uint8list.c uint8list.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
@@ -173,8 +179,7 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h \
  maxent_hr.c maxent_hr.h samflags.h samprint.c samprint.h \
- mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
- goby.c goby.h \
+ mapq.c mapq.h shortread.c shortread.h substring.c substring.h junction.c junction.h stage3hr.c stage3hr.h \
  spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h cellpool.c cellpool.h stage2.c stage2.h \
@@ -187,7 +192,7 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
  splicestringpool.c splicestringpool.h splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
  splice.c splice.h indel.c indel.h bitpack64-access.c bitpack64-access.h \
  stage1hr.c stage1hr.h \
- request.c request.h resulthr.c resulthr.h \
+ request.c request.h resulthr.c resulthr.h output.c output.h \
  inbuffer.c inbuffer.h samheader.c samheader.h outbuffer.c outbuffer.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h gsnap.c
@@ -196,9 +201,9 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 
 gsnapl_CC = $(PTHREAD_CC)
-gsnapl_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1 -DLARGE_GENOMES=1
-gsnapl_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(GOBY_LDFLAGS)
-gsnapl_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS) $(GOBY_LIBS)
+gsnapl_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1 -DLARGE_GENOMES=1
+gsnapl_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+gsnapl_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 
 dist_gsnapl_SOURCES = $(GSNAPL_FILES)
 
@@ -209,6 +214,7 @@ UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
  littleendian.c littleendian.h bigendian.c bigendian.h \
  univinterval.c univinterval.h interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
@@ -220,7 +226,7 @@ UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h \
  maxent_hr.c maxent_hr.h \
- mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
+ mapq.c mapq.h shortread.c shortread.h substring.c substring.h junction.c junction.h stage3hr.c stage3hr.h \
  spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h cellpool.c cellpool.h stage2.c stage2.h \
@@ -232,7 +238,7 @@ UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
  chimera.c chimera.h sense.h fastlog.h stage3.c stage3.h \
  splicestringpool.c splicestringpool.h splicetrie_build.c splicetrie_build.h splicetrie.c splicetrie.h \
  splice.c splice.h indel.c indel.h bitpack64-access.c bitpack64-access.h \
- bytecoding.c bytecoding.h sarray-read.c sarray-read.h \
+ bytecoding.c bytecoding.h univdiagdef.h univdiag.c univdiag.h sarray-read.c sarray-read.h \
  stage1hr.c stage1hr.h resulthr.c resulthr.h \
  datadir.c datadir.h mode.h \
  getopt.c getopt1.c getopt.h uniqscan.c
@@ -251,6 +257,7 @@ UNIQSCANL_FILES = fopen.h bool.h types.h separator.h comp.h \
  littleendian.c littleendian.h bigendian.c bigendian.h \
  univinterval.c univinterval.h interval.c interval.h uintlist.c uintlist.h uint8list.c uint8list.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h reader.c reader.h \
  genomicpos.c genomicpos.h compress.c compress.h \
@@ -262,7 +269,7 @@ UNIQSCANL_FILES = fopen.h bool.h types.h separator.h comp.h \
  chrom.c chrom.h segmentpos.c segmentpos.h \
  chrnum.c chrnum.h \
  maxent_hr.c maxent_hr.h \
- mapq.c mapq.h shortread.c shortread.h substring.c substring.h stage3hr.c stage3hr.h \
+ mapq.c mapq.h shortread.c shortread.h substring.c substring.h junction.c junction.h stage3hr.c stage3hr.h \
  spanningelt.c spanningelt.h cmet.c cmet.h atoi.c atoi.h \
  comp.h maxent.c maxent.h pairdef.h pair.c pair.h pairpool.c pairpool.h diag.c diag.h diagpool.c diagpool.h \
  orderstat.c orderstat.h oligoindex_hr.c oligoindex_hr.h cellpool.c cellpool.h stage2.c stage2.h \
@@ -292,6 +299,7 @@ GMAPINDEX_FILES = fopen.h bool.h types.h \
  littleendian.c littleendian.h bigendian.c bigendian.h \
  univinterval.c univinterval.h interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iit-write-univ.c iit-write-univ.h \
  iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h genome.c genome.h \
@@ -318,6 +326,7 @@ SNPINDEX_FILES = fopen.h bool.h types.h \
  littleendian.c littleendian.h bigendian.c bigendian.h \
  univinterval.c univinterval.h interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  genomicpos.c genomicpos.h compress.c compress.h compress-write.c compress-write.h \
  popcount.c popcount.h genome128_hr.c genome128_hr.h \
@@ -341,6 +350,7 @@ CMETINDEX_FILES = fopen.h bool.h types.h \
  genomicpos.c genomicpos.h \
  stopwatch.c stopwatch.h access.c access.h \
  univinterval.c univinterval.h interval.h interval.c \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.h iit-read.c \
  complement.h compress.c compress.h compress-write.c compress-write.h \
  popcount.c popcount.h genome128_hr.c genome128_hr.h \
@@ -366,6 +376,7 @@ ATOIINDEX_FILES = fopen.h bool.h types.h \
  genomicpos.c genomicpos.h \
  stopwatch.c stopwatch.h access.c access.h \
  univinterval.c univinterval.h interval.h interval.c \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.h iit-read.c \
  complement.h compress.c compress.h compress-write.c compress-write.h \
  popcount.c popcount.h genome128_hr.c genome128_hr.h \
@@ -391,6 +402,7 @@ GET_GENOME_FILES = fopen.h bool.h types.h separator.h \
  littleendian.c littleendian.h bigendian.c bigendian.h \
  univinterval.c univinterval.h interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  md5.c md5.h complement.h bzip2.c bzip2.h sequence.c sequence.h \
  genome.c genome.h \
@@ -432,6 +444,7 @@ IIT_GET_FILES = fopen.h bool.h types.h \
  univinterval.c univinterval.h interval.c interval.h \
  uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  complement.h parserange.c parserange.h getopt.c getopt1.c getopt.h iit_get.c
 
@@ -447,6 +460,7 @@ IIT_DUMP_FILES = fopen.h bool.h types.h \
  intlistdef.h intlist.c intlist.h list.c list.h \
  univinterval.c univinterval.h interval.c interval.h uintlist.c uintlist.h \
  stopwatch.c stopwatch.h access.c access.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  getopt.c getopt1.c getopt.h iit_dump.c
 
@@ -465,6 +479,7 @@ SAM_SORT_FILES = bool.h types.h \
  stopwatch.c stopwatch.h access.c access.h \
  univinterval.c univinterval.h interval.c interval.h \
  uintlist.c uintlist.h \
+ filestring.c filestring.h \
  iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
  samflags.h samheader.c samheader.h samread.c samread.h \
  datadir.c datadir.h \

@@ -1,6 +1,7 @@
-/* $Id: oligo.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: oligo.h 157221 2015-01-22 18:38:57Z twu $ */
 #ifndef OLIGO_INCLUDED
 #define OLIGO_INCLUDED
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "indexdb.h"

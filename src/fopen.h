@@ -1,7 +1,7 @@
 #ifndef FOPEN_INCLUDED
 #define FOPEN_INCLUDED
 #ifdef HAVE_CONFIG_H
-#include <config.h>
+#include <config.h>		/* For USE_FOPEN_BINARY, USE_FOPEN_TEXT */
 #endif
 
 

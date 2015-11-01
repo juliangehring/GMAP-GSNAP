@@ -1,4 +1,4 @@
-/* $Id: indexdb.h 157232 2015-01-22 18:55:31Z twu $ */
+/* $Id: indexdb.h 161940 2015-03-25 20:36:59Z twu $ */
 #ifndef INDEXDB_INCLUDED
 #define INDEXDB_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -131,6 +131,13 @@ Indexdb_offsets_from_bitpack_huge (char *bitpackpagesfile, char *offsetsmetafile
 				   );
 #endif
 
+extern void
+Indexdb_shmem_remove (char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
+#ifdef PMAP
+		      Alphabet_T *alphabet, int *alphabet_size, Alphabet_T required_alphabet,
+#endif
+		      Width_T required_index1part, Width_T required_interval, bool expand_offsets_p);
+
 extern T
 Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 		    char *genomesubdir, char *fileroot, char *idx_filesuffix, char *snps_root,
@@ -138,7 +145,7 @@ Indexdb_new_genome (Width_T *index1part, Width_T *index1interval,
 		    Alphabet_T *alphabet, int *alphabet_size, Alphabet_T required_alphabet,
 #endif
 		    Width_T required_index1part, Width_T required_interval, bool expand_offsets_p,
-		    Access_mode_T offsetsstrm_access, Access_mode_T positions_access);
+		    Access_mode_T offsetsstrm_access, Access_mode_T positions_access, bool sharedp);
 #ifndef UTILITYP
 extern T
 Indexdb_new_segment (char *genomicseg,

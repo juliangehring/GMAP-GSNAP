@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 153958 2014-11-24 17:56:42Z twu $
+# $Id: gmap_build.pl.in 173897 2015-09-12 00:11:59Z twu $
 
 use warnings;	
 
@@ -19,7 +19,7 @@ my $sampling = 3;
 my $sleeptime = 2;
 
 GetOptions(
-    'no-sarray' => \$skip_sarray_p, # skip suffix array
+    'build-sarray=s' => \$build_sarray_p, # build suffix array
 
     'B=s' => \$bindir,		# binary directory
     'T=s' => \$builddir,	# temporary build directory
@@ -118,10 +118,14 @@ if (defined($nmessages)) {
     $nmessages_flag = "";
 }
 
-if (defined($skip_sarray_p)) {
+if (!defined($build_sarray_p)) {
+    $sarrayp = 1;		# default is to build the suffix array
+} elsif ($build_sarray_p eq "0") {
     $sarrayp = 0;
-} else {
+} elsif ($build_sarray_p eq "1") {
     $sarrayp = 1;
+} else {
+    die "Argument to --build-sarray needs to be 0 or 1";
 }
 
 if (defined($contigs_mapped_p)) {
@@ -139,6 +143,7 @@ if (defined($contigs_mapped_p)) {
 
 my $coordsfile = "$destdir/$dbname.coords";
 my $fasta_sources = "$destdir/$dbname.sources";
+
 $FP = new IO::File(">$fasta_sources") or die "Could not create $fasta_sources";
 foreach $fasta (@ARGV) {
     print $FP $fasta . "\n";
@@ -169,7 +174,7 @@ $genomecompfile = compress_genome($nmessages_flag,$bindir,$dbdir,$dbname,$gmap_p
 
 unshuffle_genome($bindir,$dbdir,$dbname,$genomecompfile);
 
-$index_cmd = "$bindir/gmapindex -k $kmersize -q $sampling $nmessages_flag -d $dbname -F $dbdir -D $dbdir";
+$index_cmd = "$bindir/gmapindex -k $kmersize -q $sampling $nmessages_flag -d $dbname -F \"$dbdir\" -D \"$dbdir\"";
 
 if (count_index_offsets($index_cmd,$genomecompfile) == 1) {
     $index_cmd .= " -H";
@@ -228,18 +233,18 @@ sub create_coords {
 
     if (defined($mdfile)) {
 	# MD file cannot specify that a chromosome is circular
-	$cmd = "$bindir/md_coords -o $coordsfile $mdfile";
+	$cmd = "$bindir/md_coords -o \"$coordsfile\" $mdfile";
     } else {
 	if (defined($fasta_pipe)) {
-	    $cmd = "$fasta_pipe | $bindir/fa_coords $circular_flag $contigs_mapped_flag -o $coordsfile";
+	    $cmd = "$fasta_pipe | $bindir/fa_coords $circular_flag $contigs_mapped_flag -o \"$coordsfile\"";
 	} else {
-	    $cmd = "$bindir/fa_coords $gunzip_flag $circular_flag $contigs_mapped_flag -o $coordsfile";
+	    $cmd = "$bindir/fa_coords $gunzip_flag $circular_flag $contigs_mapped_flag -o \"$coordsfile\"";
 	}
 	if (defined($chrnamefile)) {
 	    $cmd .= " -n $chrnamefile";
 	}
 	if (!defined($fasta_pipe)) {
-	    $cmd .= " -f $fasta_sources";
+	    $cmd .= " -f \"$fasta_sources\"";
 	}
     }
     print STDERR "Running $cmd\n";
@@ -254,9 +259,9 @@ sub make_gmap_process_pipe {
     my ($fasta_pipe, $gunzip_flag, $bindir, $coordsfile, $fasta_sources) = @_;
 
     if (defined($fasta_pipe)) {
-	return "$fasta_pipe | $bindir/gmap_process -c $coordsfile";
+	return "$fasta_pipe | $bindir/gmap_process -c \"$coordsfile\"";
     } else {
-	return "$bindir/gmap_process $gunzip_flag -c $coordsfile -f $fasta_sources";
+	return "$bindir/gmap_process $gunzip_flag -c \"$coordsfile\" -f \"$fasta_sources\"";
     }
 }
 
@@ -265,7 +270,7 @@ sub make_contig {
 	$bindir, $dbdir, $dbname, $gmap_process_pipe) = @_;
     my ($cmd, $rc);
 
-    $cmd = "$gmap_process_pipe | $bindir/gmapindex $nmessages_flag -d $dbname -D $dbdir -A $chr_order_flag";
+    $cmd = "$gmap_process_pipe | $bindir/gmapindex $nmessages_flag -d $dbname -D \"$dbdir\" -A $chr_order_flag";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -279,7 +284,7 @@ sub compress_genome {
     my $genomecompfile = "$dbdir/$dbname.genomecomp";
     my ($cmd, $rc);
 
-    $cmd = "$gmap_process_pipe | $bindir/gmapindex $nmessages_flag -d $dbname -F $dbdir -D $dbdir -G";
+    $cmd = "$gmap_process_pipe | $bindir/gmapindex $nmessages_flag -d $dbname -F \"$dbdir\" -D \"$dbdir\" -G";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -292,7 +297,7 @@ sub unshuffle_genome {
     my ($bindir, $dbdir, $dbname, $genomecompfile) = @_;
     my ($cmd, $rc);
 
-    $cmd = "cat $genomecompfile | $bindir/gmapindex -d $dbname -U > $dbdir/$dbname.genomebits128";
+    $cmd = "cat \"$genomecompfile\" | $bindir/gmapindex -d $dbname -U > \"$dbdir/$dbname.genomebits128\"";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -319,7 +324,7 @@ sub count_index_offsets {
     my $huge_genome_p;
     my ($cmd, $noffsets);
     
-    $cmd = "cat $genomecompfile | $index_cmd -N";
+    $cmd = "cat \"$genomecompfile\" | $index_cmd -N";
     print STDERR "Running $cmd\n";
     $noffsets = `$cmd`;
     chop $noffsets;
@@ -338,7 +343,7 @@ sub create_index_offsets {
     my ($index_cmd, $compression_flag, $genomecompfile) = @_;
     my ($cmd, $rc);
 
-    $cmd = "cat $genomecompfile | $index_cmd -O $compression_flag";
+    $cmd = "$index_cmd -O $compression_flag \"$genomecompfile\"";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -351,7 +356,7 @@ sub create_index_positions {
     my ($index_cmd, $genomecompfile) = @_;
     my ($cmd, $rc);
 
-    $cmd = "cat $genomecompfile | $index_cmd -P";
+    $cmd = "$index_cmd -P \"$genomecompfile\"";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -365,7 +370,7 @@ sub make_enhanced_suffix_array {
     my ($cmd, $rc);
 
     # Suffix array
-    $cmd = "$bindir/gmapindex -d $dbname -F $dbdir -D $dbdir -S";
+    $cmd = "$bindir/gmapindex -d $dbname -F \"$dbdir\" -D \"$dbdir\" -S";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
@@ -373,12 +378,20 @@ sub make_enhanced_suffix_array {
     sleep($sleeptime);
 
     # LCP and child arrays
-    $cmd = "$bindir/gmapindex -d $dbname -F $dbdir -D $dbdir -L";
+    $cmd = "$bindir/gmapindex -d $dbname -F \"$dbdir\" -D \"$dbdir\" -L";
     print STDERR "Running $cmd\n";
     if (($rc = system($cmd)) != 0) {
 	die "$cmd failed with return code $rc";
     }
     sleep($sleeptime);
+
+    # Compressed suffix array
+    # $cmd = "$bindir/gmapindex -d $dbname -F \"$dbdir\" -D \"$dbdir\" -C";
+    # print STDERR "Running $cmd\n";
+    # if (($rc = system($cmd)) != 0) {
+    # die "$cmd failed with return code $rc";
+    # }
+    # sleep($sleeptime);
 
     return;
 }
@@ -435,7 +448,7 @@ Options:
 
     -e, --nmessages=INT       Maximum number of messages (warnings, contig reports) to report (default 50)
 
-    --no-sarray               Skip build of suffix array
+    --build-sarray=INT        Whether to build suffix array: 0=no, 1=yes (default)
 
 Obsolete options:
     -T STRING                 Temporary build directory (may need to specify if you run out of space in your current directory)

@@ -1,4 +1,4 @@
-/* $Id: stage3.h 135447 2014-05-07 22:25:45Z twu $ */
+/* $Id: stage3.h 141665 2014-07-16 01:36:38Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -279,6 +279,7 @@ Stage3_compute (List_T *pairs, int *npairs, int *cdna_direction, int *sensedir,
 		int *matches, int *nmatches_posttrim, int *max_match_length,
 		int *ambig_end_length_5, int *ambig_end_length_3,
 		Splicetype_T *ambig_splicetype_5, Splicetype_T *ambig_splicetype_3,
+		double *ambig_prob_5, double *ambig_prob_3,
 		int *unknowns, int *mismatches, int *qopens, int *qindels, int *topens, int *tindels,
 		int *ncanonical, int *nsemicanonical, int *nnoncanonical, double *min_splice_prob,
 		Stage2_T stage2,

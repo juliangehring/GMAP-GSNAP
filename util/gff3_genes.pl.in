@@ -6,6 +6,7 @@ use warnings;
 $gene_name = "";
 $last_transcript_id = "";
 @exons = ();
+@CDS_regions = ();
 while (defined($line = <>)) {
     if ($line =~ /^\#/) {
 	# Skip
@@ -30,11 +31,26 @@ while (defined($line = <>)) {
 		}
 		print "$gene_name\n";
 		print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand);
+
+	    } elsif ($#CDS_regions >= 0) {
+		# Handle last mRNA of previous gene
+		if ($strand eq "+") {
+		    ($start,$end) = get_gene_bounds_plus(\@CDS_regions);
+		    printf ">$last_transcript_id $chr:%u..%u\n",$start,$end;
+		} elsif ($strand eq "-") {
+		    ($start,$end) = get_gene_bounds_minus(\@CDS_regions);
+		    printf ">$last_transcript_id $chr:%u..%u\n",$end,$start;
+		} else {
+		    die "strand $strand";
+		}
+		print "$gene_name\n";
+		print_exons(\@CDS_regions,$gene_name,$last_transcript_id,$chr,$strand);
 	    }
 
 	    ($gene_name) = $fields[8] =~ /ID=([^;]+)/;
 	    $chr = $fields[0];
 	    @exons = ();
+	    @CDS_regions = ();
 	    
 	} elsif ($fields[2] eq "mRNA" || $fields[2] eq "transcript") {
 	    if ($#exons >= 0) {
@@ -49,6 +65,19 @@ while (defined($line = <>)) {
 		}
 		print "$gene_name\n";
 		print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand);
+
+	    } elsif ($#CDS_regions >= 0) {
+		if ($strand eq "+") {
+		    ($start,$end) = get_gene_bounds_plus(\@CDS_regions);
+		    printf ">$last_transcript_id $chr:%u..%u\n",$start,$end;
+		} elsif ($strand eq "-") {
+		    ($start,$end) = get_gene_bounds_minus(\@CDS_regions);
+		    printf ">$last_transcript_id $chr:%u..%u\n",$end,$start;
+		} else {
+		    die "strand $strand";
+		}
+		print "$gene_name\n";
+		print_exons(\@CDS_regions,$gene_name,$last_transcript_id,$chr,$strand);
 	    }
 
 	    ($last_transcript_id) = $fields[8] =~ /ID=([^;]+)/;
@@ -63,9 +92,12 @@ while (defined($line = <>)) {
 	    }
 
 	    @exons = ();
+	    @CDS_regions = ();
 
-	} elsif ($fields[2] eq "exon" || $fields[2] eq "CDS") {
+	} elsif ($fields[2] eq "exon") {
 	    push @exons,"$fields[3] $fields[4]";
+	} elsif ($fields[2] eq "CDS") {
+	    push @CDS_regions,"$fields[3] $fields[4]";
 	}
     }
 }
@@ -82,6 +114,19 @@ if ($#exons >= 0) {
     }
     print "$gene_name\n";
     print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand);
+
+} elsif ($#CDS_regions >= 0) {
+    if ($strand eq "+") {
+	($start,$end) = get_gene_bounds_plus(\@CDS_regions);
+	printf ">$last_transcript_id $chr:%u..%u\n",$start,$end;
+    } elsif ($strand eq "-") {
+	($start,$end) = get_gene_bounds_minus(\@CDS_regions);
+	printf ">$last_transcript_id $chr:%u..%u\n",$end,$start;
+    } else {
+	die "strand $strand";
+    }
+    print "$gene_name\n";
+    print_exons(\@CDS_regions,$gene_name,$last_transcript_id,$chr,$strand);
 }
 
 

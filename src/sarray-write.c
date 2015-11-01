@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sarray-write.c 133760 2014-04-20 05:16:56Z twu $";
+static char rcsid[] = "$Id: sarray-write.c 140591 2014-07-03 16:08:23Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -662,8 +662,9 @@ Sarray_write_index_interleaved (char *indexptrsfile, char *indexcompfile,
 }
 
 
+#if 0
 UINT4 *
-Sarray_compute_lcp (UINT4 *SA, UINT4 n) {
+Sarray_compute_lcp_kasai (UINT4 *SA, UINT4 n) {
   UINT4 *lcp;
   UINT4 *rank, h;
   UINT4 i, j;
@@ -678,6 +679,14 @@ Sarray_compute_lcp (UINT4 *SA, UINT4 n) {
   for (i = 0; i <= n; i++) {
     rank[SA[i]] = i;
   }
+
+#if 0
+  /* Used for comparison with Manzini */
+  for (i = 0; i <= n; i++) {
+    printf("%u %u\n",i,rank[i]);
+  }
+  printf("End of Kasai\n\n");
+#endif
 
   lcp[0] = 0;			/* -1 ? */
   h = 0;
@@ -711,8 +720,325 @@ Sarray_compute_lcp (UINT4 *SA, UINT4 n) {
 
   return lcp;
 }
+#endif
 
 
+#if 0
+/* Puts rank in file, to save on memory */
+UINT4 *
+Sarray_compute_lcp (char *rankfile, UINT4 *SA, UINT4 n) {
+  UINT4 *lcp;
+  UINT4 *rank, rank_i, h;
+  UINT4 i, j;
+  char *comma;
+
+  FILE *fp;
+#ifdef DEBUG14
+  UINT4 horig;
+#endif
+
+  /* Compute rank and store in temporary file */
+  rank = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
+  for (i = 0; i <= n; i++) {
+    rank[SA[i]] = i;
+  }
+
+  fprintf(stderr,"Writing temporary file %s...",rankfile);
+  fp = fopen(rankfile,"w");
+  for (i = 0; i + FWRITE_BATCH <= n; i += FWRITE_BATCH) {
+    fwrite((void *) &(rank[i]),sizeof(UINT4),FWRITE_BATCH,fp);
+  }
+
+  if (i <= n) {
+    fwrite((void *) &(rank[i]),sizeof(UINT4),n - i + 1,fp);
+  }
+  fclose(fp);
+  FREE(rank);
+  fprintf(stderr,"done\n");
+
+  
+  /* Now allocate memory for lcp */
+  fp = fopen(rankfile,"r");
+
+  lcp = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
+
+  lcp[0] = 0;			/* -1 ? */
+  h = 0;
+  for (i = 0; i <= n; i++) {
+    FREAD_UINT(&rank_i,fp);
+    if (rank_i > 0) {
+      j = SA[rank_i - 1];
+
+      h += Genome_consecutive_matches_pair(i+h,j+h,/*genomelength*/n);
+
+      lcp[rank_i] = h;
+      if (h > 0) {
+	h--;
+      }
+    }
+    if (i % MONITOR_INTERVAL == 0) {
+      comma = Genomicpos_commafmt(i);
+      fprintf(stderr,"Computing lcp index %s\n",comma);
+      FREE(comma);
+    }
+  }
+  fclose(fp);
+
+  remove(rankfile);
+
+  return lcp;
+}
+#endif
+
+
+#define RW_BATCH  10000000	/* 10 million elements */
+
+/* Puts rank and permuted suffix array in file, to save on memory even further */
+UINT4 *
+Sarray_compute_lcp (char *rankfile, char *permuted_sarray_file, char *sarrayfile, UINT4 n) {
+  UINT4 *lcp;
+  UINT4 *SA, SA_i, zero = 0;
+  UINT4 *rank, rank_i, h;
+  UINT4 i, ii, b, j;
+  char *comma;
+  UINT4 *read_buffer_1, *read_buffer_2, *write_buffer;
+  void *p;
+
+  int sa_fd;
+  size_t sa_len;
+  FILE *fp, *permsa_fp;
+
+
+  read_buffer_1 = (UINT4 *) MALLOC(RW_BATCH * sizeof(UINT4));
+
+  /* Compute rank */
+  fp = fopen(sarrayfile,"rb");
+  rank = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
+
+  for (ii = 0; ii + RW_BATCH <= n; ii += RW_BATCH) {
+    FREAD_UINTS(read_buffer_1,RW_BATCH,fp);
+    for (b = 0, i = ii; b < RW_BATCH; b++, i++) {
+      rank[read_buffer_1[b]] = i;      /* rank[SA_i] = i; */
+    }
+    if (ii % MONITOR_INTERVAL == 0) {
+      comma = Genomicpos_commafmt(ii);
+      fprintf(stderr,"Computing rank %s\n",comma);
+      FREE(comma);
+    }
+  }
+  for (i = ii; i <= n; i++) {	/* final partial batch */
+    FREAD_UINT(&SA_i,fp);
+    rank[SA_i] = i;
+  }
+
+  fclose(fp);			/* sarrayfile */
+
+
+  /* Store rank in temporary file */
+  fprintf(stderr,"Writing temporary file for rank...");
+  fp = fopen(rankfile,"wb");
+  for (ii = 0; ii + RW_BATCH <= n; ii += RW_BATCH) {
+    p = (void *) &(rank[ii]);
+    FWRITE_UINTS(p,RW_BATCH,fp);
+  }
+  if (ii <= n) {
+    p = (void *) &(rank[ii]);
+    FWRITE_UINTS(p,n - ii + 1,fp);
+  }
+  fclose(fp);			/* rankfile */
+  FREE(rank);
+  fprintf(stderr,"done\n");
+
+  
+  /* Write permuted sarray */
+  fprintf(stderr,"Writing temporary file for permuted sarray...");
+  write_buffer = (UINT4 *) MALLOC(RW_BATCH * sizeof(UINT4));
+  fp = fopen(rankfile,"rb");
+  permsa_fp = fopen(permuted_sarray_file,"wb");
+  SA = (UINT4 *) Access_mmap(&sa_fd,&sa_len,sarrayfile,sizeof(UINT4),/*randomp*/false);
+
+  for (ii = 0; ii + RW_BATCH <= n; ii += RW_BATCH) {
+    FREAD_UINTS(read_buffer_1,RW_BATCH,fp);
+    for (b = 0, i = ii; b < RW_BATCH; b++, i++) {
+      rank_i = read_buffer_1[b];
+      if (rank_i > 0) {
+	write_buffer[b] = SA[rank_i - 1];
+      } else {
+	write_buffer[b] = 0;	/* Will be ignored */
+      }
+    }
+    FWRITE_UINTS(write_buffer,RW_BATCH,permsa_fp);
+  }
+  for (i = ii; i <= n; i++) {	/* final partial batch */
+    FREAD_UINT(&rank_i,fp);
+    if (rank_i > 0) {
+      FWRITE_UINT(SA[rank_i - 1],permsa_fp);
+    } else {
+      FWRITE_UINT(zero,permsa_fp); /* Will be ignored */
+    }
+  }
+
+  munmap((void *) SA,sa_len);
+  close(sa_fd);
+  fclose(permsa_fp);		/* permuted_sarray_file */
+  fclose(fp);			/* rankfile */
+  FREE(write_buffer);
+  fprintf(stderr,"done\n");
+
+
+  /* Now allocate memory for lcp and compute */
+  read_buffer_2 = (UINT4 *) MALLOC(RW_BATCH * sizeof(UINT4));
+  fp = fopen(rankfile,"rb");
+  permsa_fp = fopen(permuted_sarray_file,"rb");
+
+  lcp = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
+
+  lcp[0] = 0;			/* -1 ? */
+  h = 0;
+
+  for (ii = 0; ii + RW_BATCH <= n; ii += RW_BATCH) {
+    FREAD_UINTS(read_buffer_1,RW_BATCH,fp);
+    FREAD_UINTS(read_buffer_2,RW_BATCH,permsa_fp);
+    for (b = 0, i = ii; b < RW_BATCH; b++, i++) {
+      rank_i = read_buffer_1[b];
+      j = read_buffer_2[b];	/* j = SA[rank_i - 1] */
+      if (rank_i > 0) {
+	h += Genome_consecutive_matches_pair(i+h,j+h,/*genomelength*/n);
+	lcp[rank_i] = h;
+	if (h > 0) {
+	  h--;
+	}
+      }
+    }
+
+    if (ii % MONITOR_INTERVAL == 0) {
+      comma = Genomicpos_commafmt(ii);
+      fprintf(stderr,"Computing lcp index %s\n",comma);
+      FREE(comma);
+    }
+  }
+
+  for (i = ii; i <= n; i++) {	/* final partial batch */
+    FREAD_UINT(&rank_i,fp);
+    FREAD_UINT(&j,permsa_fp);  /* j = SA[rank_i - 1] */
+    if (rank_i > 0) {
+      h += Genome_consecutive_matches_pair(i+h,j+h,/*genomelength*/n);
+      lcp[rank_i] = h;
+      if (h > 0) {
+	h--;
+      }
+    }
+  }
+
+  fclose(permsa_fp);		/* permuted_sarray_file */
+  fclose(fp);			/* rankfile */
+  FREE(read_buffer_2);
+  FREE(read_buffer_1);
+
+  remove(permuted_sarray_file);
+  remove(rankfile);
+
+  return lcp;
+}
+
+
+#if 0
+/* Based on Manzini, 2004 */
+/* eos_pos: end-of-string pos? */
+static UINT4
+compute_next_rank (UINT4 *next_rank, UINT4 *SA, Genome_T genomecomp, UINT4 n, char *chartable) {
+  UINT4 eos_pos;
+  Univcoord_T nACGT, na, nc, ng, nt;
+  UINT4 i, j;
+  UINT4 count[5];
+  int numeric[128];
+  unsigned char c;
+  char *comma;
+
+  nACGT = Genome_ntcounts(&na,&nc,&ng,&nt,genomecomp,/*left*/0,/*length*/n);
+  fprintf(stderr,"Genome content: A %u, C %u, G %u, T %u, other %u\n",na,nc,ng,nt,n - nACGT);
+  count[0] = 0;
+  count[1] = na;
+  count[2] = na + nc;
+  count[3] = na + nc + ng;
+  count[4] = na + nc + ng + nt;
+
+  for (c = 0; c < 128; c++) {
+    numeric[c] = 4;
+  }
+  numeric['A'] = 0;
+  numeric['C'] = 1;
+  numeric['G'] = 2;
+  numeric['T'] = 3;
+
+  c = Genome_get_char_lex(genomecomp,/*pos*/n,n,chartable);
+  j = ++count[numeric[c]];
+  next_rank[j] = 0;
+
+  for (i = 1; i <= n; i++) {
+    if (SA[i] == 1) {
+      eos_pos = i;
+    } else {
+      c = Genome_get_char_lex(genomecomp,/*pos*/SA[i] - 1,n,chartable);
+      j = ++count[numeric[c]];
+      next_rank[j] = i;
+    }
+
+    if (i % MONITOR_INTERVAL == 0) {
+      comma = Genomicpos_commafmt(i);
+      fprintf(stderr,"Computing rank %s\n",comma);
+      FREE(comma);
+    }
+  }
+
+  for (i = 0; i <= n; i++) {
+    printf("%u %u\n",i,next_rank[i]);
+  }
+  printf("Returning %u\n",eos_pos);
+  exit(0);
+
+
+  return eos_pos;
+}
+
+
+/* Use rank_i instead of k, and next_rank_i instead of nextk */
+/* Buggy: Result differs from that obtained by Kasai procedure */
+UINT4 *
+Sarray_compute_lcp_manzini (UINT4 *SA, Genome_T genomecomp, UINT4 n, char *chartable) {
+  UINT4 *lcp;
+  UINT4 h, i, j, rank_i, next_rank_i;
+  char *comma;
+
+  lcp = (UINT4 *) MALLOC((n+1)*sizeof(UINT4));
+  rank_i = compute_next_rank(lcp,SA,genomecomp,n,chartable); /* Re-use lcp for next_rank */
+  h = 0;
+
+  for (i = 1; i <= n; i++) {
+    next_rank_i = lcp[rank_i];
+    if (rank_i > 0) {
+      j = SA[rank_i - 1];
+      h += Genome_consecutive_matches_pair(i+h,j+h,/*genomelength*/n);
+      lcp[rank_i] = h;
+      if (h > 0) {
+	h--;
+      }
+    }
+    rank_i = next_rank_i;
+
+    if (i % MONITOR_INTERVAL == 0) {
+      comma = Genomicpos_commafmt(i);
+      fprintf(stderr,"Computing lcp index %s\n",comma);
+      FREE(comma);
+    }
+  }
+
+  return lcp;
+}
+#endif
+
+
+/* Used by cmetindex and atoiindex */
 UINT4 *
 Sarray_compute_lcp_from_genome (UINT4 *SA, unsigned char *gbuffer, UINT4 n) {
   UINT4 *lcp;
@@ -1056,66 +1382,77 @@ make_child_twopass (UINT8 **nextp, UINT4 *nbytes, UINT4 *SA, UINT4 *plcpptrs, UI
    Uintlist_free(&indexstack);
 
    return child;
- }
- #endif
+}
+#endif
 
 
- /* For adjoining chars, need to store 15 possibilities, or one nibble */
- /* Possibilities: $a, $c, $g, $t, $x, ac, ag, at, ax, cg, ct, cx, gt, gx, tx */
- unsigned char *
- Sarray_discriminating_chars (UINT4 *nbytes, UINT4 *SA, Genome_T genome,
-			      unsigned char *lcp_bytes, UINT4 *lcp_guide, UINT4 *lcp_exceptions, int guide_interval,
-			      UINT4 n, char *chartable) {
-   unsigned char *discrim_chars;
-   char char_before, char_at;
-   UINT4 i;
-   UINT4 lcp_i;
+#if 0
+/* Reads SA one element at a time */
+/* For adjoining chars, need to store 15 possibilities, or one nibble */
+/* Possibilities: $a, $c, $g, $t, $x, ac, ag, at, ax, cg, ct, cx, gt, gx, tx */
+unsigned char *
+Sarray_discriminating_chars (UINT4 *nbytes, char *sarrayfile, Genome_T genome,
+			     unsigned char *lcp_bytes, UINT4 *lcp_guide, UINT4 *lcp_exceptions, int guide_interval,
+			     UINT4 n, char *chartable) {
+  unsigned char *discrim_chars;
+  char char_before, char_at;
+  UINT4 i;
+  UINT4 lcp_i;
 
-   *nbytes = ((n+1) + 1)/2;
-   discrim_chars = (unsigned char *) CALLOC(*nbytes,sizeof(unsigned char));
+  FILE *fp;
+  UINT4 SA_i_minus_1, SA_i;
 
-   for (i = 1; i <= n; i++) {
-     lcp_i = Bytecoding_read_wguide(i,lcp_bytes,lcp_guide,lcp_exceptions,/*lcp_guide_interval*/1024);
-     char_before = Genome_get_char_lex(genome,/*left*/SA[i-1] + lcp_i,/*genomelength*/n,chartable);
-     char_at = Genome_get_char_lex(genome,/*left*/SA[i] + lcp_i,/*genomelength*/n,chartable);
-     debug4(printf("i = %u, SA = %u and %u, and lcp_i = %u => %c %c\n",
-		   i,SA[i-1],SA[i],lcp_i,char_before == 0 ? '$' : char_before,char_at));
 
-     if (i % 2 == 0) {
-       /* Even, put into low nibble of byte */
-       switch (char_before) {
-       case 0:
-	 switch(char_at) {
-	 case 'A': discrim_chars[i/2] |= 0x01; break;
-	 case 'C': discrim_chars[i/2] |= 0x02; break;
-	 case 'G': discrim_chars[i/2] |= 0x03; break;
-	 case 'T': discrim_chars[i/2] |= 0x04; break;
-	 case 'X': discrim_chars[i/2] |= 0x05; break;
-	 default: abort();
-	 }
-	 break;
+  *nbytes = ((n+1) + 1)/2;
+  discrim_chars = (unsigned char *) CALLOC(*nbytes,sizeof(unsigned char));
 
-       case 'A':
-	 switch(char_at) {
-	 case 'C': discrim_chars[i/2] |= 0x06; break;
-	 case 'G': discrim_chars[i/2] |= 0x07; break;
-	 case 'T': discrim_chars[i/2] |= 0x08; break;
-	 case 'X': discrim_chars[i/2] |= 0x09; break;
-	 default: abort();
-	 }
-	 break;
+  fp = fopen(sarrayfile,"r");
+  FREAD_UINT(&SA_i_minus_1,fp);
 
-       case 'C':
-	 switch(char_at) {
-	 case 'G': discrim_chars[i/2] |= 0x0A; break;
-	 case 'T': discrim_chars[i/2] |= 0x0B; break;
-	 case 'X': discrim_chars[i/2] |= 0x0C; break;
-	 default: abort();
+  for (i = 1; i <= n; i++) {
+    FREAD_UINT(&SA_i,fp);
+
+    lcp_i = Bytecoding_read_wguide(i,lcp_bytes,lcp_guide,lcp_exceptions,/*lcp_guide_interval*/1024);
+    char_before = Genome_get_char_lex(genome,/*left: SA[i-1]*/SA_i_minus_1 + lcp_i,/*genomelength*/n,chartable);
+    char_at = Genome_get_char_lex(genome,/*left: SA[i]*/SA_i + lcp_i,/*genomelength*/n,chartable);
+    debug4(printf("i = %u, SA = %u and %u, and lcp_i = %u => %c %c\n",
+		  i,SA_i_minus_1,SA_i,lcp_i,char_before == 0 ? '$' : char_before,char_at));
+
+    if (i % 2 == 0) {
+      /* Even, put into low nibble of byte */
+      switch (char_before) {
+      case 0:
+	switch (char_at) {
+	case 'A': discrim_chars[i/2] |= 0x01; break;
+	case 'C': discrim_chars[i/2] |= 0x02; break;
+	case 'G': discrim_chars[i/2] |= 0x03; break;
+	case 'T': discrim_chars[i/2] |= 0x04; break;
+	case 'X': discrim_chars[i/2] |= 0x05; break;
+	default: abort();
+	}
+	break;
+
+      case 'A':
+	switch (char_at) {
+	case 'C': discrim_chars[i/2] |= 0x06; break;
+	case 'G': discrim_chars[i/2] |= 0x07; break;
+	case 'T': discrim_chars[i/2] |= 0x08; break;
+	case 'X': discrim_chars[i/2] |= 0x09; break;
+	default: abort();
+	}
+	break;
+
+      case 'C':
+	switch (char_at) {
+	case 'G': discrim_chars[i/2] |= 0x0A; break;
+	case 'T': discrim_chars[i/2] |= 0x0B; break;
+	case 'X': discrim_chars[i/2] |= 0x0C; break;
+	default: abort();
 	}
 	break;
 
       case 'G':
-	switch(char_at) {
+	switch (char_at) {
 	case 'T': discrim_chars[i/2] |= 0x0D; break;
 	case 'X': discrim_chars[i/2] |= 0x0E; break;
 	default: abort();
@@ -1123,7 +1460,7 @@ make_child_twopass (UINT8 **nextp, UINT4 *nbytes, UINT4 *SA, UINT4 *plcpptrs, UI
 	break;
 
       case 'T':
-	switch(char_at) {
+	switch (char_at) {
 	case 'X': discrim_chars[i/2] |= 0x0F; break;
 	default: abort();
 	}
@@ -1134,7 +1471,7 @@ make_child_twopass (UINT8 **nextp, UINT4 *nbytes, UINT4 *SA, UINT4 *plcpptrs, UI
       /* Odd, put into high nibble of byte */
       switch (char_before) {
       case 0:
-	switch(char_at) {
+	switch (char_at) {
 	case 'A': discrim_chars[i/2] |= 0x10; break;
 	case 'C': discrim_chars[i/2] |= 0x20; break;
 	case 'G': discrim_chars[i/2] |= 0x30; break;
@@ -1145,7 +1482,7 @@ make_child_twopass (UINT8 **nextp, UINT4 *nbytes, UINT4 *SA, UINT4 *plcpptrs, UI
 	break;
 
       case 'A':
-	switch(char_at) {
+	switch (char_at) {
 	case 'C': discrim_chars[i/2] |= 0x60; break;
 	case 'G': discrim_chars[i/2] |= 0x70; break;
 	case 'T': discrim_chars[i/2] |= 0x80; break;
@@ -1155,7 +1492,7 @@ make_child_twopass (UINT8 **nextp, UINT4 *nbytes, UINT4 *SA, UINT4 *plcpptrs, UI
 	break;
 
       case 'C':
-	switch(char_at) {
+	switch (char_at) {
 	case 'G': discrim_chars[i/2] |= 0xA0; break;
 	case 'T': discrim_chars[i/2] |= 0xB0; break;
 	case 'X': discrim_chars[i/2] |= 0xC0; break;
@@ -1164,7 +1501,7 @@ make_child_twopass (UINT8 **nextp, UINT4 *nbytes, UINT4 *SA, UINT4 *plcpptrs, UI
 	break;
 
       case 'G':
-	switch(char_at) {
+	switch (char_at) {
 	case 'T': discrim_chars[i/2] |= 0xD0; break;
 	case 'X': discrim_chars[i/2] |= 0xE0; break;
 	default: abort();
@@ -1172,19 +1509,290 @@ make_child_twopass (UINT8 **nextp, UINT4 *nbytes, UINT4 *SA, UINT4 *plcpptrs, UI
 	break;
 
       case 'T':
-	switch(char_at) {
+	switch (char_at) {
 	case 'X': discrim_chars[i/2] |= 0xF0; break;
 	default: abort();
 	}
 	break;
       }
-
     }
+
+    SA_i_minus_1 = SA_i;
   }
+
+  fclose(fp);
 
   return discrim_chars;
 }
+#endif
 
+
+/* Reads SA in batches for faster I/O */
+/* For adjoining chars, need to store 15 possibilities, or one nibble */
+/* Possibilities: $a, $c, $g, $t, $x, ac, ag, at, ax, cg, ct, cx, gt, gx, tx */
+unsigned char *
+Sarray_discriminating_chars (UINT4 *nbytes, char *sarrayfile, Genome_T genome,
+			     unsigned char *lcp_bytes, UINT4 *lcp_guide, UINT4 *lcp_exceptions, int guide_interval,
+			     UINT4 n, char *chartable) {
+  unsigned char *discrim_chars;
+  char char_before, char_at;
+  UINT4 i, ii, b;
+  UINT4 lcp_i;
+  char *comma;
+
+  FILE *fp;
+  UINT4 *read_buffer;
+  UINT4 SA_i_minus_1, SA_i;
+
+
+  *nbytes = ((n+1) + 1)/2;
+  discrim_chars = (unsigned char *) CALLOC(*nbytes,sizeof(unsigned char));
+
+
+  read_buffer = (UINT4 *) MALLOC(RW_BATCH * sizeof(UINT4));
+
+  fp = fopen(sarrayfile,"rb");
+  FREAD_UINT(&SA_i_minus_1,fp);	/* Initializes SA[0] */
+
+  for (ii = 1; ii + RW_BATCH <= n; ii += RW_BATCH) {
+    FREAD_UINTS(read_buffer,RW_BATCH,fp);
+
+    for (b = 0, i = ii; b < RW_BATCH; b++, i++) {
+      SA_i = read_buffer[b];
+
+      lcp_i = Bytecoding_read_wguide(i,lcp_bytes,lcp_guide,lcp_exceptions,/*lcp_guide_interval*/1024);
+      char_before = Genome_get_char_lex(genome,/*left: SA[i-1]*/SA_i_minus_1 + lcp_i,/*genomelength*/n,chartable);
+      char_at = Genome_get_char_lex(genome,/*left: SA[i]*/SA_i + lcp_i,/*genomelength*/n,chartable);
+      debug4(printf("i = %u, SA = %u and %u, and lcp_i = %u => %c %c\n",
+		    i,SA_i_minus_1,SA_i,lcp_i,char_before == 0 ? '$' : char_before,char_at));
+
+      if (i % 2 == 0) {
+	/* Even, put into low nibble of byte */
+	switch (char_before) {
+	case 0:
+	  switch (char_at) {
+	  case 'A': discrim_chars[i/2] |= 0x01; break;
+	  case 'C': discrim_chars[i/2] |= 0x02; break;
+	  case 'G': discrim_chars[i/2] |= 0x03; break;
+	  case 'T': discrim_chars[i/2] |= 0x04; break;
+	  case 'X': discrim_chars[i/2] |= 0x05; break;
+	  default: abort();
+	  }
+	  break;
+
+	case 'A':
+	  switch (char_at) {
+	  case 'C': discrim_chars[i/2] |= 0x06; break;
+	  case 'G': discrim_chars[i/2] |= 0x07; break;
+	  case 'T': discrim_chars[i/2] |= 0x08; break;
+	  case 'X': discrim_chars[i/2] |= 0x09; break;
+	  default: abort();
+	  }
+	  break;
+
+	case 'C':
+	  switch (char_at) {
+	  case 'G': discrim_chars[i/2] |= 0x0A; break;
+	  case 'T': discrim_chars[i/2] |= 0x0B; break;
+	  case 'X': discrim_chars[i/2] |= 0x0C; break;
+	  default: abort();
+	  }
+	  break;
+
+	case 'G':
+	  switch (char_at) {
+	  case 'T': discrim_chars[i/2] |= 0x0D; break;
+	  case 'X': discrim_chars[i/2] |= 0x0E; break;
+	  default: abort();
+	  }
+	  break;
+
+	case 'T':
+	  switch (char_at) {
+	  case 'X': discrim_chars[i/2] |= 0x0F; break;
+	  default: abort();
+	  }
+	  break;
+	}
+
+      } else {
+	/* Odd, put into high nibble of byte */
+	switch (char_before) {
+	case 0:
+	  switch (char_at) {
+	  case 'A': discrim_chars[i/2] |= 0x10; break;
+	  case 'C': discrim_chars[i/2] |= 0x20; break;
+	  case 'G': discrim_chars[i/2] |= 0x30; break;
+	  case 'T': discrim_chars[i/2] |= 0x40; break;
+	  case 'X': discrim_chars[i/2] |= 0x50; break;
+	  default: abort();
+	  }
+	  break;
+
+	case 'A':
+	  switch (char_at) {
+	  case 'C': discrim_chars[i/2] |= 0x60; break;
+	  case 'G': discrim_chars[i/2] |= 0x70; break;
+	  case 'T': discrim_chars[i/2] |= 0x80; break;
+	  case 'X': discrim_chars[i/2] |= 0x90; break;
+	  default: abort();
+	  }
+	  break;
+
+	case 'C':
+	  switch (char_at) {
+	  case 'G': discrim_chars[i/2] |= 0xA0; break;
+	  case 'T': discrim_chars[i/2] |= 0xB0; break;
+	  case 'X': discrim_chars[i/2] |= 0xC0; break;
+	  default: abort();
+	  }
+	  break;
+
+	case 'G':
+	  switch (char_at) {
+	  case 'T': discrim_chars[i/2] |= 0xD0; break;
+	  case 'X': discrim_chars[i/2] |= 0xE0; break;
+	  default: abort();
+	  }
+	  break;
+
+	case 'T':
+	  switch (char_at) {
+	  case 'X': discrim_chars[i/2] |= 0xF0; break;
+	  default: abort();
+	  }
+	  break;
+	}
+      }
+
+      SA_i_minus_1 = SA_i;
+    }
+
+    /* Need (ii - 1) because we start with ii = 1 */
+    if ((ii - 1) % MONITOR_INTERVAL == 0) {
+      comma = Genomicpos_commafmt(ii-1);
+      fprintf(stderr,"Computing DC array %s\n",comma);
+      FREE(comma);
+    }
+  }
+
+  for (i = ii; i <= n; i++) {
+    FREAD_UINT(&SA_i,fp);
+
+    lcp_i = Bytecoding_read_wguide(i,lcp_bytes,lcp_guide,lcp_exceptions,/*lcp_guide_interval*/1024);
+    char_before = Genome_get_char_lex(genome,/*left: SA[i-1]*/SA_i_minus_1 + lcp_i,/*genomelength*/n,chartable);
+    char_at = Genome_get_char_lex(genome,/*left: SA[i]*/SA_i + lcp_i,/*genomelength*/n,chartable);
+    debug4(printf("i = %u, SA = %u and %u, and lcp_i = %u => %c %c\n",
+		  i,SA_i_minus_1,SA_i,lcp_i,char_before == 0 ? '$' : char_before,char_at));
+
+    if (i % 2 == 0) {
+      /* Even, put into low nibble of byte */
+      switch (char_before) {
+      case 0:
+	switch (char_at) {
+	case 'A': discrim_chars[i/2] |= 0x01; break;
+	case 'C': discrim_chars[i/2] |= 0x02; break;
+	case 'G': discrim_chars[i/2] |= 0x03; break;
+	case 'T': discrim_chars[i/2] |= 0x04; break;
+	case 'X': discrim_chars[i/2] |= 0x05; break;
+	default: abort();
+	}
+	break;
+
+      case 'A':
+	switch (char_at) {
+	case 'C': discrim_chars[i/2] |= 0x06; break;
+	case 'G': discrim_chars[i/2] |= 0x07; break;
+	case 'T': discrim_chars[i/2] |= 0x08; break;
+	case 'X': discrim_chars[i/2] |= 0x09; break;
+	default: abort();
+	}
+	break;
+
+      case 'C':
+	switch (char_at) {
+	case 'G': discrim_chars[i/2] |= 0x0A; break;
+	case 'T': discrim_chars[i/2] |= 0x0B; break;
+	case 'X': discrim_chars[i/2] |= 0x0C; break;
+	default: abort();
+	}
+	break;
+
+      case 'G':
+	switch (char_at) {
+	case 'T': discrim_chars[i/2] |= 0x0D; break;
+	case 'X': discrim_chars[i/2] |= 0x0E; break;
+	default: abort();
+	}
+	break;
+
+      case 'T':
+	switch (char_at) {
+	case 'X': discrim_chars[i/2] |= 0x0F; break;
+	default: abort();
+	}
+	break;
+      }
+
+    } else {
+      /* Odd, put into high nibble of byte */
+      switch (char_before) {
+      case 0:
+	switch (char_at) {
+	case 'A': discrim_chars[i/2] |= 0x10; break;
+	case 'C': discrim_chars[i/2] |= 0x20; break;
+	case 'G': discrim_chars[i/2] |= 0x30; break;
+	case 'T': discrim_chars[i/2] |= 0x40; break;
+	case 'X': discrim_chars[i/2] |= 0x50; break;
+	default: abort();
+	}
+	break;
+
+      case 'A':
+	switch (char_at) {
+	case 'C': discrim_chars[i/2] |= 0x60; break;
+	case 'G': discrim_chars[i/2] |= 0x70; break;
+	case 'T': discrim_chars[i/2] |= 0x80; break;
+	case 'X': discrim_chars[i/2] |= 0x90; break;
+	default: abort();
+	}
+	break;
+
+      case 'C':
+	switch (char_at) {
+	case 'G': discrim_chars[i/2] |= 0xA0; break;
+	case 'T': discrim_chars[i/2] |= 0xB0; break;
+	case 'X': discrim_chars[i/2] |= 0xC0; break;
+	default: abort();
+	}
+	break;
+
+      case 'G':
+	switch (char_at) {
+	case 'T': discrim_chars[i/2] |= 0xD0; break;
+	case 'X': discrim_chars[i/2] |= 0xE0; break;
+	default: abort();
+	}
+	break;
+
+      case 'T':
+	switch (char_at) {
+	case 'X': discrim_chars[i/2] |= 0xF0; break;
+	default: abort();
+	}
+	break;
+      }
+    }
+
+    SA_i_minus_1 = SA_i;
+  }
+
+  fclose(fp);
+
+  FREE(read_buffer);
+
+  return discrim_chars;
+}
 
 
 /* Onepass method */
@@ -1269,10 +1877,12 @@ Sarray_compute_child (unsigned char *lcp_bytes, UINT4 *lcp_guide, UINT4 *lcp_exc
     debug2(printf("\n"));
   }
 
-  /* No need to clean out stack, because all of the next links have been written. */
+  /* Previously, thought there was no need to clean out stack, because
+     all of the next links have been written.  However, skipping the
+     section below gave rise to an incorrect child array in the T section */
   debug2(printf("stack still has %d entries\n",Uintlist_length(lcpstack)));
-#if 0
-  lcp_i = -1;
+#if 1
+  lcp_i = 0;
   while (lcp_i < Uintlist_head(lcpstack)) {
     indexstack = Uintlist_pop(indexstack,&lastindex);
     lcpstack = Uintlist_pop(lcpstack,&lcp_lastindex);

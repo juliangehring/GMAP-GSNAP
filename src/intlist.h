@@ -1,4 +1,4 @@
-/* $Id: intlist.h 134888 2014-05-01 23:30:38Z twu $ */
+/* $Id: intlist.h 140368 2014-07-02 00:56:33Z twu $ */
 #ifndef INTLIST_INCLUDED
 #define INTLIST_INCLUDED
 #include "bool.h"
@@ -36,6 +36,8 @@ extern int *
 Intlist_to_array_out (int *n, T list);
 extern char *
 Intlist_to_char_array (int *n, T list);
+extern T
+Intlist_from_array (int *array, int n);
 extern T 
 Intlist_copy (T list);
 extern T 

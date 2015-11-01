@@ -3,7 +3,7 @@
 
 #include "dynprog.h"
 
-#define SIMD_MAXLENGTH_EPI8 40  /* 128/3 */
+#define SIMD_MAXLENGTH_EPI8 30  /* Previously had 40 = 128/3, but have seen 7-bit overflow empirically at matrices of size 30 */
 
 
 #define T Dynprog_T

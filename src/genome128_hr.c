@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome128_hr.c 137999 2014-06-04 02:01:04Z twu $";
+static char rcsid[] = "$Id: genome128_hr.c 140368 2014-07-02 00:56:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16802,7 +16802,7 @@ typedef UINT4 Genomediff_T;
 
 static UINT4
 block_diff_standard_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+			bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   UINT4 diff;
 
   debug(printf("Comparing high: query %08X with genome %08X ",query_shifted[0],ref_ptr[0]));
@@ -16862,7 +16862,7 @@ block_diff_standard_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static Genomediff_T
 block_diff_standard (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-		     bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+		     bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
 #ifdef HAVE_SSE2
   __m128i _diff, _query_high, _query_low, _query_flags, _ref_high, _ref_low, _ref_flags;
 
@@ -16938,7 +16938,7 @@ block_diff_standard (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static UINT4
 block_diff_standard_wildcard_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
-				   bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+				   bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   UINT4 diff, non_wildcard;
 
   /* Taken from block_diff_standard */
@@ -17028,7 +17028,7 @@ block_diff_standard_wildcard_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_
 /* snp_ptr here is alt_ptr */
 static Genomediff_T
 block_diff_standard_wildcard (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
-			      bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+			      bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
 #ifdef HAVE_SSE2
   __m128i _diff, _wildcard, _query_high, _query_low, _query_flags,
     _ref_high, _ref_low, _ref_flags, _snp_high, _snp_low, _snp_flags;
@@ -17150,6 +17150,7 @@ block_diff_metct_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   UINT4 diff;
 
   if (sarrayp == true) {
+    /* Convert everything to 3-nucleotide space */
     diff = 0U;
   } else {
     /* Mark genome-T to query-C mismatches */
@@ -17230,7 +17231,7 @@ block_diff_metct (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   _ref_low = _mm_load_si128((__m128i *) &(ref_ptr[4]));
 
   if (sarrayp == true) {
-    /* Ignore genome-T to query-C mismatches */
+    /* Ignore genome-T to query-C mismatches.  Convert everything to 3-nucleotide space */
     _diff = _mm_setzero_si128();
   } else {
     /* Mark genome-T to query-C mismatches */
@@ -17261,6 +17262,7 @@ block_diff_metct (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   UINT4 diff;
 
   if (sarrayp == true) {
+    /* Convert everything to 3-nucleotide space */
     diff = 0U;
   } else {
     /* Mark genome-T to query-C mismatches */
@@ -17320,7 +17322,7 @@ block_diff_metga_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   UINT4 diff;
 
   if (sarrayp == true) {
-    /* Ignore genome-A to query-G mismatches */
+    /* Ignore genome-A to query-G mismatches.  Convert everything to 3-nucleotide space. */
     diff = 0U;
   } else {
     /* Mark genome-A to query-G mismatches */
@@ -17401,7 +17403,7 @@ block_diff_metga (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   _ref_low = _mm_load_si128((__m128i *) &(ref_ptr[4]));
 
   if (sarrayp == true) {
-    /* Ignore genome-A to query-G mismatches */
+    /* Ignore genome-A to query-G mismatches.  Convert everything to 3-nucleotide space. */
     _diff = _mm_setzero_si128();
   } else {
     /* Mark genome-A to query-G mismatches */
@@ -17434,7 +17436,7 @@ block_diff_metga (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   UINT4 diff;
 
   if (sarrayp == true) {
-    /* Ignore genome-A to query-G mismatches */
+    /* Ignore genome-A to query-G mismatches.  Convert everything to 3-nucleotide space. */
     diff = 0U;
   } else {
     /* Mark genome-A to query-G mismatches */
@@ -17489,15 +17491,15 @@ block_diff_metga (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static UINT4
 block_diff_cmet_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-		    bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+		    bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
-    } else {
+    if (plusp) {
       return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     } else {
       return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
@@ -17507,15 +17509,15 @@ block_diff_cmet_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static Genomediff_T
 block_diff_cmet (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-		 bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+		 bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
-    } else {
+    if (plusp) {
       return block_diff_metga(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     } else {
       return block_diff_metga(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
@@ -17525,16 +17527,15 @@ block_diff_cmet (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static UINT4
 block_diff_cmet_sarray_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-			   bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+				       bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
-    } else {
+    if (plusp) {
       return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     }
-
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     } else {
       return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
@@ -17544,16 +17545,15 @@ block_diff_cmet_sarray_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static Genomediff_T
 block_diff_cmet_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+			bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
-    } else {
+    if (plusp) {
       return block_diff_metga(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     }
-
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     } else {
       return block_diff_metga(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
@@ -17564,15 +17564,15 @@ block_diff_cmet_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 /* Ignores snp_ptr */
 static UINT4
 block_diff_cmet_snp_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
-			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+			bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
-    } else {
+    if (plusp) {
       return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_metct_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     } else {
       return block_diff_metga_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
@@ -17580,18 +17580,19 @@ block_diff_cmet_snp_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Geno
   }
 }
 
+
 /* Ignores snp_ptr */
 static Genomediff_T
 block_diff_cmet_snp (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
-		     bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+		     bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
-    } else {
+    if (plusp) {
       return block_diff_metga(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_metct(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     } else {
       return block_diff_metga(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
@@ -17611,7 +17612,7 @@ block_diff_a2iag_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   UINT4 diff;
 
   if (sarrayp == true) {
-    /* Ignore genome-G to query-A mismatches */
+    /* Ignore genome-G to query-A mismatches.  Convert everything to 3-nucleotide space. */
     diff = 0U;
   } else {
     /* Mark genome-G to query-A mismatches */
@@ -17693,7 +17694,7 @@ block_diff_a2iag (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   _ref_low = _mm_load_si128((__m128i *) &(ref_ptr[4]));
 
   if (sarrayp == true) {
-    /* Ignore genome-G to query-A mismatches */
+    /* Ignore genome-G to query-A mismatches.  Convert everything to 3-nucleotide space. */
     _diff = _mm_setzero_si128();
   } else {
     /* Mark genome-G to query-A mismatches */
@@ -17724,7 +17725,7 @@ block_diff_a2iag (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
   UINT4 diff;
 
   if (sarrayp == true) {
-    /* Ignore genome-G to query-A mismatches */
+    /* Ignore genome-G to query-A mismatches.  Convert everything to 3-nucleotide space. */
     diff = 0U;
   } else {
     /* Mark genome-G to query-A mismatches */
@@ -17951,15 +17952,15 @@ block_diff_a2itc (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static UINT4
 block_diff_atoi_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-		    bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+		    bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
-    } else {
+    if (plusp) {
       return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     } else {
       return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
@@ -17970,15 +17971,15 @@ block_diff_atoi_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static Genomediff_T
 block_diff_atoi (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-		 bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+		 bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
-    } else {
+    if (plusp) {
       return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     } else {
       return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
@@ -17988,15 +17989,15 @@ block_diff_atoi (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static UINT4
 block_diff_atoi_sarray_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-			   bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+			   bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
-    } else {
+    if (plusp) {
       return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     } else {
       return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
@@ -18006,15 +18007,15 @@ block_diff_atoi_sarray_32 (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 
 static Genomediff_T
 block_diff_atoi_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
-			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+			bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
-    } else {
+    if (plusp) {
       return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
+    } else {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
     } else {
       return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/true);
@@ -18025,15 +18026,15 @@ block_diff_atoi_sarray (Genomecomp_T *query_shifted, Genomecomp_T *ref_ptr,
 /* Ignores snp_ptr */
 static UINT4
 block_diff_atoi_snp_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
-			bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+			bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
-    } else {
+    if (plusp) {
       return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_a2iag_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     } else {
       return block_diff_a2itc_32(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
@@ -18044,15 +18045,15 @@ block_diff_atoi_snp_32 (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Geno
 /* Ignores snp_ptr */
 static Genomediff_T
 block_diff_atoi_snp (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomecomp_T *ref_ptr,
-		     bool plusp, int genestrand, bool first_read_p, bool query_unk_mismatch_local_p) {
+		     bool plusp, int genestrand, bool query_unk_mismatch_local_p) {
   if (genestrand == +2) {
-    if (plusp != first_read_p) {
-      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
-    } else {
+    if (plusp) {
       return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
+    } else {
+      return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     }
   } else {
-    if (plusp == first_read_p) {
+    if (plusp) {
       return block_diff_a2iag(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
     } else {
       return block_diff_a2itc(query_shifted,ref_ptr,query_unk_mismatch_local_p,/*sarrayp*/false);
@@ -18062,11 +18063,11 @@ block_diff_atoi_snp (Genomecomp_T *query_shifted, Genomecomp_T *snp_ptr, Genomec
 
 
 
-/* query_shifted, (snp_ptr,) ref_ptr, plusp, genestrand, first_read_p, query_unk_mismatch_local_p */
-typedef Genomediff_T (*Diffproc_T) (Genomecomp_T *, Genomecomp_T *, bool, int, bool, bool);
-typedef Genomediff_T (*Diffproc_snp_T) (Genomecomp_T *, Genomecomp_T *, Genomecomp_T *, bool, int, bool, bool);
-typedef UINT4 (*Diffproc_32_T) (Genomecomp_T *, Genomecomp_T *, bool, int, bool, bool);
-typedef UINT4 (*Diffproc_snp_32_T) (Genomecomp_T *, Genomecomp_T *, Genomecomp_T *, bool, int, bool, bool);
+/* query_shifted, (snp_ptr,) ref_ptr, plusp, genestrand, query_unk_mismatch_local_p */
+typedef Genomediff_T (*Diffproc_T) (Genomecomp_T *, Genomecomp_T *, bool, int, bool);
+typedef Genomediff_T (*Diffproc_snp_T) (Genomecomp_T *, Genomecomp_T *, Genomecomp_T *, bool, int, bool);
+typedef UINT4 (*Diffproc_32_T) (Genomecomp_T *, Genomecomp_T *, bool, int, bool);
+typedef UINT4 (*Diffproc_snp_32_T) (Genomecomp_T *, Genomecomp_T *, Genomecomp_T *, bool, int, bool);
 
 static Diffproc_T block_diff;
 static Diffproc_snp_T block_diff_snp;
@@ -18685,7 +18686,7 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
 				     + startcolumni
 #endif
 				     ,&(ref_blocks[startblocki_32]),
-                                     plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+                                     plusp,genestrand,/*query_unk_mismatch_local_p*/true);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -18731,7 +18732,7 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[startblocki]),
-			       plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+			       plusp,genestrand,/*query_unk_mismatch_local_p*/true);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -18751,7 +18752,7 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
 
     /* Startblock */
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[startblocki]),
-			       plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+			       plusp,genestrand,/*query_unk_mismatch_local_p*/true);
     diff = clear_start(diff,startdiscard);
 
     if (nonzero_p(diff)) {
@@ -18771,7 +18772,7 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
     while (ptr < end) {
-      diff = (block_diff_sarray)(query_shifted,ptr,plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+      diff = (block_diff_sarray)(query_shifted,ptr,plusp,genestrand,/*query_unk_mismatch_local_p*/true);
 
       if (nonzero_p(diff) /* != 0*/) {
 	mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
@@ -18790,7 +18791,7 @@ Genome_consecutive_matches_rightward (Compress_T query_compress, Univcoord_T lef
     }
 
     /* Endblock */
-    diff = (block_diff_sarray)(query_shifted,ptr,plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+    diff = (block_diff_sarray)(query_shifted,ptr,plusp,genestrand,/*query_unk_mismatch_local_p*/true);
     diff = clear_end(diff,enddiscard);
 
     if (nonzero_p(diff)) {
@@ -18865,7 +18866,7 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
 				     + endcolumni
 #endif
 				     ,&(ref_blocks[endblocki_32]),
-				     plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+				     plusp,genestrand,/*query_unk_mismatch_local_p*/true);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -18911,7 +18912,7 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
 #ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[endblocki]),
-			       plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+			       plusp,genestrand,/*query_unk_mismatch_local_p*/true);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -18931,7 +18932,7 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
 
     /* Endblock */
     diff = (block_diff_sarray)(query_shifted,&(ref_blocks[endblocki]),
-			       plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+			       plusp,genestrand,/*query_unk_mismatch_local_p*/true);
     diff = clear_end(diff,enddiscard);
 
     if (nonzero_p(diff)) {
@@ -18951,7 +18952,7 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
     start = &(ref_blocks[startblocki]);
     offset -= STEP_SIZE; /* 128 or 32 */
     while (ptr > start) {
-      diff = (block_diff_sarray)(query_shifted,ptr,plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+      diff = (block_diff_sarray)(query_shifted,ptr,plusp,genestrand,/*query_unk_mismatch_local_p*/true);
 
       if (nonzero_p(diff)) {
 	mismatch_position = offset - (relpos = count_leading_zeroes(diff));
@@ -18970,7 +18971,7 @@ Genome_consecutive_matches_leftward (Compress_T query_compress, Univcoord_T left
     }
 
     /* Startblock */
-    diff = (block_diff_sarray)(query_shifted,ptr,plusp,genestrand,first_read_p,/*query_unk_mismatch_local_p*/true);
+    diff = (block_diff_sarray)(query_shifted,ptr,plusp,genestrand,/*query_unk_mismatch_local_p*/true);
     diff = clear_start(diff,startdiscard);
 
     if (nonzero_p(diff)) {
@@ -19372,7 +19373,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 			      + startcolumni
 #endif
 			      ,&(ref_blocks[startblocki_32]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -19406,7 +19407,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
   if (endblocki == startblocki) {
     debug(printf("** Single block **\n"));
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -19423,7 +19424,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 
       /* 1/2: Startblock */
       diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			  plusp,genestrand,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
@@ -19435,7 +19436,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       /* 2/2: Endblock */
       diff = (block_diff)(/*endblock*/query_shifted+COMPRESS_BLOCKSIZE,
 			  &(ref_blocks[endblocki]),
-			  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			  plusp,genestrand,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
@@ -19449,7 +19450,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       /* 1/2: Endblock */
       diff = (block_diff)(/*endblock*/query_shifted+COMPRESS_BLOCKSIZE,
 			  &(ref_blocks[endblocki]),
-			  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			  plusp,genestrand,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
@@ -19460,7 +19461,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 
       /* 2/2: Startblock */
       diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			  plusp,genestrand,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
 
       debug(print_diff_popcount(diff));
@@ -19488,7 +19489,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
     nmismatches = 0;
 
     while (ptr < endblock) {
-      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
       
       debug(print_diff_popcount(diff));
       if ((nmismatches += popcount_ones(diff)) > max_mismatches) {
@@ -19509,7 +19510,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
       debug(printf("** Final block, end block first **\n"));
 
       /* n/n: Go first to end block */
-      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
@@ -19520,7 +19521,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 
       /* 1/n: Go second to start block */
       diff = (block_diff)(query_shifted_save_start,&(ref_blocks[startblocki]),
-			  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			  plusp,genestrand,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
@@ -19532,7 +19533,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 
       /* 1/n: Go first to start block */
       diff = (block_diff)(query_shifted_save_start,&(ref_blocks[startblocki]),
-			  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			  plusp,genestrand,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
@@ -19543,7 +19544,7 @@ count_mismatches_limit (Compress_T query_compress, Univcoord_T left,
 
       /* n/n: Go second to end block */
       diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
-			  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			  plusp,genestrand,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
@@ -19612,7 +19613,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
 				  + startcolumni
 #endif
 				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
-				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+				  plusp,genestrand,query_unk_mismatch_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -19646,7 +19647,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
   if (endblocki == startblocki) {
     debug(printf("** Single block **\n"));
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			    plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -19663,7 +19664,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
 
       /* 1/2: Startblock */
       diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
 
       debug(print_diff_popcount(diff));
@@ -19676,7 +19677,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       /* 2/2: Endblock */
       diff = (block_diff_snp)(/*endblock*/query_shifted+COMPRESS_BLOCKSIZE,
 			      &(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
@@ -19690,7 +19691,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       /* 1/2: Endblock */
       diff = (block_diff_snp)(/*endblock*/query_shifted+COMPRESS_BLOCKSIZE,
 			      &(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
@@ -19702,7 +19703,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
 
       /* 2/2: Startblock */
       diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
 
       debug(print_diff_popcount(diff));
@@ -19732,7 +19733,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
     nmismatches = 0;
 
     while (ref_ptr < endblock) {
-      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
       debug(print_diff_popcount(diff));
       if ((nmismatches += popcount_ones(diff)) > max_mismatches) {
@@ -19753,7 +19754,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       debug(printf("** Final block, end block first **\n"));
 
       /* n/n: Go first to end block */
-      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
@@ -19764,7 +19765,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
 
       /* 1/n: Go second to start block */
       diff = (block_diff_snp)(query_shifted_save_start,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
@@ -19776,7 +19777,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
 
       /* 1/n: Go first to start block */
       diff = (block_diff_snp)(query_shifted_save_start,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
       diff = clear_start(diff,startdiscard);
       
       debug(print_diff_popcount(diff));
@@ -19787,7 +19788,7 @@ count_mismatches_limit_snps (Compress_T query_compress, Univcoord_T left, int po
       
       /* n/n: Go second to end block */
       diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
       diff = clear_end(diff,enddiscard);
 
       debug(print_diff_popcount(diff));
@@ -19877,7 +19878,7 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
 			      + startcolumni
 #endif
 			      ,&(ref_blocks[startblocki_32]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -19911,7 +19912,7 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -19924,7 +19925,7 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
 
     /* Startblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
 
     debug(print_diff_popcount(diff));
@@ -19939,7 +19940,7 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
 #endif
     end = &(ref_blocks[endblocki]);
     while (ptr < end) {
-      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
 
       debug(print_diff_popcount(diff));
       nmismatches += popcount_ones(diff);
@@ -19953,7 +19954,7 @@ Genome_count_mismatches_substring_ref (Compress_T query_compress, Univcoord_T le
     }
 
     /* Endblock */
-    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard);
 
     debug(print_diff_popcount(diff));
@@ -20018,7 +20019,7 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
 				  + startcolumni
 #endif
 				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
-				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+				  plusp,genestrand,query_unk_mismatch_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20052,7 +20053,7 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			    plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -20065,7 +20066,7 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
 
     /* Startblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			    plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
 
     debug(print_diff_popcount(diff));
@@ -20082,7 +20083,7 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
 #endif
     end = &(ref_blocks[endblocki]);
     while (ref_ptr < end) {
-      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
       debug(print_diff_popcount(diff));
       nmismatches += popcount_ones(diff);
@@ -20096,7 +20097,7 @@ count_mismatches_substring_snps (Compress_T query_compress, Univcoord_T left, in
     }
 
     /* Endblock */
-    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard);
 
     debug(print_diff_popcount(diff));
@@ -20249,7 +20250,7 @@ Genome_count_mismatches_fragment_right (Compress_T query_compress, int pos5, int
 
 static int
 mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
-		 Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand, bool first_read_p,
+		 Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand,
 		 bool query_unk_mismatch_local_p) {
 #ifdef DEBUG14
   int answer;
@@ -20301,7 +20302,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
 			      + startcolumni
 #endif
 			      ,&(ref_blocks[startblocki_32]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			      plusp,genestrand,query_unk_mismatch_local_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20342,7 +20343,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -20359,7 +20360,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
 
     /* Startblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_start(diff,startdiscard);
 
     while (nonzero_p(diff) && nmismatches <= max_mismatches) {
@@ -20382,7 +20383,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
     while (ptr < end) {
-      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_local_p);
 
       while (nonzero_p(diff) && nmismatches <= max_mismatches) {
 	mismatch_positions[nmismatches++] = offset + (relpos = count_trailing_zeroes(diff));
@@ -20404,7 +20405,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
     }
 
     /* Endblock */
-    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_end(diff,enddiscard);
 
     while (nonzero_p(diff) && nmismatches <= max_mismatches) {
@@ -20424,7 +20425,7 @@ mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T query_c
 /* Returns mismatch_positions[0..max_mismatches] */
 static int
 mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
-		      Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand, bool first_read_p,
+		      Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand,
 		      bool query_unk_mismatch_local_p) {
 #ifdef DEBUG14
   int answer;
@@ -20476,7 +20477,7 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
 				  + startcolumni
 #endif
 				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
-				  plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+				  plusp,genestrand,query_unk_mismatch_local_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20516,7 +20517,7 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			    plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -20533,7 +20534,7 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
 
     /* Startblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			    plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_start(diff,startdiscard);
 
     while (nonzero_p(diff) && nmismatches_both <= max_mismatches) {
@@ -20558,7 +20559,7 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
     while (ref_ptr < end) {
-      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_local_p);
 
       while (nonzero_p(diff) && nmismatches_both <= max_mismatches) {
 	mismatch_positions[nmismatches_both++] = offset + (relpos = count_trailing_zeroes(diff));
@@ -20580,7 +20581,7 @@ mismatches_left_snps (int *mismatch_positions, int max_mismatches, Compress_T qu
     }
 
     /* Endblock */
-    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_end(diff,enddiscard);
 
     while (nonzero_p(diff) && nmismatches_both <= max_mismatches) {
@@ -20621,11 +20622,11 @@ Genome_mismatches_left (int *mismatch_positions, int max_mismatches, Compress_T 
 
   if (snp_blocks == NULL) {
     nmismatches = mismatches_left(&(*mismatch_positions),max_mismatches,query_compress,
-				  left,pos5,pos3,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+				  left,pos5,pos3,plusp,genestrand,query_unk_mismatch_p);
     mismatch_positions[nmismatches] = pos3;
   } else {
     nmismatches = mismatches_left_snps(&(*mismatch_positions),max_mismatches,query_compress,
-				       left,pos5,pos3,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+				       left,pos5,pos3,plusp,genestrand,query_unk_mismatch_p);
     mismatch_positions[nmismatches] = pos3;
   }
   debug(
@@ -20664,11 +20665,11 @@ Genome_mismatches_left_trim (int *mismatch_positions, int max_mismatches, Compre
 
   if (snp_blocks == NULL) {
     nmismatches = mismatches_left(&(*mismatch_positions),max_mismatches,query_compress,
-				  left,pos5,pos3,plusp,genestrand,first_read_p,/*query_unk_mismatch_p*/false);
+				  left,pos5,pos3,plusp,genestrand,/*query_unk_mismatch_p*/false);
     mismatch_positions[nmismatches] = pos3;
   } else {
     nmismatches = mismatches_left_snps(&(*mismatch_positions),max_mismatches,query_compress,
-				       left,pos5,pos3,plusp,genestrand,first_read_p,/*query_unk_mismatch_p*/false);
+				       left,pos5,pos3,plusp,genestrand,/*query_unk_mismatch_p*/false);
     mismatch_positions[nmismatches] = pos3;
   }
   debug(
@@ -20685,7 +20686,7 @@ Genome_mismatches_left_trim (int *mismatch_positions, int max_mismatches, Compre
 
 static int
 mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
-		  Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand, bool first_read_p,
+		  Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand,
 		  bool query_unk_mismatch_local_p) {
 #ifdef DEBUG14
   int answer;
@@ -20738,7 +20739,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
 			      + endcolumni
 #endif
 			      ,&(ref_blocks[endblocki_32]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			      plusp,genestrand,query_unk_mismatch_local_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20779,7 +20780,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
 #ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -20796,7 +20797,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
 
     /* Endblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_end(diff,enddiscard);
 
     while (nonzero_p(diff) && nmismatches <= max_mismatches) {
@@ -20819,7 +20820,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
     start = &(ref_blocks[startblocki]);
     offset -= STEP_SIZE; /* 128 or 32 */
     while (ptr > start) {
-      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_local_p);
 
       while (nonzero_p(diff) && nmismatches <= max_mismatches) {
 	mismatch_positions[nmismatches++] = offset - (relpos = count_leading_zeroes(diff));
@@ -20841,7 +20842,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
     }
 
     /* Startblock */
-    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_start(diff,startdiscard);
 
     while (nonzero_p(diff) && nmismatches <= max_mismatches) {
@@ -20861,7 +20862,7 @@ mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T query_
 
 static int
 mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T query_compress,
-		       Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand, bool first_read_p,
+		       Univcoord_T left, int pos5, int pos3, bool plusp, int genestrand,
 		       bool query_unk_mismatch_local_p) {
 #ifdef DEBUG14
   int answer;
@@ -20915,7 +20916,7 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
 				  + endcolumni
 #endif
 				  ,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
-				  plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+				  plusp,genestrand,query_unk_mismatch_local_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -20955,7 +20956,7 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
 #ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			    plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -20972,7 +20973,7 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
 
     /* Endblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+			    plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_end(diff,enddiscard);
 
     while (nonzero_p(diff) && nmismatches_both <= max_mismatches) {
@@ -20997,7 +20998,7 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
     start = &(ref_blocks[startblocki]);
     offset -= STEP_SIZE; /* 128 or 32 */
     while (ref_ptr > start) {
-      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_local_p);
 
       while (nonzero_p(diff) && nmismatches_both <= max_mismatches) {
 	mismatch_positions[nmismatches_both++] = offset - (relpos = count_leading_zeroes(diff));
@@ -21019,7 +21020,7 @@ mismatches_right_snps (int *mismatch_positions, int max_mismatches, Compress_T q
     }
 
     /* Startblock */
-    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_local_p);
+    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_local_p);
     diff = clear_start(diff,startdiscard);
 
     while (nonzero_p(diff) && nmismatches_both <= max_mismatches) {
@@ -21057,10 +21058,10 @@ Genome_mismatches_right (int *mismatch_positions, int max_mismatches, Compress_T
 
   if (snp_blocks == NULL) {
     nmismatches = mismatches_right(&(*mismatch_positions),max_mismatches,query_compress,
-				   left,pos5,pos3,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+				   left,pos5,pos3,plusp,genestrand,query_unk_mismatch_p);
   } else {
     nmismatches = mismatches_right_snps(&(*mismatch_positions),max_mismatches,query_compress,
-					left,pos5,pos3,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+					left,pos5,pos3,plusp,genestrand,query_unk_mismatch_p);
   }
   mismatch_positions[nmismatches] = -1;
   debug(
@@ -21095,10 +21096,10 @@ Genome_mismatches_right_trim (int *mismatch_positions, int max_mismatches, Compr
 
   if (snp_blocks == NULL) {
     nmismatches = mismatches_right(&(*mismatch_positions),max_mismatches,query_compress,
-				   left,pos5,pos3,plusp,genestrand,first_read_p,/*query_unk_mismatch_p*/false);
+				   left,pos5,pos3,plusp,genestrand,/*query_unk_mismatch_p*/false);
   } else {
     nmismatches = mismatches_right_snps(&(*mismatch_positions),max_mismatches,query_compress,
-					left,pos5,pos3,plusp,genestrand,first_read_p,/*query_unk_mismatch_p*/false);
+					left,pos5,pos3,plusp,genestrand,/*query_unk_mismatch_p*/false);
   }
   mismatch_positions[nmismatches] = -1;
   debug(
@@ -21177,7 +21178,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 			      + startcolumni
 #endif
 			      ,&(ref_blocks[startblocki_32]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -21227,7 +21228,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -21250,7 +21251,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
 
     /* Startblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
 
     while (nonzero_p(diff)) {
@@ -21274,7 +21275,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
     while (ptr < end) {
-      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
 
       while (nonzero_p(diff)) {
 	mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
@@ -21297,7 +21298,7 @@ Genome_mark_mismatches_ref (char *genomic, int querylength, Compress_T query_com
     }
 
     /* Endblock */
-    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard);
 
     while (nonzero_p(diff)) {
@@ -21380,7 +21381,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 				  + startcolumni
 #endif
 				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
-				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+				  plusp,genestrand,query_unk_mismatch_p);
     diff_32 = clear_start_32(diff_32,startdiscard);
     diff_32 = clear_end_32(diff_32,enddiscard);
 
@@ -21430,7 +21431,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			    plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
     diff = clear_end(diff,enddiscard);
 
@@ -21453,7 +21454,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
 
     /* Startblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			    plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard);
 
     while (nonzero_p(diff)) {
@@ -21479,7 +21480,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
     end = &(ref_blocks[endblocki]);
     offset += STEP_SIZE; /* 128 or 32 */
     while (ref_ptr < end) {
-      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
       while (nonzero_p(diff)) {
 	mismatch_position = offset + (relpos = count_trailing_zeroes(diff));
@@ -21502,7 +21503,7 @@ mark_mismatches_snps (char *genomic, int querylength, Compress_T query_compress,
     }
 
     /* Endblock */
-    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard);
 
     while (nonzero_p(diff)) {
@@ -21614,7 +21615,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 			      + endcolumni
 #endif
 			      ,&(ref_blocks[endblocki_32]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
     diff_32 = clear_end_32(diff_32,enddiscard); /* puts 0 (matches) at end */
     diff_32 = set_start_32(diff_32,startdiscard);  /* puts 1 (mismatches) at start */
 
@@ -21669,7 +21670,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 #ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
     diff = set_start(diff,startdiscard);  /* puts 1 (mismatches) at start */
 
@@ -21760,7 +21761,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 
     /* Endblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[endblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
 
 #ifdef HAVE_SSE2
@@ -21871,7 +21872,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
 #endif
     start = &(ref_blocks[startblocki]);
     while (ptr > start) {
-      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
 
 #ifdef HAVE_SSE2
       p = 3*((unsigned short) _mm_extract_epi16(diff,7));
@@ -21985,7 +21986,7 @@ trim_left_substring (Compress_T query_compress, Univcoord_T left, int pos5, int 
     }
 
     /* Startblock */
-    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
     diff = set_start(diff,startdiscard); /* puts 1 (mismatches) at start */
 
 #ifdef HAVE_SSE2
@@ -22156,7 +22157,7 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 				  + endcolumni
 #endif
 				  ,&(snp_blocks[endblocki_32]),&(ref_blocks[endblocki_32]),
-				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+				  plusp,genestrand,query_unk_mismatch_p);
 
     diff_32 = clear_end_32(diff_32,enddiscard); /* puts 0 (matches) at end */
     diff_32 = set_start_32(diff_32,startdiscard);  /* puts 1 (mismatches) at start */
@@ -22211,7 +22212,7 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 #ifdef HAVE_SSE2
   if (startblocki == endblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
 
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
     diff = set_start(diff,startdiscard);  /* puts 1 (mismatches) at start */
@@ -22303,7 +22304,7 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 
     /* Endblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[endblocki]),&(ref_blocks[endblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			    plusp,genestrand,query_unk_mismatch_p);
     diff = clear_end(diff,enddiscard); /* puts 0 (matches) at end */
 
 #ifdef HAVE_SSE2
@@ -22416,7 +22417,7 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
 #endif
     start = &(ref_blocks[startblocki]);
     while (ref_ptr > start) {
-      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
 #ifdef HAVE_SSE2
       p = 3*((unsigned short) _mm_extract_epi16(diff,7));
@@ -22530,7 +22531,7 @@ trim_left_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5,
     }
 
     /* Startblock */
-    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
     diff = set_start(diff,startdiscard); /* puts 1 (mismatches) at start */
 
@@ -22703,7 +22704,7 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
 			      + startcolumni
 #endif
 			      ,&(ref_blocks[startblocki_32]),
-			      plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			      plusp,genestrand,query_unk_mismatch_p);
 
     diff_32 = clear_start_32(diff_32,startdiscard); /* puts 0 (matches) at start */
     diff_32 = set_end_32(diff_32,enddiscard);  /* puts 1 (mismatches) at end */
@@ -22758,7 +22759,7 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
     diff = set_end(diff,enddiscard);  /* puts 1 (mismatches) at end */
 
@@ -22849,7 +22850,7 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
 
     /* Startblock */
     diff = (block_diff)(query_shifted,&(ref_blocks[startblocki]),
-			plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
     debug(printf("clearing start %08X\n",clear_start_mask(startdiscard)));
 
@@ -22961,7 +22962,7 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
 #endif
     end = &(ref_blocks[endblocki]);
     while (ptr < end) {
-      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
 
 #ifdef HAVE_SSE2
       p = 3*((unsigned short) _mm_extract_epi16(diff,0));
@@ -23075,7 +23076,7 @@ trim_right_substring (Compress_T query_compress, Univcoord_T left, int pos5, int
     }
 
     /* Endblock */
-    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = (block_diff)(query_shifted,ptr,plusp,genestrand,query_unk_mismatch_p);
     diff = set_end(diff,enddiscard); /* puts 1 (mismatches) at end */
 
 #ifdef HAVE_SSE2
@@ -23247,7 +23248,7 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
 				  + startcolumni
 #endif
 				  ,&(snp_blocks[startblocki_32]),&(ref_blocks[startblocki_32]),
-				  plusp,genestrand,first_read_p,query_unk_mismatch_p);
+				  plusp,genestrand,query_unk_mismatch_p);
 
     diff_32 = clear_start_32(diff_32,startdiscard); /* puts 0 (matches) at start */
     diff_32 = set_end_32(diff_32,enddiscard);  /* puts 1 (mismatches) at end */
@@ -23301,7 +23302,7 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
 #ifdef HAVE_SSE2
   if (endblocki == startblocki) {
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			    plusp,genestrand,query_unk_mismatch_p);
     diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
     diff = set_end(diff,enddiscard);  /* puts 1 (mismatches) at end */
 
@@ -23392,7 +23393,7 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
 
     /* Startblock */
     diff = (block_diff_snp)(query_shifted,&(snp_blocks[startblocki]),&(ref_blocks[startblocki]),
-			    plusp,genestrand,first_read_p,query_unk_mismatch_p);
+			    plusp,genestrand,query_unk_mismatch_p);
 
     diff = clear_start(diff,startdiscard); /* puts 0 (matches) at start */
 
@@ -23506,7 +23507,7 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
 #endif
     end = &(ref_blocks[endblocki]);
     while (ref_ptr < end) {
-      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+      diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
 #ifdef HAVE_SSE2
       p = 3*((unsigned short) _mm_extract_epi16(diff,0));
@@ -23620,7 +23621,7 @@ trim_right_substring_snps (Compress_T query_compress, Univcoord_T left, int pos5
     }
 
     /* Endblock */
-    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,first_read_p,query_unk_mismatch_p);
+    diff = (block_diff_snp)(query_shifted,alt_ptr,ref_ptr,plusp,genestrand,query_unk_mismatch_p);
 
     diff = set_end(diff,enddiscard); /* puts 1 (mismatches) at end */
 

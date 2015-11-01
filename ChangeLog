@@ -1,3 +1,228 @@
+2014-08-20  twu
+
+    * uniqscan.c: Using new interface to Shortread_new
+
+    * shortread.c, shortread.h: Made Shortread_new extern again
+
+    * INSTALL, README, config.guess, config.site.rescomp.prd,
+      config.site.rescomp.tst, config.sub, gmap.c, gsnap.c, indel.c, ltmain.sh,
+      mapq.c, mem.c, mem.h, sarray-read.c, shortread.c, shortread.h, splice.c,
+      src, stage1hr.c, stage3hr.c, stage3hr.h, substring.c, trunk: Merged
+      revisions 145503 through 145603 from branches/2014-08-19-stack-alloca to
+      use alloca instead of statck arrays based on MAX_READLENGTH and to handle
+      reads longer than MAX_READLENGTH
+
+2014-08-19  twu
+
+    * VERSION, index.html: Updated version number
+
+    * configure.ac: Added configure flag for enabling or disabling ssse3
+      instructions
+
+    * ax_ext.m4: Checking whether user wants SSSE3 instructions
+
+    * stage2.c, stage3.c: Not putting gapholders into starts and ends.  Removing
+      gapholders from middle before calling Pairpool_join_end5 and
+      Pairpool_join_end3. Gapholders were causing problems with the join
+      operation.
+
+    * pairpool.c, pairpool.h: Implemented Pairpool_remove_gapholders
+
+2014-08-04  twu
+
+    * stage3.c: Not setting best_pairs or best_path when the result is NULL
+
+    * shortread.c: Ignoring spaces in read
+
+    * pairpool.c: In joining paths, handling the case when one path is NULL
+
+2014-07-29  twu
+
+    * ltmain.sh: Updated from 2.2.6 to 2.2.6b
+
+    * config.sub: Updated from 2008 version to 2009 version
+
+    * config.guess: Updated from 2008 version to 2009 version
+
+    * INSTALL: Updated from 2007 version to 2009 version
+
+    * archive.html, index.html: Made changes for new version
+
+    * gff3_genes.pl.in, gff3_introns.pl.in, gff3_splicesites.pl.in: Handling
+      GFF3 files that have both exon and CDS fields
+
+2014-07-22  twu
+
+    * stage3hr.c: Restored random behavior for equivalent alignments
+
+    * VERSION: Updated version number
+
+    * atoiindex.c, cmetindex.c: Making correct calls to
+      Sarray_discriminating_chars
+
+    * dynprog_simd.c: Added code for having no initial gap penalties, to be used
+      for bam_indelfix
+
+2014-07-19  twu
+
+    * dynprog_simd.c: Improvements to debugging procedures to handle 3-digit
+      indices
+
+2014-07-17  twu
+
+    * gmap.c: Using new interface to Stage3_compute
+
+    * stage3hr.h: Added interfaces for Stage3end_shortexonA_distance and
+      Stage3end_shortexonD_distance
+
+    * stage3hr.c: Added hook for amb_prob in Stage3end_new_gmap.  Removed
+      penalty for ambig end lengths if amb_prob > 0.9.  Fixed pointer advances
+      in removing bad superstretches.
+
+    * stage3.c: Made fixes to choice of cdna_direction: using presence/absence
+      of intron types, rather than number, and decreased binomial threshold for
+      alignments around intron.  Fixed handling of multiple start or end paths
+      by joining them at the outset.
+
+    * stage2.c: Allowing for multiple end cells from each rootposition
+
+    * dynprog_genome.c: Altered decision-making between best alignment and
+      probability-based alignment
+
+    * dynprog_simd.c: Added debugging statements
+
+    * dynprog.h: Made open gap penalties more uniform for different defect rates
+
+    * pair.c: Fixed calculation of nmatches at end for Pair_trim_ends
+
+2014-07-16  twu
+
+    * pairpool.c: Enhanced debugging statement
+
+    * stage3.h: Stage3_compute now returns ambig_prob_5 and ambig_prob_3
+
+    * stage3.c: For ambiguous ends, no longer calling clean_pairs_end5,
+      clean_path_end3, trim_end5_exon_indels, or trim_end3_exon_indels
+
+    * stage1hr.c: Passing amb_prob_5 and amb_prob_3 to Stage3end_new_gmap
+
+    * pair.c, pair.h: In Pair_trim_ends, not trimming ambiguous ends
+
+2014-07-15  twu
+
+    * stage3.c: In trim_end5_exon_indels and trim_end3_exon_indels, counting
+      trimmed ends as mismatches and handling large indels differently from
+      small indels.  Added hooks for ambig_prob.
+
+    * pair.c, pair.h, stage3hr.c: Eliminating ambig_end_nmatches from
+      consideration in Pair_nmismatches_region
+
+    * stage3hr.c: Restored eventrim algorithm from revision 140363, which had
+      only a single eventrim calculation and not separate calculations for the
+      two ends.
+
+2014-07-04  twu
+
+    * VERSION: Updated version number
+
+    * dynprog_end.c: Fixed typo in calling matrix for 16_upper twice, instead of
+      16_upper and 16_lower
+
+    * splicetrie.c: Handling the case where Dynprog_end5_splicejunction or
+      Dynprog_end3_splicejunction returns NULL
+
+    * dynprog_simd.h: Decreased value of SIMD_MAXLENGTH_EPI8 from 40 to 30 to
+      prevent issues with overflows
+
+    * dynprog_simd.c: In traceback, using main loop to decide whether to handle
+      dir == DIAG
+
+    * dynprog_end.c: In traceback, using main loop to decide whether to handle
+      dir == DIAG. In Dynprog_end5_splicejunction and
+      Dynprog_end3_splicejunction, requiring finalscore to be positive before
+      doing any traceback.
+
+    * dynprog.c: In traceback, using main loop to decide whether to handle dir
+      == DIAG
+
+2014-07-03  twu
+
+    * sarray-write.c: Made monitoring statements work for
+      Sarray_discriminating_chars
+
+    * sarray-write.c: Implemented batch reading method for
+      Sarray_discriminating_chars
+
+    * gmapindex.c, sarray-write.c, sarray-write.h: Made the building of the LCP
+      array and discriminating chars array more memory efficient by writing
+      temporary files for rank and permuted sarray
+
+    * genome.c, genome.h: Changed type of counts to be Univcoord_T
+
+    * access.c: Fixed bug in handling of final partial block.  Added debugging
+      code for checking results.
+
+2014-07-02  twu
+
+    * access.c: Increased FREAD_BATCH to 100 million bytes.  Modified
+      Access_allocated to always read in batches of size FREAD_BATCH.
+
+    * config.site.rescomp.prd, config.site.rescomp.tst, genome128_hr.c, gmap.c,
+      intlist.c, intlist.h, samprint.c, sarray-read.c, splice.c, splice.h, src,
+      stage1hr.c, stage3.c, stage3hr.c, stage3hr.h, substring.c, trunk,
+      uint8list.c, uint8list.h, uintlist.c, uintlist.h: Merged revisions 140131
+      through 140367 from branches/2014-06-27-fix-amb to implement separate
+      eventrim scores for start/end of read, fix cmet-stranded and
+      cmet-nonstranded modes, implement separate sense/antisense for
+      Splice_solve_single, and rewrite of ambiguous parameters from left/right
+      to donor/acceptor
+
+    * index.html: Updated for version 2014-06-10
+
+    * archive.html: Added link to version 2011-12-28
+
+    * VERSION: Updated version number
+
+    * stage3hr.c: In Stage3end_new_shortexon, setting amb_nmismatches_start and
+      amb_nmismatches_end separately
+
+    * stage3.c: Using score_introns (which looks at splice site neighborhood),
+      instead of score_alignment to count canonical introns.  Using defect_rate
+      to determine whether to rely on splice site probabilities.
+
+    * stage1hr.c: Added blank lines
+
+2014-07-01  twu
+
+    * gmap.c: Preventing leftpos and rightpos from exceeding query coordinates
+      in solving for chimeras.  Not using extension in finding remaining
+      alignment, since it makes alignment harder.
+
+2014-06-30  twu
+
+    * stage3.c: Transferring microexon pairs without looking at probabilities
+
+    * dynprog_single.c: Using MIN_MICROEXON_LENGTH instead of 8
+
+2014-06-26  twu
+
+    * stage3hr.c: Fixed assignment of amb_nmatches_start and amb_nmatches_end
+      for shortexons on minus strand
+
+2014-06-25  twu
+
+    * stage3hr.c: Removed debugging code
+
+    * sarray-write.c: In Sarray_compute_child, cleaning out stack at end,
+      because skipping it results in an incorrect child array
+
+2014-06-24  twu
+
+    * stage3hr.c: Commenting out assertions that are not always true
+
+    * stage1hr.c: Assigning correct values of amb_nmatches_donor and
+      amb_nmatches_acceptor to Stage3end_new_shortexon
+
 2014-06-11  twu
 
     * VERSION: Updated version number

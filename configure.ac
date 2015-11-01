@@ -279,6 +279,31 @@ ACX_SSE2_SHIFT_DEFECT
 fi
 
 
+AC_MSG_CHECKING(whether ssse3 is enabled)
+AC_ARG_ENABLE([ssse3],
+	      AC_HELP_STRING([--enable-ssse3],
+                             [Enable ssse3 simd commands if they compile and run (default=yes).]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+     xyes)
+     AC_MSG_RESULT(enabled)
+     ax_cv_want_ssse3_ext=yes
+     ;;
+
+     xno)
+     AC_MSG_RESULT(disabled)
+     ax_cv_want_ssse3_ext=no
+     ;;
+
+     x)
+     AC_MSG_RESULT([not specified so enabled by default])
+     ax_cv_want_ssse3_ext=yes
+     ;;
+esac	
+
+
+
 AC_MSG_CHECKING(whether sse4.1 is enabled)
 AC_ARG_ENABLE([sse4.1],
 	      AC_HELP_STRING([--enable-sse4.1],

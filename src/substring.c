@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: substring.c 138720 2014-06-11 17:07:51Z twu $";
+static char rcsid[] = "$Id: substring.c 145604 2014-08-20 17:43:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -573,9 +573,14 @@ trim_left_end (Compress_T query_compress, Univcoord_T left, int querystart, int 
 	       int querylength, bool plusp, int genestrand, bool first_read_p, int trim_mismatch_score) {
   int bestscore, score;
   int trim5, alignlength, pos, prevpos, i;
-
-  int mismatch_positions[MAX_READLENGTH];
   int nmismatches;
+
+#ifdef HAVE_ALLOCA
+  int *mismatch_positions = (int *) alloca(querylength*sizeof(int));
+#else
+  int mismatch_positions[MAX_READLENGTH];
+#endif
+
 
   debug8(printf("Entered trim_left_end with querystart %d, queryend %d\n",querystart,queryend));
 
@@ -665,10 +670,13 @@ trim_right_end (Compress_T query_compress, Univcoord_T left, int querystart, int
 		int querylength, bool plusp, int genestrand, bool first_read_p, int trim_mismatch_score) {
   int bestscore, score;
   int trim3, alignlength, pos, prevpos, i;
-
-  int mismatch_positions[MAX_READLENGTH];
   int nmismatches;
 
+#ifdef HAVE_ALLOCA
+  int *mismatch_positions = (int *) alloca(querylength*sizeof(int));
+#else
+  int mismatch_positions[MAX_READLENGTH];
+#endif
 
   debug8(printf("Entered trim_right_end with querystart %d, queryend %d\n",querystart,queryend));
 
@@ -756,17 +764,27 @@ trim_right_end (Compress_T query_compress, Univcoord_T left, int querystart, int
 bool
 Substring_bad_stretch_p (T this, Compress_T query_compress_fwd, Compress_T query_compress_rev) {
   int alignlength, startpos, endpos, pos, i;
-  int mismatch_positions[MAX_READLENGTH];
   float vprob_good, vprob_bad, prev_vprob_good, prev_vprob_bad, good_incr_prob, bad_incr_prob;
 #ifdef DEBUG9
   bool result;
   State_T vstate_good[MAX_READLENGTH], vstate_bad[MAX_READLENGTH], state;
 #endif
 
+#ifdef HAVE_ALLOCA
+  int *mismatch_positions;
+#else
+  int mismatch_positions[MAX_READLENGTH];
+#endif
+
+
   debug9(printf("Entered bad_stretch_p with querystart_orig %d, queryend_orig %d, plusp %d\n",
 		this->querystart_orig,this->queryend_orig,this->plusp));
 
   alignlength = this->queryend_orig - this->querystart_orig;
+#ifdef HAVE_ALLOCA
+  mismatch_positions = (int *) alloca(alignlength*sizeof(int));
+#endif
+
   if (this->plusp == true) {
     startpos = this->querystart_orig;
     endpos = this->queryend_orig;
@@ -1233,8 +1251,7 @@ Substring_insert_length_trimmed (T substring5, T substring3, int hit5_trim_left,
 
 
 static void
-mark_mismatches_cmet_gsnap (char *gbuffer, char *query, int start, int end,
-			    int genestrand, bool first_read_p) {
+mark_mismatches_cmet_gsnap (char *gbuffer, char *query, int start, int end, int genestrand) {
   int i;
   
   debug1(printf("\n"));
@@ -1244,60 +1261,30 @@ mark_mismatches_cmet_gsnap (char *gbuffer, char *query, int start, int end,
   debug1(printf("count:  "));
 
   if (genestrand == +2) {
-    if (first_read_p == false) {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'C' && query[i] == 'T') {
-	  debug1(printf("."));
-	  gbuffer[i] = '.';
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
-      }
-    } else {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'G' && query[i] == 'A') {
-	  debug1(printf("."));
-	  gbuffer[i] = '.';
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
+    for (i = start; i < end; i++) {
+      if (gbuffer[i] == 'G' && query[i] == 'A') {
+	debug1(printf("."));
+	gbuffer[i] = '.';
+      } else if (query[i] != gbuffer[i]) {
+	debug1(printf("x"));
+	assert(gbuffer[i] != OUTOFBOUNDS);
+	gbuffer[i] = (char) tolower(gbuffer[i]);
+      } else {
+	debug1(printf("*"));
       }
     }
 
   } else {
-    if (first_read_p == true) {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'C' && query[i] == 'T') {
-	  debug1(printf("."));
-	  gbuffer[i] = '.';
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
-      }
-    } else {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'G' && query[i] == 'A') {
-	  debug1(printf("."));
-	  gbuffer[i] = '.';
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
+    for (i = start; i < end; i++) {
+      if (gbuffer[i] == 'C' && query[i] == 'T') {
+	debug1(printf("."));
+	gbuffer[i] = '.';
+      } else if (query[i] != gbuffer[i]) {
+	debug1(printf("x"));
+	assert(gbuffer[i] != OUTOFBOUNDS);
+	gbuffer[i] = (char) tolower(gbuffer[i]);
+      } else {
+	debug1(printf("*"));
       }
     }
   }
@@ -1307,8 +1294,7 @@ mark_mismatches_cmet_gsnap (char *gbuffer, char *query, int start, int end,
 
 
 static void
-mark_mismatches_cmet_sam (char *gbuffer, char *query, int start, int end,
-			  int genestrand, bool first_read_p) {
+mark_mismatches_cmet_sam (char *gbuffer, char *query, int start, int end, int genestrand) {
   int i;
   
   debug1(printf("query:  %s\n",query));
@@ -1316,72 +1302,36 @@ mark_mismatches_cmet_sam (char *gbuffer, char *query, int start, int end,
   debug1(printf("count:  "));
 
   if (genestrand == +2) {
-    if (first_read_p == false) {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'C' && query[i] == 'T') {
-	  debug1(printf("."));
+    for (i = start; i < end; i++) {
+      if (gbuffer[i] == 'G' && query[i] == 'A') {
+	debug1(printf("."));
 #if 0
-	  /* Want to show mismatches */
-	  gbuffer[i] = 'T';		/* Avoids showing mismatches in MD and NM strings */
+	/* Want to show mismatches */
+	gbuffer[i] = 'A';		/* Avoids showing mismatches in MD and NM strings */
 #endif
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
-      }
-    } else {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'G' && query[i] == 'A') {
-	  debug1(printf("."));
-#if 0
-	  /* Want to show mismatches */
-	  gbuffer[i] = 'A';		/* Avoids showing mismatches in MD and NM strings */
-#endif
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
+      } else if (query[i] != gbuffer[i]) {
+	debug1(printf("x"));
+	assert(gbuffer[i] != OUTOFBOUNDS);
+	gbuffer[i] = (char) tolower(gbuffer[i]);
+      } else {
+	debug1(printf("*"));
       }
     }
 
   } else {
-    if (first_read_p == true) {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'C' && query[i] == 'T') {
-	  debug1(printf("."));
+    for (i = start; i < end; i++) {
+      if (gbuffer[i] == 'C' && query[i] == 'T') {
+	debug1(printf("."));
 #if 0
-	  /* Want to show mismatches */
-	  gbuffer[i] = 'T';		/* Avoids showing mismatches in MD and NM strings */
+	/* Want to show mismatches */
+	gbuffer[i] = 'T';		/* Avoids showing mismatches in MD and NM strings */
 #endif
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
-      }
-    } else {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'G' && query[i] == 'A') {
-	  debug1(printf("."));
-#if 0
-	  /* Want to show mismatches */
-	  gbuffer[i] = 'A';		/* Avoids showing mismatches in MD and NM strings */
-#endif
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
+      } else if (query[i] != gbuffer[i]) {
+	debug1(printf("x"));
+	assert(gbuffer[i] != OUTOFBOUNDS);
+	gbuffer[i] = (char) tolower(gbuffer[i]);
+      } else {
+	debug1(printf("*"));
       }
     }
   }
@@ -1392,8 +1342,7 @@ mark_mismatches_cmet_sam (char *gbuffer, char *query, int start, int end,
 
 
 static void
-mark_mismatches_atoi_gsnap (char *gbuffer, char *query, int start, int end,
-			    int genestrand, bool first_read_p) {
+mark_mismatches_atoi_gsnap (char *gbuffer, char *query, int start, int end, int genestrand) {
   int i;
   
   debug1(printf("query:  %s\n",query));
@@ -1401,60 +1350,30 @@ mark_mismatches_atoi_gsnap (char *gbuffer, char *query, int start, int end,
   debug1(printf("count:  "));
 
   if (genestrand == +2) {
-    if (first_read_p == false) {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'A' && query[i] == 'G') {
-	  debug1(printf("."));
-	  gbuffer[i] = '.';
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
-      }
-    } else {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'T' && query[i] == 'C') {
-	  debug1(printf("."));
-	  gbuffer[i] = '.';
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
+    for (i = start; i < end; i++) {
+      if (gbuffer[i] == 'T' && query[i] == 'C') {
+	debug1(printf("."));
+	gbuffer[i] = '.';
+      } else if (query[i] != gbuffer[i]) {
+	debug1(printf("x"));
+	assert(gbuffer[i] != OUTOFBOUNDS);
+	gbuffer[i] = (char) tolower(gbuffer[i]);
+      } else {
+	debug1(printf("*"));
       }
     }
 
   } else {
-    if (first_read_p == true) {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'A' && query[i] == 'G') {
-	  debug1(printf("."));
-	  gbuffer[i] = '.';
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
-      }
-    } else {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'T' && query[i] == 'C') {
-	  debug1(printf("."));
-	  gbuffer[i] = '.';
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
+    for (i = start; i < end; i++) {
+      if (gbuffer[i] == 'A' && query[i] == 'G') {
+	debug1(printf("."));
+	gbuffer[i] = '.';
+      } else if (query[i] != gbuffer[i]) {
+	debug1(printf("x"));
+	assert(gbuffer[i] != OUTOFBOUNDS);
+	gbuffer[i] = (char) tolower(gbuffer[i]);
+      } else {
+	debug1(printf("*"));
       }
     }
   }
@@ -1465,8 +1384,7 @@ mark_mismatches_atoi_gsnap (char *gbuffer, char *query, int start, int end,
 
 
 static void
-mark_mismatches_atoi_sam (char *gbuffer, char *query, int start, int end,
-			  int genestrand, bool first_read_p) {
+mark_mismatches_atoi_sam (char *gbuffer, char *query, int start, int end, int genestrand) {
   int i;
   
   debug1(printf("query:  %s\n",query));
@@ -1474,23 +1392,7 @@ mark_mismatches_atoi_sam (char *gbuffer, char *query, int start, int end,
   debug1(printf("count:  "));
 
   if (genestrand == +2) {
-    if (first_read_p == false) {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'A' && query[i] == 'G') {
-	  debug1(printf("."));
-#if 0
-	  /* Want to show mismatches */
-	  gbuffer[i] = 'G';		/* Avoids showing mismatches in MD and NM strings */
-#endif
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
-      }
-    } else {
+    for (i = start; i < end; i++) {
       if (gbuffer[i] == 'T' && query[i] == 'C') {
 	debug1(printf("."));
 #if 0
@@ -1507,28 +1409,12 @@ mark_mismatches_atoi_sam (char *gbuffer, char *query, int start, int end,
     }
 
   } else {
-    if (first_read_p == true) {
-      for (i = start; i < end; i++) {
-	if (gbuffer[i] == 'A' && query[i] == 'G') {
-	  debug1(printf("."));
-#if 0
-	  /* Want to show mismatches */
-	  gbuffer[i] = 'G';		/* Avoids showing mismatches in MD and NM strings */
-#endif
-	} else if (query[i] != gbuffer[i]) {
-	  debug1(printf("x"));
-	  assert(gbuffer[i] != OUTOFBOUNDS);
-	  gbuffer[i] = (char) tolower(gbuffer[i]);
-	} else {
-	  debug1(printf("*"));
-	}
-      }
-    } else {
-      if (gbuffer[i] == 'T' && query[i] == 'C') {
+    for (i = start; i < end; i++) {
+      if (gbuffer[i] == 'A' && query[i] == 'G') {
 	debug1(printf("."));
 #if 0
 	/* Want to show mismatches */
-	gbuffer[i] = 'C';		/* Avoids showing mismatches in MD and NM strings */
+	gbuffer[i] = 'G';		/* Avoids showing mismatches in MD and NM strings */
 #endif
       } else if (query[i] != gbuffer[i]) {
 	debug1(printf("x"));
@@ -1584,7 +1470,7 @@ Substring_setup (bool print_nsnpdiffs_p_in, bool print_snplabels_p_in,
 
 static char *
 embellish_genomic (char *genomic_diff, char *query, int querystart, int queryend, int querylength,
-		   int alignoffset, int extraleft, int extraright, int genestrand, bool first_read_p) {
+		   int alignoffset, int extraleft, int extraright, int genestrand) {
   char *result;
   int i, j, k;
 
@@ -1601,9 +1487,9 @@ embellish_genomic (char *genomic_diff, char *query, int querystart, int queryend
   if (mode == STANDARD) {
     /* Skip */
   } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
-    mark_mismatches_cmet_gsnap(result,query,querystart,queryend,genestrand,first_read_p);
+    mark_mismatches_cmet_gsnap(result,query,querystart,queryend,genestrand);
   } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
-    mark_mismatches_atoi_gsnap(result,query,querystart,queryend,genestrand,first_read_p);
+    mark_mismatches_atoi_gsnap(result,query,querystart,queryend,genestrand);
   } else {
     abort();
   }
@@ -1634,7 +1520,7 @@ embellish_genomic (char *genomic_diff, char *query, int querystart, int queryend
 
 static char *
 embellish_genomic_sam (char *genomic_diff, char *query, int querystart, int queryend, int querylength,
-		       int genomiclength, int alignoffset, int genestrand, bool first_read_p) {
+		       int genomiclength, int alignoffset, int genestrand) {
   char *result;
   int i, j, k;
 
@@ -1646,9 +1532,9 @@ embellish_genomic_sam (char *genomic_diff, char *query, int querystart, int quer
   if (mode == STANDARD) {
     /* Skip */
   } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
-    mark_mismatches_cmet_sam(result,query,querystart,queryend,genestrand,first_read_p);
+    mark_mismatches_cmet_sam(result,query,querystart,queryend,genestrand);
   } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
-    mark_mismatches_atoi_sam(result,query,querystart,queryend,genestrand,first_read_p);
+    mark_mismatches_atoi_sam(result,query,querystart,queryend,genestrand);
   } else {
     abort();
   }
@@ -1941,11 +1827,14 @@ Substring_compute_mapq (T this, Compress_T query_compress, char *quality_string,
 int
 Substring_display_prep (char **deletion, T this, char *query, Compress_T query_compress_fwd, Compress_T query_compress_rev,
 			Genome_T genome, int deletion_pos, int deletion_length) {
-  char *genomic_diff, gbuffer_alloc[MAX_READLENGTH/*+MAX_END_DELETIONS*/+1];
-  char *gbuffer;
+  char *genomic_diff;
+  unsigned char *gbuffer;
   int mismatch_offset;
   bool allocp;
 
+#ifndef HAVE_ALLOCA
+  unsigned char gbuffer_alloc[MAX_READLENGTH/*+MAX_END_DELETIONS*/+1];
+#endif
 
   mismatch_offset = this->alignoffset - this->querystart_orig;
 
@@ -1956,13 +1845,18 @@ Substring_display_prep (char **deletion, T this, char *query, Compress_T query_c
     this->nmismatches_refdiff = this->nmismatches_whole;
 
   } else if (this->plusp == true) {
+#ifdef HAVE_ALLOCA
+    gbuffer = (unsigned char *) alloca((this->genomiclength+1) * sizeof(unsigned char));
+    allocp = false;
+#else
     if (this->genomiclength < MAX_READLENGTH) {
       gbuffer = gbuffer_alloc;
       allocp = false;
     } else {
-      gbuffer = (char *) CALLOC(this->genomiclength+1,sizeof(char));
+      gbuffer = (unsigned char *) MALLOC((this->genomiclength+1) * sizeof(unsigned char));
       allocp = true;
     }
+#endif
 
     Genome_fill_buffer_simple(genome,this->left_genomicseg,this->genomiclength,gbuffer);
     if (deletion_pos >= 0) {
@@ -1977,7 +1871,7 @@ Substring_display_prep (char **deletion, T this, char *query, Compress_T query_c
 
     this->genomic_bothdiff = embellish_genomic(genomic_diff,query,this->querystart_orig,this->queryend_orig,
 					       this->querylength,this->alignoffset,this->extraleft,this->extraright,
-					       this->genestrand,this->first_read_p);
+					       this->genestrand);
 
     if (snps_iit == NULL) {
       this->genomic_refdiff = this->genomic_bothdiff;
@@ -1996,14 +1890,14 @@ Substring_display_prep (char **deletion, T this, char *query, Compress_T query_c
       if (output_sam_p == false) {
 	this->genomic_refdiff = embellish_genomic(genomic_diff,query,this->querystart_orig,this->queryend_orig,
 						  this->querylength,this->alignoffset,this->extraleft,this->extraright,
-						  this->genestrand,this->first_read_p);
+						  this->genestrand);
       }
     }
 
     if (output_sam_p == true) {
       this->genomic_refdiff = embellish_genomic_sam(genomic_diff,query,this->querystart_orig,this->queryend_orig,
 						    this->querylength,this->genomiclength,this->alignoffset,
-						    this->genestrand,this->first_read_p);
+						    this->genestrand);
     }
 
     if (allocp == true) {
@@ -2011,13 +1905,18 @@ Substring_display_prep (char **deletion, T this, char *query, Compress_T query_c
     }
 
   } else {
+#ifdef HAVE_ALLOCA
+    gbuffer = (unsigned char *) alloca((this->genomiclength+1) * sizeof(unsigned char));
+    allocp = false;
+#else
     if (this->genomiclength < MAX_READLENGTH) {
       gbuffer = gbuffer_alloc;
       allocp = false;
     } else {
-      gbuffer = (char *) CALLOC(this->genomiclength+1,sizeof(char));
+      gbuffer = (unsigned char *) MALLOC((this->genomiclength+1) * sizeof(unsigned char));
       allocp = true;
     }
+#endif
 
     Genome_fill_buffer_simple(genome,this->left_genomicseg,this->genomiclength,gbuffer);
     genomic_diff = make_complement_inplace(gbuffer,this->genomiclength);
@@ -2033,7 +1932,7 @@ Substring_display_prep (char **deletion, T this, char *query, Compress_T query_c
 
     this->genomic_bothdiff = embellish_genomic(genomic_diff,query,this->querystart_orig,this->queryend_orig,
 					       this->querylength,this->alignoffset,this->extraleft,this->extraright,
-					       this->genestrand,this->first_read_p);
+					       this->genestrand);
 
     if (snps_iit == NULL) {
       this->genomic_refdiff = this->genomic_bothdiff;
@@ -2054,14 +1953,14 @@ Substring_display_prep (char **deletion, T this, char *query, Compress_T query_c
       if (output_sam_p == false) {
 	this->genomic_refdiff = embellish_genomic(genomic_diff,query,this->querystart_orig,this->queryend_orig,
 						  this->querylength,this->alignoffset,this->extraleft,this->extraright,
-						  this->genestrand,this->first_read_p);
+						  this->genestrand);
       }
     }
 
     if (output_sam_p == true) {
       this->genomic_refdiff = embellish_genomic_sam(genomic_diff,query,this->querystart_orig,this->queryend_orig,
 						    this->querylength,this->genomiclength,this->alignoffset,
-						    this->genestrand,this->first_read_p);
+						    this->genestrand);
     }
 
     if (allocp == true) {

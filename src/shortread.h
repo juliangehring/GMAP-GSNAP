@@ -1,4 +1,4 @@
-/* $Id: shortread.h 115430 2013-11-18 18:19:36Z twu $ */
+/* $Id: shortread.h 145605 2014-08-20 18:02:31Z twu $ */
 #ifndef SHORTREAD_INCLUDED
 #define SHORTREAD_INCLUDED
 #include <stdio.h>
@@ -81,7 +81,8 @@ Shortread_find_overlap (T queryseq1, T queryseq2);
 
 extern T
 Shortread_new (char *acc, char *restofheader, bool filterp,
-	       char *sequence, int sequence_length, char *quality, int quality_length,
+	       char *short_sequence, char *long_sequence, int sequence_length,
+	       char *short_quality, char *long_quality, int quality_length,
 	       int barcode_length, bool invertp, bool copy_acc_p, bool skipp);
 
 extern T

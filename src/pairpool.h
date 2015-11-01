@@ -1,4 +1,4 @@
-/* $Id: pairpool.h 132712 2014-04-08 20:29:38Z twu $ */
+/* $Id: pairpool.h 145494 2014-08-19 18:37:48Z twu $ */
 #ifndef PAIRPOOL_INCLUDED
 #define PAIRPOOL_INCLUDED
 
@@ -49,6 +49,8 @@ extern struct Pair_T *
 Pairpool_copy_array (struct Pair_T *source, int npairs);
 extern void
 Pairpool_clean_join (List_T *left_path, List_T *right_pairs);
+extern List_T
+Pairpool_remove_gapholders (List_T pairs);
 extern List_T
 Pairpool_join_end3 (List_T path_orig, List_T end3_pairs_orig, Pairpool_T pairpool,
 		    bool copy_end_p);

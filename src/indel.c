@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indel.c 133760 2014-04-20 05:16:56Z twu $";
+static char rcsid[] = "$Id: indel.c 145604 2014-08-20 17:43:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -45,10 +45,16 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
 #endif
   Stage3end_T hit;
   int best_indel_pos, query_indel_pos, indel_pos;
-  int mismatch_positions_left[MAX_READLENGTH], mismatch_positions_right[MAX_READLENGTH];
   int nmismatches_left, nmismatches_right;
   int best_sum, sum, nmismatches_lefti, nmismatches_righti, lefti, righti;
   int nmismatches1, nmismatches2;
+
+#ifdef HAVE_ALLOCA
+  int *mismatch_positions_left = (int *) alloca(querylength * sizeof(int));
+  int *mismatch_positions_right = (int *) alloca(querylength * sizeof(int));
+#else
+  int mismatch_positions_left[MAX_READLENGTH], mismatch_positions_right[MAX_READLENGTH];
+#endif
 
 
   *foundp = false;
@@ -198,10 +204,16 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
 #endif
   Stage3end_T hit;
   int best_indel_pos, query_indel_pos, indel_pos;
-  int mismatch_positions_left[MAX_READLENGTH], mismatch_positions_right[MAX_READLENGTH];
   int nmismatches_left, nmismatches_right;
   int best_sum, sum, nmismatches_lefti, nmismatches_righti, lefti, righti;
   int nmismatches1, nmismatches2;
+
+#ifdef HAVE_ALLOCA
+  int *mismatch_positions_left = (int *) alloca(querylength * sizeof(int));
+  int *mismatch_positions_right = (int *) alloca(querylength * sizeof(int));
+#else
+  int mismatch_positions_left[MAX_READLENGTH], mismatch_positions_right[MAX_READLENGTH];
+#endif
 
 
   *foundp = false;

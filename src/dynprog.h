@@ -1,4 +1,4 @@
-/* $Id: dynprog.h 138110 2014-06-04 19:34:22Z twu $ */
+/* $Id: dynprog.h 141804 2014-07-17 02:20:36Z twu $ */
 #ifndef DYNPROG_INCLUDED
 #define DYNPROG_INCLUDED
 
@@ -31,16 +31,16 @@ typedef enum {HIGHQ, MEDQ, LOWQ, ENDQ} Mismatchtype_T;
 #define DEFECT_MEDQ 0.014
 
 #define SINGLE_OPEN_HIGHQ -8
-#define SINGLE_OPEN_MEDQ -6
-#define SINGLE_OPEN_LOWQ -4
+#define SINGLE_OPEN_MEDQ -7
+#define SINGLE_OPEN_LOWQ -6
 
 #define SINGLE_EXTEND_HIGHQ -3
 #define SINGLE_EXTEND_MEDQ -2
 #define SINGLE_EXTEND_LOWQ -1
 
 #define PAIRED_OPEN_HIGHQ -8
-#define PAIRED_OPEN_MEDQ -6
-#define PAIRED_OPEN_LOWQ -4
+#define PAIRED_OPEN_MEDQ -7
+#define PAIRED_OPEN_LOWQ -6
 
 #define PAIRED_EXTEND_HIGHQ -3
 #define PAIRED_EXTEND_MEDQ -2

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 138522 2014-06-09 17:08:44Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 140511 2014-07-03 01:50:36Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -951,6 +951,7 @@ main (int argc, char *argv[]) {
   Univcoord_T n, genomelength, totalnts;
   char *chromosomefile, *iitfile, *positionsfile_high, *positionsfile_low, interval_char;
   char *sarrayfile, *lcpexcfile, *lcpguidefile;
+  char *rankfile, *permuted_sarray_file; /* temporary files */
   char *childbytesfile, *childexcfile, *childguidefile;
   char *lcpchilddcfile;
 #ifdef USE_SEPARATE_BUCKETS
@@ -1441,10 +1442,9 @@ main (int argc, char *argv[]) {
 
       n = genomelength;
 
+      /* No need to mmap SA anymore */
       sarrayfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".sarray")+1,sizeof(char));
       sprintf(sarrayfile,"%s/%s.sarray",destdir,fileroot);
-      SA = (UINT4 *) Access_mmap(&sa_fd,&sa_len,sarrayfile,sizeof(UINT4),/*randomp*/false);
-      FREE(sarrayfile);
 
       /* Required for computing LCP, but uses non-SIMD instructions */
       genomebits = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_BITS,
@@ -1453,7 +1453,15 @@ main (int argc, char *argv[]) {
 		      /*query_unk_mismatch_p*/false,/*genome_unk_mismatch_p*/false,
 		      /*mode*/STANDARD);
 
-      lcp = Sarray_compute_lcp(SA,n);
+
+      rankfile = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".rank")+1,sizeof(char));
+      sprintf(rankfile,"%s/%s.rank",destdir,fileroot);
+      permuted_sarray_file = (char *) CALLOC(strlen(destdir)+strlen("/")+strlen(fileroot)+strlen(".permuted_sarray")+1,sizeof(char));
+      sprintf(permuted_sarray_file,"%s/%s.permuted_sarray",destdir,fileroot);
+      lcp = Sarray_compute_lcp(rankfile,permuted_sarray_file,sarrayfile,n);
+      FREE(permuted_sarray_file);
+      FREE(rankfile);
+
       Genome_free(&genomebits);
 
       /* Write lcp exceptions/guide, but return lcp_bytes */
@@ -1484,16 +1492,15 @@ main (int argc, char *argv[]) {
       n_lcp_exceptions = lcpexc_len/(sizeof(UINT4) + sizeof(UINT4));
       FREE(lcpexcfile);
 
-      /* SA and genome needed for creating discrim_chars */
       genomecomp = Genome_new(sourcedir,fileroot,/*snps_root*/NULL,/*genometype*/GENOME_OLIGOS,
 			      /*uncompressedp*/false,/*access*/USE_MMAP_ONLY);
 
       /* Compute discriminating chars (DC) array */
-      discrim_chars = Sarray_discriminating_chars(&nbytes,SA,genomecomp,lcp_bytes,lcp_guide,
+      discrim_chars = Sarray_discriminating_chars(&nbytes,sarrayfile,genomecomp,lcp_bytes,lcp_guide,
 						  lcp_exceptions,/*guide_interval*/1024,n,CHARTABLE);
+      FREE(sarrayfile);
       Genome_free(&genomecomp);
-      munmap((void *) SA,sa_len);
-      close(sa_fd);
+      /* No need to munmap SA anymore */
 
 
       fprintf(stderr,"Building child array\n");

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: atoiindex.c 133760 2014-04-20 05:16:56Z twu $";
+static char rcsid[] = "$Id: atoiindex.c 142098 2014-07-22 03:11:00Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -988,7 +988,6 @@ main (int argc, char *argv[]) {
     FREE(indexijptrsfile);
 
     SA = (UINT4 *) Access_mmap(&sa_fd,&sa_len,sarrayfile,sizeof(UINT4),/*randomp*/false);
-    FREE(sarrayfile);
 
 #if 0
     /* Not needed if we already have gbuffer */
@@ -1001,6 +1000,8 @@ main (int argc, char *argv[]) {
 #endif
 
     lcp = Sarray_compute_lcp_from_genome(SA,gbuffer,/*n*/genomelength);
+    munmap((void *) SA,sa_len);
+    close(sa_fd);
     FREE(gbuffer);
 #if 0
     Genome_free(&genomebits);
@@ -1034,11 +1035,10 @@ main (int argc, char *argv[]) {
     FREE(lcpexcfile);
 
     /* Compute discriminating chars (DC) array */
-    discrim_chars = Sarray_discriminating_chars(&nbytes,SA,genomecomp,lcp_bytes,lcp_guide,
+    discrim_chars = Sarray_discriminating_chars(&nbytes,sarrayfile,genomecomp,lcp_bytes,lcp_guide,
 						lcp_exceptions,/*guide_interval*/1024,/*n*/genomelength,
 						AG_CHARTABLE);
-    munmap((void *) SA,sa_len);
-    close(sa_fd);
+    FREE(sarrayfile);
 
     fprintf(stderr,"Building child array\n");
     /* Compute child array (relative values) */
@@ -1129,7 +1129,6 @@ main (int argc, char *argv[]) {
     FREE(indexijptrsfile);
 
     SA = (UINT4 *) Access_mmap(&sa_fd,&sa_len,sarrayfile,sizeof(UINT4),/*randomp*/false);
-    FREE(sarrayfile);
 
 #if 0
     /* Not needed if we already have gbuffer */
@@ -1142,6 +1141,8 @@ main (int argc, char *argv[]) {
 #endif
 
     lcp = Sarray_compute_lcp_from_genome(SA,gbuffer,/*n*/genomelength);
+    munmap((void *) SA,sa_len);
+    close(sa_fd);
     FREE(gbuffer);
 #if 0
     Genome_free(&genomebits);
@@ -1175,11 +1176,10 @@ main (int argc, char *argv[]) {
     FREE(lcpexcfile);
 
     /* Compute discriminating chars (DC) array */
-    discrim_chars = Sarray_discriminating_chars(&nbytes,SA,genomecomp,lcp_bytes,lcp_guide,
+    discrim_chars = Sarray_discriminating_chars(&nbytes,sarrayfile,genomecomp,lcp_bytes,lcp_guide,
 						lcp_exceptions,/*guide_interval*/1024,/*n*/genomelength,
 						TC_CHARTABLE);
-    munmap((void *) SA,sa_len);
-    close(sa_fd);
+    FREE(sarrayfile);
 
     fprintf(stderr,"Building child array\n");
     /* Compute child array (relative values) */

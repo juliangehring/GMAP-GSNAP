@@ -29,6 +29,7 @@ if (defined($opt_d)) {
 	$gene_name = "";
 	$last_transcript_id = "";
 	@exons = ();
+	@CDS_regions = ();
 	while (defined($line = <>)) {
 	    if ($line =~ /^\#/) {
 		# Skip
@@ -45,16 +46,24 @@ if (defined($opt_d)) {
 			# Handle last mRNA of previous gene
 			query_dinucleotides(\@exons,$chr,$strand,$FP);
 			#print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+		    } elsif ($#CDS_regions > 0) {
+			# Handle last mRNA of previous gene
+			query_dinucleotides(\@CDS_regions,$chr,$strand,$FP);
+			#print_exons(\@CDS_regions,$gene_name,$last_transcript_id,$chr,$strand,$FP);
 		    }
 
 		    ($gene_name) = $fields[8] =~ /ID=([^;]+)/;
 		    $chr = $fields[0];
 		    @exons = ();
+		    @CDS_regions = ();
 
 		} elsif ($fields[2] eq "mRNA" || $fields[2] eq "transcript") {
 		    if ($#exons > 0) {
 			query_dinucleotides(\@exons,$chr,$strand,$FP);
 			#print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+		    } elsif ($#CDS_regions > 0) {
+			query_dinucleotides(\@CDS_regions,$chr,$strand,$FP);
+			#print_exons(\@CDS_regions,$gene_name,$last_transcript_id,$chr,$strand,$FP);
 		    }
 
 		    ($last_transcript_id) = $fields[8] =~ /ID=([^;]+)/;
@@ -69,9 +78,14 @@ if (defined($opt_d)) {
 		    }
 
 		    @exons = ();
+		    @CDS_regions = ();
 
-		} elsif ($fields[2] eq "exon" || $fields[2] eq "CDS") {
+		} elsif ($fields[2] eq "exon") {
 		    push @exons,"$fields[3] $fields[4]";
+
+		} elsif ($fields[2] eq "CDS") {
+		    push @CDS_regions,"$fields[3] $fields[4]";
+
 		}
 	    }
 	}
@@ -79,6 +93,8 @@ if (defined($opt_d)) {
 
     if ($#exons > 0) {
 	query_dinucleotides(\@exons,$chr,$strand,$FP);
+    } elsif ($#CDS_regions > 0) {
+	query_dinucleotides(\@CDS_regions,$chr,$strand,$FP);
     }
 
     close($FP);
@@ -105,6 +121,7 @@ if (defined($opt_d)) {
 $gene_name = "";
 $last_transcript_id = "";
 @exons = ();
+@CDS_regions = ();
 while (defined($line = get_line())) {
     if ($line =~ /^\#/) {
 	# Skip
@@ -119,15 +136,21 @@ while (defined($line = get_line())) {
 	    if ($#exons > 0) {
 		# Handle last mRNA of previous gene
 		print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+	    } elsif ($#CDS_regions > 0) {
+		# Handle last mRNA of previous gene
+		print_exons(\@CDS_regions,$gene_name,$last_transcript_id,$chr,$strand,$FP);
 	    }
 
 	    ($gene_name) = $fields[8] =~ /ID=([^;]+)/;
 	    $chr = $fields[0];
 	    @exons = ();
+	    @CDS_regions = ();
 
 	} elsif ($fields[2] eq "mRNA" || $fields[2] eq "transcript") {
 	    if ($#exons > 0) {
 		print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+	    } elsif ($#CDS_regions > 0) {
+		print_exons(\@CDS_regions,$gene_name,$last_transcript_id,$chr,$strand,$FP);
 	    }
 
 	    ($last_transcript_id) = $fields[8] =~ /ID=([^;]+)/;
@@ -142,16 +165,21 @@ while (defined($line = get_line())) {
 	    }
 
 	    @exons = ();
+	    @CDS_regions = ();
 
-	} elsif ($fields[2] eq "exon" || $fields[2] eq "CDS") {
+	} elsif ($fields[2] eq "exon") {
 	    push @exons,"$fields[3] $fields[4]";
+	} elsif ($fields[2] eq "CDS") {
+	    push @CDS_regions,"$fields[3] $fields[4]";
 	}
     }
 }
 
 if ($#exons > 0) {
     print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$FP);
-}
+} elsif ($#CDS_regions > 0) {
+    print_exons(\@CDS_regions,$gene_name,$last_transcript_id,$chr,$strand,$FP);
+}    
 
 if (defined($opt_d)) {
     close($FP);

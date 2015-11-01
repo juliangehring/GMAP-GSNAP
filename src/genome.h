@@ -1,4 +1,4 @@
-/* $Id: genome.h 133760 2014-04-20 05:16:56Z twu $ */
+/* $Id: genome.h 140510 2014-07-03 01:48:26Z twu $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
 
@@ -81,9 +81,9 @@ Genome_get_segment_snp (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T ch
 			bool revcomp);
 extern int
 Genome_next_char (T this);
-extern int
-Genome_ntcounts (int *na, int *nc, int *ng, int *nt,
-		 T this, Univcoord_T left, Chrpos_T length);
+extern Univcoord_T
+Genome_ntcounts (Univcoord_T *na, Univcoord_T *nc, Univcoord_T *ng, Univcoord_T *nt,
+		 T this, Univcoord_T left, Univcoord_T length);
 
 #undef T
 #endif

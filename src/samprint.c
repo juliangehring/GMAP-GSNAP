@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: samprint.c 138718 2014-06-11 17:06:57Z twu $";
+static char rcsid[] = "$Id: samprint.c 140368 2014-07-02 00:56:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -3905,13 +3905,13 @@ print_shortexon (FILE *fp, char *abbrev, Stage3end_T shortexon, Stage3end_T mate
 
   if (sensep == plusp) {
     substring1 = /* donor */ Stage3end_substringD(shortexon);
-    distance1 = Stage3end_shortexon_acceptor_distance(shortexon);
-    distance2 = Stage3end_shortexon_donor_distance(shortexon);
+    distance1 = Stage3end_shortexonA_distance(shortexon);
+    distance2 = Stage3end_shortexonD_distance(shortexon);
     substring2 = /* acceptor */ Stage3end_substringA(shortexon);
   } else {
     substring1 = /* acceptor */ Stage3end_substringA(shortexon);
-    distance1 = Stage3end_shortexon_donor_distance(shortexon);
-    distance2 = Stage3end_shortexon_acceptor_distance(shortexon);
+    distance1 = Stage3end_shortexonD_distance(shortexon);
+    distance2 = Stage3end_shortexonA_distance(shortexon);
     substring2 = /* donor */ Stage3end_substringD(shortexon);
   }
 

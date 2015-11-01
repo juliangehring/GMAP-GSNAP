@@ -106,8 +106,10 @@ AC_DEFUN([AX_EXT],
       AC_CACHE_CHECK([whether ssse3 is enabled and supported], [ax_cv_have_ssse3_ext],
       [
         ax_cv_have_ssse3_ext=no
-        if test "$((0x$ecx>>9&0x01))" = 1; then
-          ax_cv_have_ssse3_ext=yes
+        if test "$ax_cv_want_ssse3_ext" = yes; then
+          if test "$((0x$ecx>>9&0x01))" = 1; then
+            ax_cv_have_ssse3_ext=yes
+          fi
         fi
       ])
 

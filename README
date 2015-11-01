@@ -52,9 +52,9 @@ then refer to it like this
 
 
 Note 3: GSNAP is designed for short reads of a limited length, and
-relies upon a maximum read length variable MAX_READLENGTH defined at
-compile time (default 300).  You may set this variable by providing it
-to configure like this
+uses a configure variable called MAX_READLENGTH (default 300) as a
+guide to the maximum read length.  You may set this variable by
+providing it to configure like this
 
     ./configure MAX_READLENGTH=<length>
 
@@ -66,6 +66,11 @@ when you run "./configure --help".
 
 Note that MAX_READLENGTH applies only to GSNAP.  GMAP, on the other
 hand, can process queries up to 1 million bp.
+
+Also, starting with version 2014-08-20, if your C compiler can
+handle stack-based memory allocation using the alloca() function,
+GSNAP ignores MAX_READLENGTH, and can handle reads longer than that
+value.
 
 
 Note 4: GSNAP can read from gzip-compressed FASTA or FASTQ input

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 137652 2014-05-30 16:49:12Z twu $";
+static char rcsid[] = "$Id: stage2.c 145495 2014-08-19 18:38:55Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -198,7 +198,7 @@ Stage2_setup (bool splicingp_in, bool cross_species_p,
 /* Dynamic programming */
 /* Can also define debug9(x) as: if (querypos == XX) {x;} */
 #ifdef DEBUG9
-#define debug9(x) if (querypos == 39) {x;}
+#define debug9(x) if (querypos == 67) {x;}
 #else 
 #define debug9(x)
 #endif
@@ -2273,7 +2273,7 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
   List_T celllist = NULL;
   int querypos, hit;
   int rootposition, last_rootposition;
-  int threshold_score;
+  int threshold_score, best_score_for_root;
   int ngood, ncells, i, k;
 
   if (bestscore > 2*suboptimal_score_end) {
@@ -2327,14 +2327,25 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
     k = 0;
 
     last_rootposition = -1;
+    best_score_for_root = -1;
     for (i = 0; i < ncells; i++) {
-      if (cells[i]->rootposition == last_rootposition) {
-	/* Cell_free(&(cells[i])); -- no need with cellpool */
-      } else {
+      if (cells[i]->rootposition != last_rootposition) {
 	debug11(printf("Pushing rootposition %d, trace #%d, score %d, pos %d, hit %d\n",
 		       cells[i]->rootposition,cells[i]->tracei,cells[i]->score,cells[i]->querypos,cells[i]->hit));
 	sorted[k++] = cells[i];
 	last_rootposition = cells[i]->rootposition;
+	best_score_for_root = cells[i]->score;
+
+      } else if (cells[i]->querypos == best_score_for_root) {
+	debug11(printf("Equivalent cell for rootposition %d, trace #%d, score %d, pos %d, hit %d\n",
+		       cells[i]->rootposition,cells[i]->tracei,cells[i]->score,cells[i]->querypos,cells[i]->hit));
+	sorted[k++] = cells[i];
+	/* last_rootposition = cells[i]->rootposition;*/
+	/* best_score_for_root = cells[i]->score; */
+
+      } else {
+	/* Cell_free(&(cells[i])); -- no need with cellpool */
+
       }
     }
     debug11(printf("\n"));
@@ -2356,6 +2367,7 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
   List_T celllist = NULL;
   int querypos, hit;
   int rootposition, last_rootposition;
+  int best_score_for_root;
   int ngood, ncells, i, k;
 
   ncells = 0;
@@ -2371,6 +2383,7 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
     }
   }
 
+  debug12(printf("Have %d cells\n",ncells));
   if (ncells == 0) {
     *nunique = 0;
     return (Cell_T *) NULL;
@@ -2390,14 +2403,26 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
     k = 0;
 
     last_rootposition = -1;
+    best_score_for_root = -1;
     for (i = 0; i < ncells; i++) {
-      if (cells[i]->rootposition == last_rootposition) {
-	/* Cell_free(&(cells[i])); -- no need with cellpool */
-      } else {
+      if (cells[i]->rootposition != last_rootposition) {
+	/* Take best cell at this rootposition */
 	debug11(printf("Pushing rootposition %d, score %d, pos %d, hit %d\n",
 		       cells[i]->rootposition,cells[i]->score,cells[i]->querypos,cells[i]->hit));
 	sorted[k++] = cells[i];
 	last_rootposition = cells[i]->rootposition;
+	best_score_for_root = cells[i]->score;
+	
+      } else if (cells[i]->score == best_score_for_root) {
+	/* Take equivalent cell for this rootposition */
+	debug11(printf("Pushing equivalent end for rootposition %d, score %d, pos %d, hit %d\n",
+		       cells[i]->rootposition,cells[i]->score,cells[i]->querypos,cells[i]->hit));
+	sorted[k++] = cells[i];
+	/* last_rootposition = cells[i]->rootposition; */
+	/* best_score_for_root = cells[i]->score; */
+
+      } else {
+	/* Cell_free(&(cells[i])); -- no need with cellpool */
       }
     }
     debug11(printf("\n"));
@@ -2419,7 +2444,7 @@ Linkmatrix_get_cells_both (int *nunique, struct Link_T **links, int querystart, 
   List_T celllist = NULL;
   int querypos, hit;
   int rootposition, last_rootposition;
-  int threshold_score;
+  int threshold_score, best_score_for_root;
   int ngood, ncells, i, k;
 
   if (bestscore > 2*suboptimal_score_end) {
@@ -2469,6 +2494,7 @@ Linkmatrix_get_cells_both (int *nunique, struct Link_T **links, int querystart, 
     }
   }
 
+  debug12(printf("Have %d cells\n",ncells));
   if (ncells == 0) {
     *nunique = 0;
     return (Cell_T *) NULL;
@@ -2488,14 +2514,26 @@ Linkmatrix_get_cells_both (int *nunique, struct Link_T **links, int querystart, 
     k = 0;
 
     last_rootposition = -1;
+    best_score_for_root = -1;
     for (i = 0; i < ncells; i++) {
-      if (cells[i]->rootposition == last_rootposition) {
-	/* Cell_free(&(cells[i])); -- no need with cellpool */
-      } else {
+      if (cells[i]->rootposition != last_rootposition) {
+	/* Take best cell at this rootposition */
 	debug11(printf("rootposition %d, score %d, pos %d, hit %d\n",
 		       cells[i]->rootposition,cells[i]->score,cells[i]->querypos,cells[i]->hit));
 	sorted[k++] = cells[i];
 	last_rootposition = cells[i]->rootposition;
+	best_score_for_root = cells[i]->score;
+
+      } else if (cells[i]->score == best_score_for_root) {
+	/* Take equivalent end cell for this rootposition */
+	debug11(printf("equivalent end for rootposition %d, score %d, pos %d, hit %d\n",
+		       cells[i]->rootposition,cells[i]->score,cells[i]->querypos,cells[i]->hit));
+	sorted[k++] = cells[i];
+	/* last_rootposition = cells[i]->rootposition; */
+	/* best_score_for_root = cells[i]->score; */
+	
+      } else {
+	/* Cell_free(&(cells[i])); -- no need with cellpool */
       }
     }
     debug11(printf("\n"));
@@ -3038,6 +3076,7 @@ traceback_one (int querypos, int hit, struct Link_T **links, Chrpos_T **mappings
     }
     debug3(printf("%d %d  %d %d  3\n",prev_querypos,prevhit,querypos,hit));
   }
+  debug0(printf("Done\n\n"));
 
   return path;
 }
@@ -3123,6 +3162,7 @@ traceback_one_snps (int querypos, int hit, struct Link_T **links, Chrpos_T **map
     }
     debug3(printf("%d %d  %d %d  3\n",prev_querypos,prevhit,querypos,hit));
   }
+  debug0(printf("Done\n\n"));
 
   return path;
 }
@@ -3837,7 +3877,8 @@ convert_to_nucleotides (List_T path,
 			char *queryseq_ptr, char *queryuc_ptr, 
 #endif
 			Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
-			int query_offset, Pairpool_T pairpool, int indexsize_nt) {
+			int query_offset, Pairpool_T pairpool, int indexsize_nt,
+			bool include_gapholders_p) {
   List_T pairs = NULL, pairptr;
   Pair_T pair;
   int querypos, lastquerypos, queryjump, genomejump, fill, default_fill;
@@ -3990,7 +4031,7 @@ convert_to_nucleotides (List_T path,
       queryjump -= fill;
       genomejump -= fill;
       debug5(printf("  Revised queryjump of %d and genomejump of %d\n",queryjump,genomejump));
-      if (genomejump > 0 || queryjump > 0) {
+      if (include_gapholders_p == true && (genomejump > 0 || queryjump > 0)) {
 	debug5(printf("  Pushing gapholder\n"));
 	pairs = Pairpool_push_gapholder(pairs,pairpool,queryjump,genomejump,
 					/*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/false);
@@ -4108,7 +4149,8 @@ convert_to_nucleotides_snps (List_T path,
 			     char *queryseq_ptr, char *queryuc_ptr, 
 #endif
 			     Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp,
-			     int query_offset, Pairpool_T pairpool, int indexsize_nt) {
+			     int query_offset, Pairpool_T pairpool, int indexsize_nt,
+			     bool include_gapholders_p) {
   List_T pairs = NULL, pairptr;
   Pair_T pair;
   int querypos, genomepos, lastquerypos, lastgenomepos, queryjump, genomejump, fill, default_fill;
@@ -4260,7 +4302,7 @@ convert_to_nucleotides_snps (List_T path,
       queryjump -= fill;
       genomejump -= fill;
       debug5(printf("  Revised queryjump of %d and genomejump of %d\n",queryjump,genomejump));
-      if (genomejump > 0 || queryjump > 0) {
+      if (include_gapholders_p == true && (genomejump > 0 || queryjump > 0)) {
 	debug5(printf("  Pushing gapholder\n"));
 	pairs = Pairpool_push_gapholder(pairs,pairpool,queryjump,genomejump,
 					/*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/false);
@@ -4685,14 +4727,16 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 					     queryseq_ptr,queryuc_ptr,
 #endif
 					     chroffset,chrhigh,/*watsonp*/plusp,
-					     query_offset,pairpool,indexsize_nt);
+					     query_offset,pairpool,indexsize_nt,
+					     /*include_gapholders_p*/true);
       } else {
 	middle = convert_to_nucleotides(pairs,
 #ifndef PMAP
 					queryseq_ptr,queryuc_ptr,
 #endif
 					chroffset,chrhigh,/*watsonp*/plusp,
-					query_offset,pairpool,indexsize_nt);
+					query_offset,pairpool,indexsize_nt,
+					/*include_gapholders_p*/true);
       }
 
 #ifdef PMAP
@@ -4727,15 +4771,18 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 					      queryseq_ptr,queryuc_ptr,
 #endif
 					      chroffset,chrhigh,/*watsonp*/plusp,
-					      query_offset,pairpool,indexsize_nt);
+					      query_offset,pairpool,indexsize_nt,
+					      /*include_gapholders_p*/false);
 	} else {
 	  pairs = convert_to_nucleotides(path,
 #ifndef PMAP
 					 queryseq_ptr,queryuc_ptr,
 #endif
 					 chroffset,chrhigh,/*watsonp*/plusp,
-					 query_offset,pairpool,indexsize_nt);
+					 query_offset,pairpool,indexsize_nt,
+					 /*include_gapholders_p*/false);
 	}
+	middle = Pairpool_remove_gapholders(middle);
 	middle = List_reverse(Pairpool_join_end3(List_reverse(middle),pairs,pairpool,/*copy_end_p*/false));
 	debug0(printf("ATTACHING SINGLE END TO MIDDLE\n"));
 	debug0(Pair_dump_list(middle,true));
@@ -4752,14 +4799,16 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 						queryseq_ptr,queryuc_ptr,
 #endif
 						chroffset,chrhigh,/*watsonp*/plusp,
-						query_offset,pairpool,indexsize_nt);
+						query_offset,pairpool,indexsize_nt,
+						/*include_gapholders_p*/false);
 	  } else {
 	    pairs = convert_to_nucleotides(path,
 #ifndef PMAP
 					   queryseq_ptr,queryuc_ptr,
 #endif
 					   chroffset,chrhigh,/*watsonp*/plusp,
-					   query_offset,pairpool,indexsize_nt);
+					   query_offset,pairpool,indexsize_nt,
+					   /*include_gapholders_p*/false);
 	  }
 	  debug0(printf("END %d/%d\n",i++,List_length(end_paths)));
 	  debug0(Pair_dump_list(pairs,true));
@@ -4793,26 +4842,30 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
       /* fprintf(stderr,"%d starts\n",List_length(start_paths)); */
       if (List_length(start_paths) == 1) {
 	path = (List_T) List_head(start_paths);
-	  debug5(printf("Converting single start\n"));
+	debug5(printf("Converting single start\n"));
 	if (snps_p == true) {
 	  pairs = convert_to_nucleotides_snps(path,
 #ifndef PMAP
 					      queryseq_ptr,queryuc_ptr,
 #endif
 					      chroffset,chrhigh,/*watsonp*/plusp,
-					      query_offset,pairpool,indexsize_nt);
+					      query_offset,pairpool,indexsize_nt,
+					      /*include_gapholders_p*/false);
 	} else {
 	  pairs = convert_to_nucleotides(path,
 #ifndef PMAP
 					 queryseq_ptr,queryuc_ptr,
 #endif
 					 chroffset,chrhigh,/*watsonp*/plusp,
-					 query_offset,pairpool,indexsize_nt);
+					 query_offset,pairpool,indexsize_nt,
+					 /*include_gapholders_p*/false);
 	}
 	path = List_reverse(pairs);
+	middle = Pairpool_remove_gapholders(middle);
 	middle = Pairpool_join_end5(middle,path,pairpool,/*copy_end_p*/false);
 	debug0(printf("ATTACHING SINGLE START TO MIDDLE\n"));
 	debug0(Pair_dump_list(middle,true));
+	
       } else {
 	debug0(i = 0);
 	for (q = start_paths; q != NULL; q = List_next(q)) {
@@ -4824,14 +4877,16 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 						queryseq_ptr,queryuc_ptr,
 #endif
 						chroffset,chrhigh,/*watsonp*/plusp,
-						query_offset,pairpool,indexsize_nt);
+						query_offset,pairpool,indexsize_nt,
+						/*include_gapholders_p*/false);
 	  } else {
 	    pairs = convert_to_nucleotides(path,
 #ifndef PMAP
 					   queryseq_ptr,queryuc_ptr,
 #endif
 					   chroffset,chrhigh,/*watsonp*/plusp,
-					   query_offset,pairpool,indexsize_nt);
+					   query_offset,pairpool,indexsize_nt,
+					   /*include_gapholders_p*/false);
 	  }
 	  path = List_reverse(pairs);
 	  debug0(printf("START %d/%d\n",i++,List_length(start_paths)));
@@ -5004,7 +5059,8 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 					   queryseq_ptr,queryuc_ptr,
 #endif
 					   chroffset,chrhigh,/*watsonp*/plusp,
-					   query_offset,pairpool,indexsize_nt);
+					   query_offset,pairpool,indexsize_nt,
+					   /*include_gapholders_p*/true);
     } else {
       pairs = List_reverse(path);
       middle = convert_to_nucleotides(pairs,
@@ -5012,7 +5068,8 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 				      queryseq_ptr,queryuc_ptr,
 #endif
 				      chroffset,chrhigh,/*watsonp*/plusp,
-				      query_offset,pairpool,indexsize_nt);
+				      query_offset,pairpool,indexsize_nt,
+				      /*include_gapholders_p*/true);
     }
 
     List_free(&all_paths);

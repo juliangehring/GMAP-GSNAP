@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 135447 2014-05-07 22:25:45Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 145607 2014-08-20 18:19:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -446,8 +446,8 @@ uniqueness_scan (bool from_right_p) {
     }
 
     /* Handle full sequence */
-    queryseq1 = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,/*filterp*/false,sequence,
-			      /*sequence_length*/fulllength,/*quality*/NULL,/*quality_length*/0,
+    queryseq1 = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,/*filterp*/false,sequence,/*long_sequence*/NULL,
+			      /*sequence_length*/fulllength,/*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,
 			      /*barcode_length*/0,/*invertp*/0,/*copy_acc_p*/false,/*skipp*/false);
     stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 				     queryseq1,indexdb,indexdb2,indexdb_size_threshold,
@@ -490,8 +490,8 @@ uniqueness_scan (bool from_right_p) {
 	} else {
 	  strncpy(subsequence,sequence,sublength);
 	}
-	queryseq1 = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,/*filterp*/false,subsequence,
-				  /*sequence_length*/sublength,/*quality*/NULL,/*quality_length*/0,
+	queryseq1 = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,/*filterp*/false,subsequence,/*long_sequence*/NULL,
+				  /*sequence_length*/sublength,/*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,
 				  /*barcode_length*/0,/*invertp*/0,/*copy_acc_p*/false,/*skipp*/false);
 	stage3array = Stage1_single_read(&npaths,&first_absmq,&second_absmq,
 					 queryseq1,indexdb,indexdb2,indexdb_size_threshold,

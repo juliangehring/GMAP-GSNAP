@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 135239 2014-05-06 16:12:15Z twu $";
+static char rcsid[] = "$Id: pair.c 141803 2014-07-17 02:12:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6110,22 +6110,27 @@ Pair_array_nmatches_posttrim (struct T *pairarray, int npairs, int pos5, int pos
 
 int
 Pair_nmismatches_region (int *nindelbreaks, struct T *pairs, int npairs,
-			 int trim_left, int trim_right, int querylength) {
+			 int trim_left, int trim_right, int start_amb_nmatches, int end_amb_nmatches,
+			 int querylength) {
   int nmismatches = 0;
   bool in_intron = false, indelp = false;
   int i = 0;
   T this;
 
   *nindelbreaks = 0;
+
+  /* Handle GMAP alignments that are not extended to the end */
+  this = &(pairs[0]);
+  if (this->querypos - start_amb_nmatches < trim_left) {
+    /* Skip */
+  } else {
+    nmismatches += (this->querypos - start_amb_nmatches) - trim_left;
+  }
+
   while (i < npairs) {
     this = &(pairs[i]);
-    if (this->querypos < trim_left) {
-      /* Skip */
-    } else if (this->querypos >= querylength - trim_right) {
-      /* Skip */
-    } else if (this->comp == MISMATCH_COMP) {
-      nmismatches++;
-    } else if (this->comp == INDEL_COMP || this->comp == SHORTGAP_COMP) {
+    if (this->comp == INDEL_COMP || this->comp == SHORTGAP_COMP) {
+      /* Count indelbreaks, even if outside of trimmed region */
       if (this->genome == ' ') {
 	/* INSERTION */
 	while (i < npairs && this->genome == ' ') {
@@ -6144,8 +6149,23 @@ Pair_nmismatches_region (int *nindelbreaks, struct T *pairs, int npairs,
 	i--;
 	(*nindelbreaks) += 1;
       }
+
+    } else if (this->querypos < trim_left) {
+      /* Skip for counting mismatches */
+    } else if (this->querypos >= querylength - trim_right) {
+      /* Skip for counting mismatches */
+    } else if (this->comp == MISMATCH_COMP) {
+      nmismatches++;
     }
     i++;
+  }
+
+  /* Handle GMAP alignments that are not extended to the end */
+  this = &(pairs[npairs-1]);
+  if (this->querypos + end_amb_nmatches >= (querylength - 1) - trim_right) {
+    /* Skip */
+  } else {
+    nmismatches += (querylength - 1 - trim_right) - (this->querypos + end_amb_nmatches);
   }
 
   return nmismatches;
@@ -7868,7 +7888,7 @@ Pair_end_bound (int *cdna_direction, List_T pairs, int breakpoint) {
 
 
 List_T
-Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
+Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs, int ambig_end_length_5, int ambig_end_length_3) {
   List_T trimmed = NULL;
   int trim_right = 0, trim_left = -1; /* Needs to be -1 to avoid trimming when pairs is NULL */
   int bestscore, score;
@@ -7939,6 +7959,9 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
   if (this == NULL) {
     fprintf(stderr,"check for trim_right yields this == NULL\n");
     abort();
+  } else if (ambig_end_length_3 > 0) {
+    debug8(printf("Not disturbing ambiguous end on right\n"));
+    trim_right = 0;
   } else if (this->protectedp == true) {
     debug8(printf("Protected against trim_right\n"));
     trim_right = 0;
@@ -8005,6 +8028,9 @@ Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs) {
   if (this == NULL) {
     fprintf(stderr,"check for trim_left yields this == NULL\n");
     abort();
+  } else if (ambig_end_length_5 > 0) {
+    debug8(printf("Not disturbing ambiguous end on left\n"));
+    trim_left = pairi - 1;
   } else if (this->protectedp == true) {
     debug8(printf("Protected against trim_left\n"));
     trim_left = pairi - 1;

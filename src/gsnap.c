@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 138738 2014-06-11 18:55:04Z twu $";
+static char rcsid[] = "$Id: gsnap.c 145604 2014-08-20 17:43:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -571,6 +571,11 @@ print_program_version () {
   fprintf(stdout,"pthreads enabled, ");
 #else
   fprintf(stdout,"no pthreads, ");
+#endif
+#ifdef HAVE_ALLOCA
+  fprintf(stdout,"alloca available, ");
+#else
+  fprintf(stdout,"no alloca, ");
 #endif
 #ifdef HAVE_ZLIB
   fprintf(stdout,"zlib available, ");

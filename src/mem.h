@@ -1,4 +1,4 @@
-/* $Id: mem.h 135653 2014-05-09 01:26:58Z twu $ */
+/* $Id: mem.h 145604 2014-08-20 17:43:03Z twu $ */
 #ifndef MEM_INCLUDED
 #define MEM_INCLUDED
 
@@ -8,6 +8,11 @@
 
 #include <stddef.h>
 #include "except.h"
+
+#ifdef HAVE_ALLOCA_H
+#include <alloca.h>
+#endif
+
 
 extern const Except_T Mem_Failed;
 
@@ -30,11 +35,11 @@ Mem_usage_reset (long int x);
 extern void
 Mem_usage_reset_max ();
 extern void
-Mem_usage_add (long int x);
+Mem_usage_std_heap_add (long int x);
 extern long int
-Mem_usage_report_std ();
+Mem_usage_report_std_heap ();
 extern long int
-Mem_max_usage_report_std ();
+Mem_usage_report_std_max ();
 extern long int
 Mem_usage_report_keep ();
 extern long int
@@ -102,9 +107,9 @@ extern void *Mem_resize (void *ptr, size_t nbytes,
 #endif
 
 #ifdef HAVE_ALLOCA
-#define MALLOC_AUTO(nbytes) Mem_alloca((nbytes), __FILE__, __LINE__)
-#define CALLOC_AUTO(count,nbytes)Mem_calloca((count), (nbytes), __FILE__, __LINE__)
-#define FREE_AUTO(ptr)
+/* Cannot have a function containing alloca, since the memory will be freed when the function returns */
+#define ALLOCA(nbytes) alloca((nbytes))
+#define FREEA(ptr)
 #endif
 
 

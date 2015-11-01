@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: access.c 129929 2014-03-13 03:27:49Z twu $";
+static char rcsid[] = "$Id: access.c 140509 2014-07-03 01:47:47Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -264,17 +264,17 @@ first_nonzero_uint8 (size_t *i, char *filename) {
 #endif
 
 
-#define FREAD_BATCH 10000000	/* 10 million at a time */
+#define FREAD_BATCH 100000000	/* 100 million elements at a time */
 
 /* Bigendian conversion not needed after this */
 void *
 Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) {
   void *memory;
+#ifdef CHECK
+  void *memory2;
+#endif
   FILE *fp;
   Stopwatch_T stopwatch;
-  unsigned char value1;
-  UINT4 value4;
-  UINT8 value8;
   void *p;
   size_t i;
 
@@ -284,109 +284,85 @@ Access_allocated (size_t *len, double *seconds, char *filename, size_t eltsize) 
     return (void *) NULL;
   }
 
+  Stopwatch_start(stopwatch = Stopwatch_new());
+  memory = (void *) MALLOC(*len);
+
+#ifdef CHECK
+  memory2 = (void *) MALLOC(*len);
   if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
     fprintf(stderr,"Error: can't open file %s with fopen\n",filename);
     exit(9);
   }
 
-  Stopwatch_start(stopwatch = Stopwatch_new());
-  memory = (void *) MALLOC(*len);
   if (eltsize == 1) {
-    FREAD_CHARS(memory,(*len)/eltsize,fp);
+    FREAD_CHARS(memory2,(*len)/eltsize,fp);
   } else if (eltsize == 4) {
-    FREAD_UINTS(memory,(*len)/eltsize,fp);
+    FREAD_UINTS(memory2,(*len)/eltsize,fp);
   } else if (eltsize == 8) {
-    FREAD_UINT8S(memory,(*len)/eltsize,fp);
+    FREAD_UINT8S(memory2,(*len)/eltsize,fp);
+  } else {
+    fprintf(stderr,"Access_allocated called with an element size of %d, which is not handled\n",(int) eltsize);
+    exit(9);
+  }
+  fclose(fp);
+#endif
+
+
+  if ((fp = FOPEN_READ_BINARY(filename)) == NULL) {
+    fprintf(stderr,"Error: can't open file %s with fopen\n",filename);
+    exit(9);
+  }
+
+  if (eltsize == 1) {
+    for (i = 0; i + FREAD_BATCH < (*len)/eltsize; i += FREAD_BATCH) {
+      p = (void *) &(((unsigned char *) memory)[i]);
+      fread(p,sizeof(unsigned char),FREAD_BATCH,fp);
+    }
+
+    if (i < (*len)/eltsize) {
+      p = (void *) &(((unsigned char *) memory)[i]);
+      fread(p,sizeof(unsigned char),(*len)/eltsize - i,fp);
+    }
+
+  } else if (eltsize == 4) {
+    for (i = 0; i + FREAD_BATCH < (*len)/eltsize; i += FREAD_BATCH) {
+      p = (void *) &(((UINT4 *) memory)[i]);
+      fread(p,sizeof(UINT4),FREAD_BATCH,fp);
+    }
+
+    if (i < (*len)/eltsize) {
+      p = (void *) &(((UINT4 *) memory)[i]);
+      fread(p,sizeof(UINT4),(*len)/eltsize - i,fp);
+    }
+
+  } else if (eltsize == 8) {
+    for (i = 0; i + FREAD_BATCH < (*len)/eltsize; i += FREAD_BATCH) {
+      p = (void *) &(((UINT8 *) memory)[i]);
+      fread(p,sizeof(UINT8),FREAD_BATCH,fp);
+    }
+    
+    if (i < (*len)/eltsize) {
+      p = (void *) &(((UINT8 *) memory)[i]);
+      fread(p,sizeof(UINT8),(*len)/eltsize - i,fp);
+    }
+
   } else {
     fprintf(stderr,"Access_allocated called with an element size of %d, which is not handled\n",(int) eltsize);
     exit(9);
   }
   fclose(fp);
 
-#ifndef WORDS_BIGENDIAN
-  if (eltsize == 1) {
-    /* Test if Macintosh fread failure occurs.  Apple bug ID 6434977 */
-    value1 = first_nonzero_char(&i,filename);
-    if (((unsigned char *) memory)[i] != value1) {
-      fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)");
-#if 0
-      fprintf(stderr,"...reading file in smaller batches...");
-      fp = FOPEN_READ_BINARY(filename);
-
-      for (i = 0; i < (*len)/eltsize; i += FREAD_BATCH) {
-	p = (void *) &(((unsigned char *) memory)[i]);
-	fread(p,sizeof(unsigned char),FREAD_BATCH,fp);
-      }
-
-      if (i < (*len)/eltsize) {
-	p = (void *) &(((unsigned char *) memory)[i]);
-	fread(p,sizeof(unsigned char),(*len)/eltsize - i,fp);
-      }
-
-      fclose(fp);
-#else
-      fprintf(stderr,"...unable to handle this value of --batch on your machine\n");
-      exit(9);
-#endif
-    }
-
-  } else if (eltsize == 4) {
-    /* Test if Macintosh fread failure occurs.  Apple bug ID 6434977 */
-    value4 = first_nonzero_uint(&i,filename);
-    if (((UINT4 *) memory)[i] != value4) {
-      fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)");
-#if 0
-      fprintf(stderr,"...reading file in smaller batches...");
-      fp = FOPEN_READ_BINARY(filename);
-
-      for (i = 0; i < (*len)/eltsize; i += FREAD_BATCH) {
-	p = (void *) &(((UINT4 *) memory)[i]);
-	fread(p,sizeof(UINT4),FREAD_BATCH,fp);
-      }
-
-      if (i < (*len)/eltsize) {
-	p = (void *) &(((UINT4 *) memory)[i]);
-	fread(p,sizeof(UINT4),(*len)/eltsize - i,fp);
-      }
-
-      fclose(fp);
-#else
-      fprintf(stderr,"...unable to handle this value of --batch on your machine\n");
-      exit(9);
-#endif
-    }
-
-  } else if (eltsize == 8) {
-    /* Test if Macintosh fread failure occurs.  Apple bug ID 6434977 */
-    value8 = first_nonzero_uint8(&i,filename);
-    if (((UINT8 *) memory)[i] != value8) {
-      fprintf(stderr,"single fread command failed (observed on Macs with -B 3 or greater on large genomes)");
-#if 0
-      fprintf(stderr,"...reading file in smaller batches...");
-      fp = FOPEN_READ_BINARY(filename);
-
-      for (i = 0; i < (*len)/eltsize; i += FREAD_BATCH) {
-	p = (void *) &(((UINT8 *) memory)[i]);
-	fread(p,sizeof(UINT8),FREAD_BATCH,fp);
-      }
-
-      if (i < (*len)/eltsize) {
-	p = (void *) &(((UINT8 *) memory)[i]);
-	fread(p,sizeof(UINT8),(*len)/eltsize - i,fp);
-      }
-
-      fclose(fp);
-#else
-      fprintf(stderr,"...unable to handle this value of --batch on your machine\n");
-      exit(9);
-#endif
-    }
-
-  }
-#endif
-
   /* Note: the following (old non-batch mode) requires conversion to bigendian later, as needed */
   /* fread(new->offsets,eltsize,sb.st_size/eltsize,fp); */
+
+#ifdef CHECK
+  for (i = 0; i < *len; i++) {
+    if (((unsigned char *) memory)[i] != ((unsigned char *) memory2)[i]) {
+      abort();
+    }
+  }
+  FREE(memory2);
+#endif
 
   *seconds = Stopwatch_stop(stopwatch);
   Stopwatch_free(&stopwatch);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_single.c 137609 2014-05-30 01:06:40Z twu $";
+static char rcsid[] = "$Id: dynprog_single.c 140230 2014-06-30 21:31:58Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -43,6 +43,13 @@ static char rcsid[] = "$Id: dynprog_single.c 137609 2014-05-30 01:06:40Z twu $";
 #define debug(x) x
 #else
 #define debug(x)
+#endif
+
+/* Microexon search */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
 #endif
 
 /* Getting genomic nt */
@@ -849,7 +856,7 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
   int bestcL = -1, bestcR = -1, best_middlelength;
   int middlelength, cL, cR, mincR, maxcR, leftbound, rightbound, textleft, textright,
     best_candidate, candidate, i;
-  int min_microexon_length, span, nmismatches;
+  int span, nmismatches;
   char left1, left2, right2, right1, left1_alt, left2_alt, right2_alt, right1_alt;
   char c, c_alt;
   char c1_alt, c2_alt, c3_alt, c4_alt;
@@ -899,16 +906,16 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 #endif
 
 #ifdef EXTRACT_GENOMICSEG
-  debug(printf("Begin microexon search for %.*s and %.*s\n",
+  debug1(printf("Begin microexon search for %.*s and %.*s\n",
 	       glengthL,gsequenceL,glengthR,&(rev_gsequenceR[-glengthR+1])));
 #else
-  debug(printf("Begin microexon search\n"));
+  debug1(printf("Begin microexon search\n"));
 #endif
 
-  debug(printf("  Query sequence is %.*s\n",rlength,rsequence));
+  debug1(printf("  Query sequence is %.*s\n",rlength,rsequence));
 
   span = rev_goffsetR-goffsetL;
-  debug(printf("  Genomic span is of length %d\n",span));
+  debug1(printf("  Genomic span is of length %d\n",span));
 
 #if 0
   if (span <= 0) {
@@ -918,27 +925,27 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
     min_microexon_length = ceilf(-fasterlog(1.0-powf(1.0-pvalue,1.0/(float) span)) / /*log(4)*/1.386294);
   }
   min_microexon_length -= 8;	/* Two donor-acceptor pairs */
-  debug(printf("  Min microexon length is %d\n",min_microexon_length));
+  debug1(printf("  Min microexon length is %d\n",min_microexon_length));
   if (min_microexon_length > MAX_MICROEXON_LENGTH) {
     *microintrontype = NONINTRON;
     return NULL;
   } else if (min_microexon_length < MIN_MICROEXON_LENGTH) {
     min_microexon_length = MIN_MICROEXON_LENGTH;
   }
-#else
-  min_microexon_length = 8;
+#elif 0
+  min_microexon_length = 6;
 #endif
 
-  debug(printf("\nFinding starting boundary on left\n"));
+  debug1(printf("\nFinding starting boundary on left\n"));
   leftbound = 0;
   nmismatches = 0;
   while (leftbound < rlength - 1 && nmismatches <= 1) {
-    debug(printf("  leftbound = %d, nmismatches = %d.",leftbound,nmismatches));
+    debug1(printf("  leftbound = %d, nmismatches = %d.",leftbound,nmismatches));
     c = get_genomic_nt(&c_alt,goffsetL+leftbound,chroffset,chrhigh,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c == gsequence_ucL[leftbound]);
 #endif
-    debug(printf("  Comparing %c with %c\n",rsequence[leftbound],c));
+    debug1(printf("  Comparing %c with %c\n",rsequence[leftbound],c));
 #ifdef PMAP
     if (matchtable[rsequence[leftbound]-'A'][c-'A'] == false) {
       nmismatches++;
@@ -952,17 +959,17 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
   }
   leftbound--;			/* This is where the leftmost mismatch occurred */
 
-  debug(printf("\nFinding starting boundary on right\n"));
+  debug1(printf("\nFinding starting boundary on right\n"));
   rightbound = 0;
   i = rlength-1;
   nmismatches = 0;
   while (i >= 0 && nmismatches <= 1) {
-    debug(printf("  rightbound = %d, nmismatches = %d.",rightbound,nmismatches));
+    debug1(printf("  rightbound = %d, nmismatches = %d.",rightbound,nmismatches));
     c = get_genomic_nt(&c_alt,rev_goffsetR-rightbound,chroffset,chrhigh,watsonp);
 #ifdef EXTRACT_GENOMICSEG
     assert(c == rev_gsequence_ucR[-rightbound]);
 #endif
-    debug(printf("  Comparing %c with %c\n",rsequence[i],c));
+    debug1(printf("  Comparing %c with %c\n",rsequence[i],c));
 #ifdef PMAP
     if (matchtable[rsequence[i]-'A'][c-'A'] == false) {
       nmismatches++;
@@ -977,7 +984,7 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
   }
   rightbound--;			/* This is where the rightmost mismatch occurred */
 
-  debug(printf("  Left must start before %d from left end of query.  Right must start after %d from right end of query\n",
+  debug1(printf("  Left must start before %d from left end of query.  Right must start after %d from right end of query\n",
 	       leftbound,rightbound));
 
   /* We require that cL >= 1 and cR >= 1 so that lengthL and lengthR are >= 1 */
@@ -989,17 +996,21 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
     assert(left2 == gsequence_ucL[cL+1]);
 #endif
 
-    debug(printf("  %d: %c%c\n",cL,left1,left2));
+    debug1(printf("  %d: %c%c\n",cL,left1,left2));
     if (left1 == intron1 && left2 == intron2) {
       mincR = rlength - MAX_MICROEXON_LENGTH - cL;
+      debug1(printf("  mincR %d = rlength %d - MAX_MICROEXON_LENGTH %d - cL %d\n",
+		    mincR,rlength,MAX_MICROEXON_LENGTH,cL));
       if (mincR < 1) {
 	mincR = 1;
       }
-      maxcR = rlength - min_microexon_length - cL;
+      maxcR = rlength - MIN_MICROEXON_LENGTH - cL;
+      debug1(printf("  maxcR %d = rlength %d - MIN_MICROEXON_LENGTH %d - cL %d\n",
+		    maxcR,rlength,MIN_MICROEXON_LENGTH,cL));
       if (maxcR > rightbound) {
 	maxcR = rightbound;
-	}
-      debug(printf("  Found left GT at %d.  Scanning from %d - cL - (1-7), or %d to %d\n",
+      }
+      debug1(printf("  Found left GT at %d.  Scanning from %d - cL - (1-7), or %d to %d\n",
 		   cL,rlength,mincR,maxcR));
       for (cR = mincR; cR <= maxcR; cR++) {
 	right2 = get_genomic_nt(&right2_alt,rev_goffsetR-cR-1,chroffset,chrhigh,watsonp);
@@ -1008,10 +1019,10 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 	assert(right2 == rev_gsequence_ucR[-cR-1]);
 	assert(right1 == rev_gsequence_ucR[-cR]);
 #endif
-	debug(printf("   Checking %d: %c%c\n",cR,right2,right1));
+	debug1(printf("   Checking %d: %c%c\n",cR,right2,right1));
 	if (right2 == intron3 && right1 == intron4) {
 	  middlelength = rlength - cL - cR;
-	  debug(printf("  Found pair at %d to %d, length %d.  Middle sequence is %.*s\n",
+	  debug1(printf("  Found pair at %d to %d, length %d.  Middle sequence is %.*s\n",
 		       cL,cR,middlelength,middlelength,&(rsequence[cL])));
 	  
 	  textleft = goffsetL + cL + MICROINTRON_LENGTH;
@@ -1037,7 +1048,7 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 		  /*genomicuc[candidate - 1]*/ get_genomic_nt(&c4_alt,candidate-1,chroffset,chrhigh,watsonp)  == intron4 &&
 		  /*genomicuc[candidate + middlelength]*/ get_genomic_nt(&c1_alt,candidate+middlelength,chroffset,chrhigh,watsonp) == intron1 &&
 		  /*genomicuc[candidate + middlelength + 1]*/ get_genomic_nt(&c2_alt,candidate+middlelength+1,chroffset,chrhigh,watsonp) == intron2) {
-		debug(printf("  Successful microexon at %d >>> %d..%d >>> %d\n",goffsetL+cL,candidate,candidate+middlelength,rev_goffsetR-cR));
+		debug1(printf("  Successful microexon at %d >>> %d..%d >>> %d\n",goffsetL+cL,candidate,candidate+middlelength,rev_goffsetR-cR));
 
 		/* Not handling known splice sites yet */
 		if (watsonp == true) {
@@ -1066,7 +1077,7 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
 		  }
 		}
 	      
-		debug(printf("microexon probabilities: prob2 = %f, prob3 = %f\n",prob2,prob3));
+		debug1(printf("microexon probabilities: prob2 = %f, prob3 = %f\n",prob2,prob3));
 		if (prob2 + prob3 > bestprob) {
 		  bestcL = cL;
 		  bestcR = cR;
@@ -1087,13 +1098,13 @@ Dynprog_microexon_int (double *bestprob2, double *bestprob3, int *dynprogindex, 
   }
 
   if (bestcL < 0 || bestcR < 0) {
-    debug(printf("End of dynprog microexon int\n"));
+    debug1(printf("End of dynprog microexon int\n"));
 
     *microintrontype = NONINTRON;
     return NULL;
 
   } else {
-    debug(printf("Making microexon pairs with candidate %u\n",best_candidate));
+    debug1(printf("Making microexon pairs with candidate %u\n",best_candidate));
     pairs = make_microexon_pairs_double(roffset,/*roffsetM*/roffset+bestcL,/*roffsetR*/roffset+bestcL+best_middlelength,
 					goffsetL,/*candidate*/best_candidate,/*goffsetR*/rev_goffsetR-bestcR+1,
 					/*lengthL*/bestcL,/*lengthM*/best_middlelength,/*lengthR*/bestcR,

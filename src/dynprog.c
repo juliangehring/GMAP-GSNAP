@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 138110 2014-06-04 19:34:22Z twu $";
+static char rcsid[] = "$Id: dynprog.c 140648 2014-07-04 01:14:57Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1580,12 +1580,14 @@ Dynprog_traceback_std (List_T pairs, int *nmatches, int *nmismatches, int *nopen
       while (c > 0 && directions_Egap[c--][r] != DIAG) {
 	dist++;
       }
+#if 0
       if (c == 0) {
 	/* Directions in column 0 can sometimes be DIAG */
 	dir = VERT;
       } else {
 	dir = directions_nogap[c][r];
       }
+#endif
 
       debug(printf("H%d: ",dist));
       pairs = Pairpool_add_genomeskip(&add_dashes_p,pairs,r,c+dist,dist,
@@ -1603,12 +1605,14 @@ Dynprog_traceback_std (List_T pairs, int *nmatches, int *nmismatches, int *nopen
       while (r > 0 && directions_Fgap[c][r--] != DIAG) {
 	dist++;
       }
+#if 0
       if (r == 0) {
 	/* Directions in row 0 can sometimes be DIAG */
 	dir = HORIZ;
       } else {
 	dir = directions_nogap[c][r];
       }
+#endif
 
       debug(printf("V%d: ",dist));
       pairs = Pairpool_add_queryskip(pairs,r+dist,c,dist,rsequence,
@@ -1617,9 +1621,8 @@ Dynprog_traceback_std (List_T pairs, int *nmatches, int *nmismatches, int *nopen
       *nopens += 1;
       *nindels += dist;
       debug(printf("\n"));
-    }
 
-    if (dir == DIAG) {
+    } else {
       querycoord = r-1;
       genomecoord = c-1;
       if (revp == true) {

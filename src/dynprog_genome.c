@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_genome.c 138118 2014-06-04 20:28:58Z twu $";
+static char rcsid[] = "$Id: dynprog_genome.c 141806 2014-07-17 02:41:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -29,6 +29,7 @@ static char rcsid[] = "$Id: dynprog_genome.c 138118 2014-06-04 20:28:58Z twu $";
 #include "complement.h"
 #include "maxent.h"
 #include "maxent_hr.h"
+#include "dynprog.h"		/* For parameters */
 #include "dynprog_simd.h"
 
 
@@ -83,6 +84,7 @@ static char rcsid[] = "$Id: dynprog_genome.c 138118 2014-06-04 20:28:58Z twu $";
 
 #define PROB_CEILING 0.85
 #define PROB_FLOOR 0.75
+#define PROB_BAD 0.50
 
 /* Prefer alternate intron to other non-canonicals, but don't
    introduce mismatches or gaps to identify */
@@ -1018,8 +1020,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 				    cdna_direction,canonical_reward,finalp);
 
 	      if ((score = scoreL + scoreI + scoreR) > bestscore) {
-		debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+		debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+		debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 		bestscore = score;
 		*bestrL = rL;
 		*bestrR = rR;
@@ -1027,6 +1030,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 		*bestcR = cR;
 		bestprob = probL + probR;
 	      } else if (score == bestscore && probL + probR > bestprob) {
+		debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+		debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 		*bestrL = rL;
 		*bestrR = rR;
 		*bestcL = cL;
@@ -1108,8 +1114,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 			      cdna_direction,canonical_reward,finalp);
 	
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -1117,6 +1124,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -1176,8 +1186,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 			      cdna_direction,canonical_reward,finalp);
 	
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -1185,6 +1196,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -1262,8 +1276,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 			      cdna_direction,canonical_reward,finalp);
 
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -1271,6 +1286,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -1330,8 +1348,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 			      cdna_direction,canonical_reward,finalp);
 
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -1339,6 +1358,9 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -1382,36 +1404,24 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 
     }
 
-    debug(printf("bestscore %d (bestprob %f) vs bestscore_with_prob %d (bestprob_trunc %f)\n",
-		 bestscore,bestprob,bestscore_with_prob,bestprob_trunc));
-    if (left_probabilities[bestcL_with_prob] < PROB_CEILING || right_probabilities[bestcR_with_prob] < PROB_CEILING) {
-      /* Use score without prob */
+    debug(printf("SIMD 8. bestscore %d (bestprob %f) vs bestscore_with_prob %d (bestprob_trunc %f, actually %f and %f)\n",
+		 bestscore,bestprob,bestscore_with_prob,bestprob_trunc,left_probabilities[bestcL_with_prob],right_probabilities[bestcR_with_prob]));
+    if (bestprob > 2*PROB_CEILING) {
+      /* Probability is good with best alignment, so take that */
+      debug(printf("Best alignment has good probability\n"));
+    } else if (left_probabilities[bestcL_with_prob] < PROB_CEILING && right_probabilities[bestcR_with_prob] < PROB_CEILING) {
+      /* Probability-based solution is bad, so use alignment */
+      debug(printf("Probability-based solution is bad\n"));
+    } else if (bestscore_with_prob < bestscore - 9) {
+      debug(printf("Probability-based solution requires very bad alignment\n"));
     } else {
-      if (defect_rate < DEFECT_HIGHQ) {
-	if (bestscore_with_prob > bestscore - 15) {
-	  *bestcL = bestcL_with_prob;
-	  *bestcR = bestcR_with_prob;
-	  *bestrL = bestrL_with_prob;
-	  *bestrR = bestrR_with_prob;
-	  bestscore = bestscore_with_prob;
-	}
-
-      } else if (defect_rate < DEFECT_MEDQ) {
-	if (bestscore_with_prob > bestscore - 25) {
-	  *bestcL = bestcL_with_prob;
-	  *bestcR = bestcR_with_prob;
-	  *bestrL = bestrL_with_prob;
-	  *bestrR = bestrR_with_prob;
-	  bestscore = bestscore_with_prob;
-	}
-
-      } else {
-	*bestcL = bestcL_with_prob;
-	*bestcR = bestcR_with_prob;
-	*bestrL = bestrL_with_prob;
-	*bestrR = bestrR_with_prob;
-	bestscore = bestscore_with_prob;
-      }
+      /* Best alignment yields bad probability, and probability-based alignment yields good probability, so switch */
+      debug(printf("Switch to probability-based solution\n"));
+      *bestcL = bestcL_with_prob;
+      *bestcR = bestcR_with_prob;
+      *bestrL = bestrL_with_prob;
+      *bestrR = bestrR_with_prob;
+      bestscore = bestscore_with_prob;
     }
     
     scoreI = intron_score(&introntype,leftdi[*bestcL],rightdi[*bestcR],
@@ -1958,8 +1968,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 				    cdna_direction,canonical_reward,finalp);
 
 	      if ((score = scoreL + scoreI + scoreR) > bestscore) {
-		debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+		debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+		debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 		bestscore = score;
 		*bestrL = rL;
 		*bestrR = rR;
@@ -1967,6 +1978,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 		*bestcR = cR;
 		bestprob = probL + probR;
 	      } else if (score == bestscore && probL + probR > bestprob) {
+		debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+		debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 		*bestrL = rL;
 		*bestrR = rR;
 		*bestcL = cL;
@@ -2048,8 +2062,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 			      cdna_direction,canonical_reward,finalp);
 	
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -2057,6 +2072,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -2116,8 +2134,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 			      cdna_direction,canonical_reward,finalp);
 	
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -2125,6 +2144,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -2202,8 +2224,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 			      cdna_direction,canonical_reward,finalp);
 
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -2211,6 +2234,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -2270,8 +2296,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 			      cdna_direction,canonical_reward,finalp);
 
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -2279,6 +2306,9 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -2322,36 +2352,24 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 
     }
 
-    debug(printf("bestscore %d (bestprob %f) vs bestscore_with_prob %d (bestprob_trunc %f)\n",
-		 bestscore,bestprob,bestscore_with_prob,bestprob_trunc));
-    if (left_probabilities[bestcL_with_prob] < PROB_CEILING || right_probabilities[bestcR_with_prob] < PROB_CEILING) {
-      /* Use score without prob */
+    debug(printf("SIMD 16. bestscore %d (bestprob %f) vs bestscore_with_prob %d (bestprob_trunc %f, actually %f and %f)\n",
+		 bestscore,bestprob,bestscore_with_prob,bestprob_trunc,left_probabilities[bestcL_with_prob],right_probabilities[bestcR_with_prob]));
+    if (bestprob > 2*PROB_CEILING) {
+      /* Probability is good with best alignment, so take that */
+      debug(printf("Best alignment has good probability\n"));
+    } else if (left_probabilities[bestcL_with_prob] < PROB_CEILING && right_probabilities[bestcR_with_prob] < PROB_CEILING) {
+      /* Probability-based solution is bad, so use alignment */
+      debug(printf("Probability-based solution is bad\n"));
+    } else if (bestscore_with_prob < bestscore - 9) {
+      debug(printf("Probability-based solution requires very bad alignment\n"));
     } else {
-      if (defect_rate < DEFECT_HIGHQ) {
-	if (bestscore_with_prob > bestscore - 15) {
-	  *bestcL = bestcL_with_prob;
-	  *bestcR = bestcR_with_prob;
-	  *bestrL = bestrL_with_prob;
-	  *bestrR = bestrR_with_prob;
-	  bestscore = bestscore_with_prob;
-	}
-
-      } else if (defect_rate < DEFECT_MEDQ) {
-	if (bestscore_with_prob > bestscore - 25) {
-	  *bestcL = bestcL_with_prob;
-	  *bestcR = bestcR_with_prob;
-	  *bestrL = bestrL_with_prob;
-	  *bestrR = bestrR_with_prob;
-	  bestscore = bestscore_with_prob;
-	}
-
-      } else {
-	*bestcL = bestcL_with_prob;
-	*bestcR = bestcR_with_prob;
-	*bestrL = bestrL_with_prob;
-	*bestrR = bestrR_with_prob;
-	bestscore = bestscore_with_prob;
-      }
+      /* Best alignment yields bad probability, and probability-based alignment yields good probability, so switch */
+      debug(printf("Switch to probability-based solution\n"));
+      *bestcL = bestcL_with_prob;
+      *bestcR = bestcR_with_prob;
+      *bestrL = bestrL_with_prob;
+      *bestrR = bestrR_with_prob;
+      bestscore = bestscore_with_prob;
     }
     
     scoreI = intron_score(&introntype,leftdi[*bestcL],rightdi[*bestcR],
@@ -2748,8 +2766,9 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 				    cdna_direction,canonical_reward,finalp);
 
 	      if ((score = scoreL + scoreI + scoreR) > bestscore) {
-		debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+		debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+		debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 		bestscore = score;
 		*bestrL = rL;
 		*bestrR = rR;
@@ -2757,6 +2776,9 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 		*bestcR = cR;
 		bestprob = probL + probR;
 	      } else if (score == bestscore && probL + probR > bestprob) {
+		debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			      cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+		debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 		*bestrL = rL;
 		*bestrR = rR;
 		*bestcL = cL;
@@ -2837,8 +2859,9 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 			      cdna_direction,canonical_reward,finalp);
 	
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -2846,6 +2869,9 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -2922,8 +2948,9 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 			      cdna_direction,canonical_reward,finalp);
 	
 	if ((score = scoreL + scoreI + scoreR) > bestscore) {
-	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore)\n",
-			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR));
+	  debug3(printf("No prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  bestscore = score;
 	  *bestrL = rL;
 	  *bestrR = rR;
@@ -2931,6 +2958,9 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 	  *bestcR = cR;
 	  bestprob = probL + probR;
 	} else if (score == bestscore && probL + probR > bestprob) {
+	  debug3(printf("Improved prob: At %d left to %d right, score is (%d)+(%d)+(%d) = %d (bestscore, prob %f + %f)\n",
+			cL,cR,scoreL,scoreI,scoreR,scoreL+scoreI+scoreR,probL,probR));
+	  debug3(printf("probL %f, probR %f\n",left_probabilities[cL],right_probabilities[cR]));
 	  *bestrL = rL;
 	  *bestrR = rR;
 	  *bestcL = cL;
@@ -2974,36 +3004,24 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
     }
 
-    debug(printf("bestscore %d (bestprob %f) vs bestscore_with_prob %d (bestprob_trunc %f)\n",
-		 bestscore,bestprob,bestscore_with_prob,bestprob_trunc));
-    if (left_probabilities[bestcL_with_prob] < PROB_CEILING || right_probabilities[bestcR_with_prob] < PROB_CEILING) {
-      /* Use score without prob */
+    debug(printf("Non-SIMD. bestscore %d (bestprob %f) vs bestscore_with_prob %d (bestprob_trunc %f, actually %f and %f)\n",
+		 bestscore,bestprob,bestscore_with_prob,bestprob_trunc,left_probabilities[bestcL_with_prob],right_probabilities[bestcR_with_prob]));
+    if (bestprob > 2*PROB_CEILING) {
+      /* Probability is good with best alignment, so take that */
+      debug(printf("Best alignment has good probability\n"));
+    } else if (left_probabilities[bestcL_with_prob] < PROB_CEILING && right_probabilities[bestcR_with_prob] < PROB_CEILING) {
+      /* Probability-based solution is bad, so use alignment */
+      debug(printf("Probability-based solution is bad\n"));
+    } else if (bestscore_with_prob < bestscore - 9) {
+      debug(printf("Probability-based solution requires very bad alignment\n"));
     } else {
-      if (defect_rate < DEFECT_HIGHQ) {
-	if (bestscore_with_prob > bestscore - 15) {
-	  *bestcL = bestcL_with_prob;
-	  *bestcR = bestcR_with_prob;
-	  *bestrL = bestrL_with_prob;
-	  *bestrR = bestrR_with_prob;
-	  bestscore = bestscore_with_prob;
-	}
-
-      } else if (defect_rate < DEFECT_MEDQ) {
-	if (bestscore_with_prob > bestscore - 25) {
-	  *bestcL = bestcL_with_prob;
-	  *bestcR = bestcR_with_prob;
-	  *bestrL = bestrL_with_prob;
-	  *bestrR = bestrR_with_prob;
-	  bestscore = bestscore_with_prob;
-	}
-
-      } else {
-	*bestcL = bestcL_with_prob;
-	*bestcR = bestcR_with_prob;
-	*bestrL = bestrL_with_prob;
-	*bestrR = bestrR_with_prob;
-	bestscore = bestscore_with_prob;
-      }
+      /* Best alignment yields bad probability, and probability-based alignment yields good probability, so switch */
+      debug(printf("Switch to probability-based solution\n"));
+      *bestcL = bestcL_with_prob;
+      *bestcR = bestcR_with_prob;
+      *bestrL = bestrL_with_prob;
+      *bestrR = bestrR_with_prob;
+      bestscore = bestscore_with_prob;
     }
 
     scoreI = intron_score(&introntype,leftdi[*bestcL],rightdi[*bestcR],

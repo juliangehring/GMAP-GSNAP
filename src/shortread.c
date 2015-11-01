@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: shortread.c 132022 2014-04-01 18:39:56Z twu $";
+static char rcsid[] = "$Id: shortread.c 145605 2014-08-20 18:02:31Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -903,7 +903,7 @@ skip_header_bzip2 (Bzip2_T fp) {
 
 
 
-#if 0
+#if 1
 #define CONTROLM 13		/* From PC */
 #define SPACE 32
 
@@ -946,16 +946,40 @@ find_bad_char (char *line) {
     return first;
   }
 }
+
+static char *
+find_spaces (int *nspaces, char *line) {
+  char *first, *p2;
+
+  p2 = index(line,SPACE);
+
+  if (p2 == NULL /* && p3 == NULL*/) {
+    return NULL;
+  } else {
+    first = p2++;
+    while (*p2 != '\0' && *p2 == SPACE) {
+      p2++;
+    }
+
+    *nspaces = p2 - first;
+    return first;
+  }
+}
 #endif
 
 
 
 static int
-input_oneline (int *nextchar, char *Start, FILE *fp, char *acc, bool possible_fasta_header_p) {
+input_oneline (int *nextchar, char **longstring, char *Start, FILE *fp, char *acc, bool possible_fasta_header_p) {
   int remainder;
   char *ptr, *p = NULL;
+  int strlenp, nspaces;
+
+  int i;
+  Intlist_T intlist;
 
   debug(printf("Entering input_oneline with nextchar = %c\n",*nextchar));
+  *longstring = (char *) NULL;
 
   ptr = &(Start[0]);
   remainder = (&(Start[MAX_READLENGTH]) - ptr)/sizeof(char);
@@ -971,15 +995,16 @@ input_oneline (int *nextchar, char *Start, FILE *fp, char *acc, bool possible_fa
       debug(printf("Read %s.\n",ptr));
 #if 0
       if (pc_linefeeds_p == true) {
-	/* Should not expect to see PC line feeds */
-	while ((p = find_bad_char(ptr)) != NULL) {
-	  /* Handle PC line feed ^M */
-	  ptr = p++;
+#endif
+	while ((p = find_spaces(&nspaces,ptr)) != NULL) {
+	  ptr = p;
+	  p += nspaces;
 	  strlenp = strlen(p);
 	  memmove(ptr,p,strlenp);
 	  ptr[strlenp] = '\0';
-	  debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
+	  debug(printf("Found %d spaces.  Did memmove of %d chars at %p to %p\n",nspaces,strlenp,p,ptr));
 	}
+#if 0
       }
 #endif
 
@@ -996,12 +1021,26 @@ input_oneline (int *nextchar, char *Start, FILE *fp, char *acc, bool possible_fa
 	/* No line feed, but end of file.  Handle below. */
 	debug(printf("End of file seen\n"));
       } else {
-	/* No line feed, but not end of file */
-	fprintf(stderr,"Line %s is too long for allocated buffer size of %d.\n",&(Start[0]),MAX_READLENGTH);
-	fprintf(stderr,"Problem occurred at accession %s.  Aborting.\n",acc);
-	exit(9);
+	/* No line feed, but not end of file.  Read too long, so using another method. */
+	intlist = (Intlist_T) NULL;
+	for (i = 0; i <= MAX_READLENGTH; i++) {
+	  intlist = Intlist_push(intlist,Start[i]);
+	}
+	while ((*nextchar = fgetc(fp)) != EOF && *nextchar != '\n') {
+	  intlist = Intlist_push(intlist,*nextchar);
+	}
+	if (*nextchar == '\n') {
+	  *nextchar = fgetc(fp);
+	}
+
+	intlist = Intlist_reverse(intlist);
+	*longstring = Intlist_to_char_array(&i,intlist);
+	Intlist_free(&intlist);
+
+	return i;
       }
     }
+
     ptr += strlen(ptr);
 
     /* Peek at character after eoln */
@@ -1021,11 +1060,16 @@ input_oneline (int *nextchar, char *Start, FILE *fp, char *acc, bool possible_fa
 
 #ifdef HAVE_ZLIB
 static int
-input_oneline_gzip (int *nextchar, char *Start, gzFile fp, char *acc, bool possible_fasta_header_p) {
+input_oneline_gzip (int *nextchar, char **longstring, char *Start, gzFile fp, char *acc, bool possible_fasta_header_p) {
   int remainder;
   char *ptr, *p = NULL;
+  int strlenp, nspaces;
+
+  int i;
+  Intlist_T intlist;
 
   debug(printf("Entering input_oneline with nextchar = %c\n",*nextchar));
+  *longstring = (char *) NULL;
 
   ptr = &(Start[0]);
   remainder = (&(Start[MAX_READLENGTH]) - ptr)/sizeof(char);
@@ -1041,15 +1085,16 @@ input_oneline_gzip (int *nextchar, char *Start, gzFile fp, char *acc, bool possi
       debug(printf("Read %s.\n",ptr));
 #if 0
       if (pc_linefeeds_p == true) {
-	/* Should not expect to see PC line feeds */
-	while ((p = find_bad_char(ptr)) != NULL) {
-	  /* Handle PC line feed ^M */
-	  ptr = p++;
+#endif
+	while ((p = find_spaces(&nspaces,ptr)) != NULL) {
+	  ptr = p;
+	  p += nspaces;
 	  strlenp = strlen(p);
 	  memmove(ptr,p,strlenp);
 	  ptr[strlenp] = '\0';
-	  debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
+	  debug(printf("Found %d spaces.  Did memmove of %d chars at %p to %p\n",nspaces,strlenp,p,ptr));
 	}
+#if 0
       }
 #endif
 
@@ -1066,10 +1111,23 @@ input_oneline_gzip (int *nextchar, char *Start, gzFile fp, char *acc, bool possi
 	/* No line feed, but end of file.  Handle below. */
 	debug(printf("End of file seen\n"));
       } else {
-	/* No line feed, but not end of file */
-	fprintf(stderr,"Line %s is too long for allocated buffer size of %d.\n",&(Start[0]),MAX_READLENGTH);
-	fprintf(stderr,"Problem occurred at accession %s.  Aborting.\n",acc);
-	exit(9);
+	/* No line feed, but not end of file.  Read too long, so using another method. */
+	intlist = (Intlist_T) NULL;
+	for (i = 0; i <= MAX_READLENGTH; i++) {
+	  intlist = Intlist_push(intlist,Start[i]);
+	}
+	while ((*nextchar = gzgetc(fp)) != EOF && *nextchar != '\n') {
+	  intlist = Intlist_push(intlist,*nextchar);
+	}
+	if (*nextchar == '\n') {
+	  *nextchar = gzgetc(fp);
+	}
+
+	intlist = Intlist_reverse(intlist);
+	*longstring = Intlist_to_char_array(&i,intlist);
+	Intlist_free(&intlist);
+
+	return i;
       }
     }
     ptr += strlen(ptr);
@@ -1090,11 +1148,16 @@ input_oneline_gzip (int *nextchar, char *Start, gzFile fp, char *acc, bool possi
 
 #ifdef HAVE_BZLIB
 static int
-input_oneline_bzip2 (int *nextchar, char *Start, Bzip2_T fp, char *acc, bool possible_fasta_header_p) {
+input_oneline_bzip2 (int *nextchar, char **longstring, char *Start, Bzip2_T fp, char *acc, bool possible_fasta_header_p) {
   int remainder;
   char *ptr, *p = NULL;
+  int strlenp, nspaces;
+
+  int i;
+  Intlist_T intlist;
 
   debug(printf("Entering input_oneline with nextchar = %c\n",*nextchar));
+  *longstring = (char *) NULL;
 
   ptr = &(Start[0]);
   remainder = (&(Start[MAX_READLENGTH]) - ptr)/sizeof(char);
@@ -1110,15 +1173,16 @@ input_oneline_bzip2 (int *nextchar, char *Start, Bzip2_T fp, char *acc, bool pos
       debug(printf("Read %s.\n",ptr));
 #if 0
       if (pc_linefeeds_p == true) {
-	/* Should not expect to see PC line feeds */
-	while ((p = find_bad_char(ptr)) != NULL) {
-	  /* Handle PC line feed ^M */
-	  ptr = p++;
+#endif
+	while ((p = find_spaces(&nspaces,ptr)) != NULL) {
+	  ptr = p;
+	  p += nspaces;
 	  strlenp = strlen(p);
 	  memmove(ptr,p,strlenp);
 	  ptr[strlenp] = '\0';
-	  debug(printf("Found control-M/space.  Did memmove of %d chars at %p to %p\n",strlenp,p,ptr));
+	  debug(printf("Found %d spaces.  Did memmove of %d chars at %p to %p to yield\n",nspaces,strlenp,p,ptr));
 	}
+#if 0
       }
 #endif
 
@@ -1135,10 +1199,23 @@ input_oneline_bzip2 (int *nextchar, char *Start, Bzip2_T fp, char *acc, bool pos
 	/* No line feed, but end of file.  Handle below. */
 	debug(printf("End of file seen\n"));
       } else {
-	/* No line feed, but not end of file */
-	fprintf(stderr,"Line %s is too long for allocated buffer size of %d.\n",&(Start[0]),MAX_READLENGTH);
-	fprintf(stderr,"Problem occurred at accession %s.  Aborting.\n",acc);
-	exit(9);
+	/* No line feed, but not end of file.  Read too long, so using another method. */
+	intlist = (Intlist_T) NULL;
+	for (i = 0; i <= MAX_READLENGTH; i++) {
+	  intlist = Intlist_push(intlist,Start[i]);
+	}
+	while ((*nextchar = bzgetc(fp)) != EOF && *nextchar != '\n') {
+	  intlist = Intlist_push(intlist,*nextchar);
+	}
+	if (*nextchar == '\n') {
+	  *nextchar = bzgetc(fp);
+	}
+
+	intlist = Intlist_reverse(intlist);
+	*longstring = Intlist_to_char_array(&i,intlist);
+	Intlist_free(&intlist);
+
+	return i;
       }
     }
     ptr += strlen(ptr);
@@ -1921,17 +1998,40 @@ Shortread_find_overlap (T queryseq1, T queryseq2) {
 
 #define SKIPPED 1
 
+/* Needs to be extern for uniqscan.c */
 T
 Shortread_new (char *acc, char *restofheader, bool filterp,
-	       char *sequence, int sequence_length, char *quality, int quality_length,
+	       char *short_sequence, char *long_sequence, int sequence_length,
+	       char *short_quality, char *long_quality, int quality_length,
 	       int barcode_length, bool invertp, bool copy_acc_p, bool skipp) {
   T new;
+  char *sequence, *quality;
 
   if (sequence_length == 0) {
     return (T) NULL;
+
   } else if (skipp == true) {
+    if (long_quality != NULL) {
+      FREE(long_quality);
+    }
+    if (long_sequence != NULL) {
+      FREE(long_sequence);
+    }
     return (T) SKIPPED;
   }
+
+  if (long_sequence != NULL) {
+    sequence = long_sequence;
+  } else {
+    sequence = short_sequence;
+  }
+
+  if (long_quality != NULL) {
+    quality = long_quality;
+  } else {
+    quality = short_quality;
+  }
+
 
   new = (T) MALLOC_IN(sizeof(*new));
 
@@ -2004,6 +2104,13 @@ Shortread_new (char *acc, char *restofheader, bool filterp,
   new->chop_quality = (char *) NULL;
   new->choplength = 0;
 
+  if (long_quality != NULL) {
+    FREE(long_quality);
+  }
+  if (long_sequence != NULL) {
+    FREE(long_sequence);
+  }
+
   return new;
 }
 
@@ -2014,6 +2121,7 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 				 int barcode_length, bool invert_first_p, bool invert_second_p) {
   T queryseq1;
   char *acc, *restofheader, *acc2, *restofheader2;
+  char *long_read_1, *long_read_2, *long_quality;
   int nextchar2;
   int fulllength1, fulllength2, quality_length;
   bool filterp;
@@ -2080,7 +2188,7 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
       /* Process blank lines and loop again */
       while (*nextchar != EOF && ((*nextchar = fgetc(*input1)) != '>')) {
       }
-    } else if ((fulllength1 = input_oneline(&(*nextchar),&(Read1[0]),*input1,acc,
+    } else if ((fulllength1 = input_oneline(&(*nextchar),&long_read_1,&(Read1[0]),*input1,acc,
 					    /*possible_fasta_header_p*/true)) == 0) {
       /* fprintf(stderr,"length is zero\n"); */
       /* No sequence1.  Don't process, but loop again */
@@ -2088,14 +2196,14 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
     } else {
       /* queryseq1 is in Read1 */
       /* See what is in next line */
-      if ((fulllength2 = input_oneline(&(*nextchar),&(Read2[0]),*input1,acc,
+      if ((fulllength2 = input_oneline(&(*nextchar),&long_read_2,&(Read2[0]),*input1,acc,
 				       /*possible_fasta_header_p*/true)) > 0) {
 	/* Paired-end, single file.  queryseq1 is in Read1 and queryseq2 is in Read2 */
 	if (*nextchar == '+') {
 	  /* Paired-end with quality strings */
 	  skip_header(*input1);
 	  *nextchar = fgetc(*input1);
-	  quality_length = input_oneline(&(*nextchar),&(Quality[0]),*input1,acc,
+	  quality_length = input_oneline(&(*nextchar),&long_quality,&(Quality[0]),*input1,acc,
 					 /*possible_fasta_header_p*/false);
 	  if (quality_length != fulllength1) {
 	    fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2103,10 +2211,10 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	    abort();
 	  }
 
-	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				    Quality,quality_length,barcode_length,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				    Quality,long_quality,quality_length,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false,skipp);
-	  quality_length = input_oneline(&(*nextchar),&(Quality[0]),*input1,acc,
+	  quality_length = input_oneline(&(*nextchar),&long_quality,&(Quality[0]),*input1,acc,
 					 /*possible_fasta_header_p*/false);
 	  if (quality_length != fulllength2) {
 	    fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2114,15 +2222,15 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	    abort();
 	  }
 	      
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength2,
-				       Quality,quality_length,barcode_length,
+	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength2,
+				       Quality,long_quality,quality_length,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false,skipp);
 	} else {
-	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				    /*quality*/NULL,/*quality_length*/0,barcode_length,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				    /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false,skipp);
-	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength2,
-				       /*quality*/NULL,/*quality_length*/0,barcode_length,
+	  (*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength2,
+				       /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false,skipp);
 	}
 
@@ -2146,7 +2254,7 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	    while (nextchar2 != EOF && ((nextchar2 = fgetc(*input2)) != '>')) {
 	    }
 	    (*queryseq2) = (T) NULL;
-	  } else if ((fulllength2 = input_oneline(&nextchar2,&(Read2[0]),*input2,acc2,
+	  } else if ((fulllength2 = input_oneline(&nextchar2,&long_read_2,&(Read2[0]),*input2,acc2,
 						  /*possible_fasta_header_p*/true)) == 0) {
 	    /* fprintf(stderr,"length is zero\n"); */
 	    /* No sequence1.  Don't process, but loop again */
@@ -2157,21 +2265,21 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	      /* End 1 with a quality string */
 	      skip_header(*input1);
 	      *nextchar = fgetc(*input1);
-	      quality_length = input_oneline(&(*nextchar),&(Quality[0]),*input1,acc,
+	      quality_length = input_oneline(&(*nextchar),&long_quality,&(Quality[0]),*input1,acc,
 					     /*possible_fasta_header_p*/false);
 	      if (quality_length != fulllength1) {
 		fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
 			quality_length,fulllength1,acc);
 		abort();
 	      } else {
-		queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-					  Quality,quality_length,barcode_length,
+		queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+					  Quality,long_quality,quality_length,barcode_length,
 					  invert_first_p,/*copy_acc_p*/false,skipp);
 	      }
 	    } else {
 	      /* End 1 without quality string */
-	      queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-					/*quality*/NULL,/*quality_length*/0,barcode_length,
+	      queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+					/*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 					invert_first_p,/*copy_acc_p*/false,skipp);
 	    }
 
@@ -2179,7 +2287,7 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	      /* End 2 with a quality string */
 	      skip_header(*input2);
 	      nextchar2 = fgetc(*input2);
-	      quality_length = input_oneline(&nextchar2,&(Quality[0]),*input2,acc2,
+	      quality_length = input_oneline(&nextchar2,&long_quality,&(Quality[0]),*input2,acc2,
 					     /*possible_fasta_header_p*/false);
 	      if (quality_length != fulllength2) {
 		fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2187,16 +2295,16 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 		abort();
 	      } else {
 		/* For FASTA, drop second accession */
-		(*queryseq2) = Shortread_new(/*acc2*/NULL,/*restofheader2*/NULL,filterp,Read2,fulllength2,
-					     Quality,quality_length,barcode_length,
+		(*queryseq2) = Shortread_new(/*acc2*/NULL,/*restofheader2*/NULL,filterp,Read2,long_read_2,fulllength2,
+					     Quality,long_quality,quality_length,barcode_length,
 					     invert_second_p,/*copy_acc_p*/false,skipp);
 		FREE_IN(acc2);
 		FREE_IN(restofheader2);
 	      }
 	    } else {
 	      /* End 2 without quality string */
-	      (*queryseq2) = Shortread_new(/*acc2*/NULL,/*restofheader2*/NULL,filterp,Read2,fulllength2,
-					   /*quality*/NULL,/*quality_length*/0,barcode_length,
+	      (*queryseq2) = Shortread_new(/*acc2*/NULL,/*restofheader2*/NULL,filterp,Read2,long_read_2,fulllength2,
+					   /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 					   invert_second_p,/*copy_acc_p*/false,skipp);
 	      FREE_IN(acc2);
 	      FREE_IN(restofheader2);
@@ -2209,21 +2317,21 @@ Shortread_read_fasta_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	    /* Single-end with a quality string */
 	    skip_header(*input1);
 	    *nextchar = fgetc(*input1);
-	    quality_length = input_oneline(&(*nextchar),&(Quality[0]),*input1,acc,
+	    quality_length = input_oneline(&(*nextchar),&long_quality,&(Quality[0]),*input1,acc,
 					   /*possible_fasta_header_p*/false);
 	    if (quality_length != fulllength1) {
 	      fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
 		      quality_length,fulllength1,acc);
 	      abort();
 	    } else {
-	      queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-					Quality,quality_length,barcode_length,
+	      queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+					Quality,long_quality,quality_length,barcode_length,
 					invert_first_p,/*copy_acc_p*/false,skipp);
 	    }
 	  } else {
 	    /* Single-end without quality string */
-	    queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				      /*quality*/NULL,/*quality_length*/0,barcode_length,
+	    queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				      /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				      invert_first_p,/*copy_acc_p*/false,skipp);
 	  }
 	  (*queryseq2) = (T) NULL;
@@ -2247,6 +2355,7 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 				      int barcode_length, bool invert_first_p, bool invert_second_p) {
   T queryseq1;
   char *acc, *restofheader, *acc2, *restofheader2;
+  char *long_read_1, *long_read_2, *long_quality;
   int nextchar2;
   int fulllength1, fulllength2;
   bool filterp;
@@ -2316,7 +2425,7 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
       /* Process blank lines and loop again */
       while (*nextchar != EOF && ((*nextchar = gzgetc(*input1)) != '>')) {
       }
-    } else if ((fulllength1 = input_oneline_gzip(&(*nextchar),&(Read1[0]),*input1,acc,
+    } else if ((fulllength1 = input_oneline_gzip(&(*nextchar),&long_read_1,&(Read1[0]),*input1,acc,
 						 /*possible_fasta_header_p*/true)) == 0) {
       /* fprintf(stderr,"length is zero\n"); */
       /* No sequence1.  Don't process, but loop again */
@@ -2324,14 +2433,14 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
     } else {
       /* queryseq1 is in Read1 */
       /* See what is in next line */
-      if ((fulllength2 = input_oneline_gzip(&(*nextchar),&(Read2[0]),*input1,acc,
+      if ((fulllength2 = input_oneline_gzip(&(*nextchar),&long_read_2,&(Read2[0]),*input1,acc,
 					    /*possible_fasta_header_p*/true)) > 0) {
 	/* Paired-end, single file.  queryseq1 is in Read1 and queryseq2 is in Read2 */
-	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				  /*quality*/NULL,/*quality_length*/0,barcode_length,
+	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				  /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				  invert_first_p,/*copy_acc_p*/false,skipp);
-	(*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength2,
-				     /*quality*/NULL,/*quality_length*/0,barcode_length,
+	(*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength2,
+				     /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				     invert_second_p,/*copy_acc_p*/false,skipp);
 
       } else {
@@ -2357,18 +2466,18 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	    while (nextchar2 != EOF && ((nextchar2 = gzgetc(*input2)) != '>')) {
 	    }
 	    (*queryseq2) = (T) NULL;
-	  } else if ((fulllength2 = input_oneline_gzip(&nextchar2,&(Read2[0]),*input2,acc2,
+	  } else if ((fulllength2 = input_oneline_gzip(&nextchar2,&long_read_2,&(Read2[0]),*input2,acc2,
 						       /*possible_fasta_header_p*/true)) == 0) {
 	    /* fprintf(stderr,"length is zero\n"); */
 	    /* No sequence1.  Don't process, but loop again */
 	    /* *nextchar = EOF; */
 	    (*queryseq2) = (T) NULL;
 	  } else {
-	    queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				      /*quality*/NULL,/*quality_length*/0,barcode_length,
+	    queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				      /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				      invert_first_p,/*copy_acc_p*/false,skipp);
-	    (*queryseq2) = Shortread_new(/*acc2*/NULL,/*restofheader2*/NULL,filterp,Read2,fulllength2,
-					 /*quality*/NULL,/*quality_length*/0,barcode_length,
+	    (*queryseq2) = Shortread_new(/*acc2*/NULL,/*restofheader2*/NULL,filterp,Read2,long_read_2,fulllength2,
+					 /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false,skipp);
 	    FREE_IN(acc2);
 	    FREE_IN(restofheader2);
@@ -2376,8 +2485,8 @@ Shortread_read_fasta_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 
 	} else {
 	  /* Single-end: Either EOF, '>', or '+' */
-	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				    /*quality*/NULL,/*quality_length*/0,barcode_length,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				    /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false,skipp);
 	  (*queryseq2) = (T) NULL;
 	}
@@ -2400,6 +2509,7 @@ Shortread_read_fasta_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 				       int barcode_length, bool invert_first_p, bool invert_second_p) {
   T queryseq1;
   char *acc, *restofheader, *acc2, *restofheader2;
+  char *long_read_1, *long_read_2, *long_quality;
   int nextchar2;
   int fulllength1, fulllength2;
   bool filterp;
@@ -2466,7 +2576,7 @@ Shortread_read_fasta_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
       /* Process blank lines and loop again */
       while (*nextchar != EOF && ((*nextchar = bzgetc(*input1)) != '>')) {
       }
-    } else if ((fulllength1 = input_oneline_bzip2(&(*nextchar),&(Read1[0]),*input1,acc,
+    } else if ((fulllength1 = input_oneline_bzip2(&(*nextchar),&long_read_1,&(Read1[0]),*input1,acc,
 						 /*possible_fasta_header_p*/true)) == 0) {
       /* fprintf(stderr,"length is zero\n"); */
       /* No sequence1.  Don't process, but loop again */
@@ -2474,14 +2584,14 @@ Shortread_read_fasta_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
     } else {
       /* queryseq1 is in Read1 */
       /* See what is in next line */
-      if ((fulllength2 = input_oneline_bzip2(&(*nextchar),&(Read2[0]),*input1,acc,
+      if ((fulllength2 = input_oneline_bzip2(&(*nextchar),&long_read_2,&(Read2[0]),*input1,acc,
 					     /*possible_fasta_header_p*/true)) > 0) {
 	/* Paired-end, single file.  queryseq1 is in Read1 and queryseq2 is in Read2 */
-	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				  /*quality*/NULL,/*quality_length*/0,barcode_length,
+	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				  /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				  invert_first_p,/*copy_acc_p*/false,skipp);
-	(*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,fulllength2,
-				     /*quality*/NULL,/*quality_length*/0,barcode_length,
+	(*queryseq2) = Shortread_new(/*acc*/NULL,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength2,
+				     /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				     invert_second_p,/*copy_acc_p*/false,skipp);
       } else {
 	if (*input2 == NULL && *nfiles > 0 && force_single_end_p == false &&
@@ -2503,18 +2613,18 @@ Shortread_read_fasta_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 	    while (nextchar2 != EOF && ((nextchar2 = bzgetc(*input2)) != '>')) {
 	    }
 	    (*queryseq2) = (T) NULL;
-	  } else if ((fulllength2 = input_oneline_bzip2(&nextchar2,&(Read2[0]),*input2,acc2,
+	  } else if ((fulllength2 = input_oneline_bzip2(&nextchar2,&long_read_2,&(Read2[0]),*input2,acc2,
 							/*possible_fasta_header_p*/true)) == 0) {
 	    /* fprintf(stderr,"length is zero\n"); */
 	    /* No sequence1.  Don't process, but loop again */
 	    /* *nextchar = EOF; */
 	    (*queryseq2) = (T) NULL;
 	  } else {
-	    queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				      /*quality*/NULL,/*quality_length*/0,barcode_length,
+	    queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				      /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				      invert_first_p,/*copy_acc_p*/false,skipp);
-	    (*queryseq2) = Shortread_new(/*acc2*/NULL,/*restofheader2*/NULL,filterp,Read2,fulllength2,
-					 /*quality*/NULL,/*quality_length*/0,barcode_length,
+	    (*queryseq2) = Shortread_new(/*acc2*/NULL,/*restofheader2*/NULL,filterp,Read2,long_read_2,fulllength2,
+					 /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false,skipp);
 	    FREE_IN(acc2);
 	    FREE_IN(restofheader2);
@@ -2522,8 +2632,8 @@ Shortread_read_fasta_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 
 	} else {
 	  /* Single-end: Either EOF, '>', or '+' */
-	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength1,
-				    /*quality*/NULL,/*quality_length*/0,barcode_length,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength1,
+				    /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false,skipp);
 	  (*queryseq2) = (T) NULL;
 	}
@@ -2545,6 +2655,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 				 int barcode_length, bool invert_first_p, bool invert_second_p) {
   T queryseq1;
   char *acc, *restofheader;
+  char *long_read_1, *long_read_2, *long_quality;
   int nextchar2;
   int fulllength, quality_length;
   bool filterp;
@@ -2605,7 +2716,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
       *nextchar = EOF;
     } else {
       *nextchar = fgetc(*input1);
-      if ((fulllength = input_oneline(&(*nextchar),&(Read1[0]),*input1,acc,
+      if ((fulllength = input_oneline(&(*nextchar),&long_read_1,&(Read1[0]),*input1,acc,
 				      /*possible_fasta_header_p*/true)) == 0) {
 	/* fprintf(stderr,"length is zero\n"); */
 	/* No sequence1.  Don't process, but loop again */
@@ -2613,13 +2724,13 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 
       } else if (*nextchar != '+') {
 	/* No quality */
-	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
-				  /*quality*/NULL,/*quality_length*/0,barcode_length,
+	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength,
+				  /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				  invert_first_p,/*copy_acc_p*/false,skipp);
       } else {
 	skip_header(*input1);
 	*nextchar = fgetc(*input1);
-	quality_length = input_oneline(&(*nextchar),&(Quality[0]),*input1,acc,
+	quality_length = input_oneline(&(*nextchar),&long_quality,&(Quality[0]),*input1,acc,
 				       /*possible_fasta_header_p*/false);
 	if (quality_length != fulllength) {
 	  fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2627,8 +2738,8 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	  abort();
 	} else {
 	  /* Has quality */
-	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
-				    Quality,quality_length,barcode_length,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength,
+				    Quality,long_quality,quality_length,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false,skipp);
 	}
       }
@@ -2659,7 +2770,7 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	  }
 	}
 	nextchar2 = fgetc(*input2);
-	if ((fulllength = input_oneline(&nextchar2,&(Read2[0]),*input2,acc,
+	if ((fulllength = input_oneline(&nextchar2,&long_read_2,&(Read2[0]),*input2,acc,
 					/*possible_fasta_header_p*/true)) == 0) {
 	  /* fprintf(stderr,"length is zero\n"); */
 	  /* No sequence2.  Don't process, but loop again */
@@ -2667,13 +2778,13 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 
 	} else if (nextchar2 != '+') {
 	  /* No quality */
-	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
-				       /*quality*/NULL,/*quality_length*/0,barcode_length,
+	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength,
+				       /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false,skipp);
 	} else {
 	  skip_header(*input2);
 	  nextchar2 = fgetc(*input2);
-	  quality_length = input_oneline(&nextchar2,&(Quality[0]),*input2,acc,
+	  quality_length = input_oneline(&nextchar2,&long_quality,&(Quality[0]),*input2,acc,
 					 /*possible_fasta_header_p*/false);
 	  if (quality_length != fulllength) {
 	    fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2681,8 +2792,8 @@ Shortread_read_fastq_shortreads (int *nextchar, T *queryseq2, FILE **input1, FIL
 	    abort();
 	  } else {
 	    /* Has quality */
-	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
-					 Quality,quality_length,barcode_length,
+	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength,
+					 Quality,long_quality,quality_length,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false,skipp);
 
 	  }
@@ -2702,6 +2813,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 				      int barcode_length, bool invert_first_p, bool invert_second_p) {
   T queryseq1;
   char *acc, *restofheader;
+  char *long_read_1, *long_read_2, *long_quality;
   int nextchar2;
   int fulllength, quality_length;
   bool filterp;
@@ -2767,7 +2879,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
       *nextchar = EOF;
     } else {
       *nextchar = gzgetc(*input1);
-      if ((fulllength = input_oneline_gzip(&(*nextchar),&(Read1[0]),*input1,acc,
+      if ((fulllength = input_oneline_gzip(&(*nextchar),&long_read_1,&(Read1[0]),*input1,acc,
 					   /*possible_fasta_header_p*/true)) == 0) {
 	/* fprintf(stderr,"length is zero\n"); */
 	/* No sequence1.  Don't process, but loop again */
@@ -2775,13 +2887,13 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 
       } else if (*nextchar != '+') {
 	/* No quality */
-	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
-				  /*quality*/NULL,/*quality_length*/0,barcode_length,
+	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength,
+				  /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				  invert_first_p,/*copy_acc_p*/false,skipp);
       } else {
 	skip_header_gzip(*input1);
 	*nextchar = gzgetc(*input1);
-	quality_length = input_oneline_gzip(&(*nextchar),&(Quality[0]),*input1,acc,
+	quality_length = input_oneline_gzip(&(*nextchar),&long_quality,&(Quality[0]),*input1,acc,
 					    /*possible_fasta_header_p*/false);
 	if (quality_length != fulllength) {
 	  fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2789,8 +2901,8 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	  abort();
 	} else {
 	  /* Has quality */
-	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
-				    Quality,quality_length,barcode_length,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength,
+				    Quality,long_quality,quality_length,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false,skipp);
 	}
       }
@@ -2821,7 +2933,7 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	  }
 	}
 	nextchar2 = gzgetc(*input2);
-	if ((fulllength = input_oneline_gzip(&nextchar2,&(Read2[0]),*input2,acc,
+	if ((fulllength = input_oneline_gzip(&nextchar2,&long_read_2,&(Read2[0]),*input2,acc,
 					     /*possible_fasta_header_p*/true)) == 0) {
 	  /* fprintf(stderr,"length is zero\n"); */
 	  /* No sequence2.  Don't process, but loop again */
@@ -2829,13 +2941,13 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 
 	} else if (nextchar2 != '+') {
 	  /* No quality */
-	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
-				       /*quality*/NULL,/*quality_length*/0,barcode_length,
+	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength,
+				       /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false,skipp);
 	} else {
 	  skip_header_gzip(*input2);
 	  nextchar2 = gzgetc(*input2);
-	  quality_length = input_oneline_gzip(&nextchar2,&(Quality[0]),*input2,acc,
+	  quality_length = input_oneline_gzip(&nextchar2,&long_quality,&(Quality[0]),*input2,acc,
 					      /*possible_fasta_header_p*/false);
 	  if (quality_length != fulllength) {
 	    fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2843,8 +2955,8 @@ Shortread_read_fastq_shortreads_gzip (int *nextchar, T *queryseq2, gzFile *input
 	    abort();
 	  } else {
 	    /* Has quality */
-	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
-					 Quality,quality_length,barcode_length,
+	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength,
+					 Quality,long_quality,quality_length,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false,skipp);
 	  }
 	}
@@ -2864,6 +2976,7 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 				       int barcode_length, bool invert_first_p, bool invert_second_p) {
   T queryseq1;
   char *acc, *restofheader;
+  char *long_read_1, *long_read_2, *long_quality;
   int nextchar2;
   int fulllength, quality_length;
   bool filterp;
@@ -2917,7 +3030,7 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
       *nextchar = EOF;
     } else {
       *nextchar = bzgetc(*input1);
-      if ((fulllength = input_oneline_bzip2(&(*nextchar),&(Read1[0]),*input1,acc,
+      if ((fulllength = input_oneline_bzip2(&(*nextchar),&long_read_1,&(Read1[0]),*input1,acc,
 					    /*possible_fasta_header_p*/true)) == 0) {
 	/* fprintf(stderr,"length is zero\n"); */
 	/* No sequence1.  Don't process, but loop again */
@@ -2925,13 +3038,13 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 
       } else if (*nextchar != '+') {
 	/* No quality */
-	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
-				  /*quality*/NULL,/*quality_length*/0,barcode_length,
+	queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength,
+				  /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				  invert_first_p,/*copy_acc_p*/false,skipp);
       } else {
 	skip_header_bzip2(*input1);
 	*nextchar = bzgetc(*input1);
-	quality_length = input_oneline_bzip2(&(*nextchar),&(Quality[0]),*input1,acc,
+	quality_length = input_oneline_bzip2(&(*nextchar),&long_quality,&(Quality[0]),*input1,acc,
 					     /*possible_fasta_header_p*/false);
 	if (quality_length != fulllength) {
 	  fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2939,8 +3052,8 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 	  abort();
 	} else {
 	  /* Has quality */
-	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,fulllength,
-				    Quality,quality_length,barcode_length,
+	  queryseq1 = Shortread_new(acc,restofheader,filterp,Read1,long_read_1,fulllength,
+				    Quality,long_quality,quality_length,barcode_length,
 				    invert_first_p,/*copy_acc_p*/false,skipp);
 	}
       }
@@ -2971,7 +3084,7 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 	  }
 	}
 	nextchar2 = bzgetc(*input2);
-	if ((fulllength = input_oneline_bzip2(&nextchar2,&(Read2[0]),*input2,acc,
+	if ((fulllength = input_oneline_bzip2(&nextchar2,&long_read_2,&(Read2[0]),*input2,acc,
 					      /*possible_fasta_header_p*/true)) == 0) {
 	  /* fprintf(stderr,"length is zero\n"); */
 	  /* No sequence2.  Don't process, but loop again */
@@ -2979,13 +3092,13 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 
 	} else if (nextchar2 != '+') {
 	  /* No quality */
-	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
-				       /*quality*/NULL,/*quality_length*/0,barcode_length,
+	  (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength,
+				       /*quality*/NULL,/*long_quality*/NULL,/*quality_length*/0,barcode_length,
 				       invert_second_p,/*copy_acc_p*/false,skipp);
 	} else {
 	  skip_header_bzip2(*input2);
 	  nextchar2 = bzgetc(*input2);
-	  quality_length = input_oneline_bzip2(&nextchar2,&(Quality[0]),*input2,acc,
+	  quality_length = input_oneline_bzip2(&nextchar2,&long_quality,&(Quality[0]),*input2,acc,
 					       /*possible_fasta_header_p*/false);
 	  if (quality_length != fulllength) {
 	    fprintf(stderr,"Length %d of quality score differs from length %d of nucleotides in sequence %s\n",
@@ -2993,8 +3106,8 @@ Shortread_read_fastq_shortreads_bzip2 (int *nextchar, T *queryseq2, Bzip2_T *inp
 	    abort();
 	  } else {
 	    /* Has quality */
-	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,fulllength,
-					 Quality,quality_length,barcode_length,
+	    (*queryseq2) = Shortread_new(acc,/*restofheader*/NULL,filterp,Read2,long_read_2,fulllength,
+					 Quality,long_quality,quality_length,barcode_length,
 					 invert_second_p,/*copy_acc_p*/false,skipp);
 	  }
 	}

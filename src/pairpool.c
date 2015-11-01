@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 136057 2014-05-13 20:14:15Z twu $";
+static char rcsid[] = "$Id: pairpool.c 145494 2014-08-19 18:37:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -289,11 +289,11 @@ Pairpool_push_copy (List_T list, T this, Pair_T orig) {
   memcpy(pair,orig,sizeof(struct Pair_T));
 
   debug(
-	printf("Copying %p: %d %d %c %c %c\n",
-	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
+	printf("Copying %p <= %p: %d %d %c %c %c\n",
+	       pair,orig,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
 	);
 
-	if (this->listcellctr >= this->nlistcells) {
+  if (this->listcellctr >= this->nlistcells) {
     this->listcellptr = add_new_listcellchunk(this);
   } else if ((this->listcellctr % CHUNKSIZE) == 0) {
     for (n = this->nlistcells - CHUNKSIZE, p = this->listcellchunks;
@@ -792,6 +792,57 @@ Pairpool_clean_join (List_T *left_path, List_T *right_pairs) {
 }
 
 
+List_T
+Pairpool_remove_gapholders (List_T pairs) {
+  List_T path = NULL;
+  Pair_T pair;
+
+  while (pairs != NULL) {
+    /* pairptr = pairs; */
+    /* pairs = Pairpool_pop(pairs,&pair); */
+    pair = (Pair_T) pairs->first;
+    if (pair->gapp == true) {
+      debug(printf("Removing a gap with queryjump = %d, genomejump = %d\n",
+		   pair->queryjump,pair->genomejump));
+      pairs = Pairpool_pop(pairs,&pair);
+    } else {
+#ifdef WASTE
+      path = Pairpool_push_existing(path,pairpool,pair);
+#else
+      path = List_transfer_one(path,&pairs);
+#endif
+    }
+  }
+
+  return List_reverse(path);
+}
+
+
+#ifdef CHECK_ASSERTIONS
+static List_T
+check_for_gapholders (List_T pairs) {
+  List_T path = NULL;
+  Pair_T pair;
+
+  while (pairs != NULL) {
+    /* pairptr = pairs; */
+    /* pairs = Pairpool_pop(pairs,&pair); */
+    pair = (Pair_T) pairs->first;
+    if (pair->gapp == true) {
+      abort();
+    } else {
+#ifdef WASTE
+      path = Pairpool_push_existing(path,pairpool,pair);
+#else
+      path = List_transfer_one(path,&pairs);
+#endif
+    }
+  }
+
+  return List_reverse(path);
+}
+#endif
+
 
 List_T
 Pairpool_join_end3 (List_T path_orig, List_T end3_pairs_orig, Pairpool_T pairpool,
@@ -800,11 +851,24 @@ Pairpool_join_end3 (List_T path_orig, List_T end3_pairs_orig, Pairpool_T pairpoo
   Pair_T pair, leftpair;
   int queryjump = -1, genomejump = -1;
   
+#ifdef CHECK_ASSERTIONS
+  path_orig = check_for_gapholders(path_orig);
+  end3_pairs_orig = check_for_gapholders(end3_pairs_orig);
+#endif
+
   path = Pairpool_copy(path_orig,pairpool);
   if (copy_end_p == true) {
     end3_pairs = Pairpool_copy(end3_pairs_orig,pairpool);
   } else {
     end3_pairs = end3_pairs_orig;
+  }
+
+  if (path == NULL && end3_pairs == NULL) {
+    return (List_T) NULL;
+  } else if (path == NULL) {
+    return List_reverse(end3_pairs);
+  } else if (end3_pairs == NULL) {
+    return path;
   }
 
   debug15(printf("Entered join_end3\n"));
@@ -871,11 +935,24 @@ Pairpool_join_end5 (List_T pairs_orig, List_T end5_path_orig, Pairpool_T pairpoo
   Pair_T pair, rightpair;
   int queryjump = -1, genomejump = -1;
   
+#ifdef CHECK_ASSERTIONS
+  pairs_orig = check_for_gapholders(pairs_orig);
+  end5_path_orig = check_for_gapholders(end5_path_orig);
+#endif
+
   pairs = Pairpool_copy(pairs_orig,pairpool);
   if (copy_end_p == true) {
     end5_path = Pairpool_copy(end5_path_orig,pairpool);
   } else {
     end5_path = end5_path_orig;
+  }
+
+  if (pairs == NULL && end5_path == NULL) {
+    return (List_T) NULL;
+  } else if (pairs == NULL) {
+    return List_reverse(end5_path);
+  } else if (end5_path == NULL) {
+    return pairs;
   }
 
   debug15(printf("Entered join_end5\n"));

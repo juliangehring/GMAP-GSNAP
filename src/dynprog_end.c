@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_end.c 138715 2014-06-11 17:05:56Z twu $";
+static char rcsid[] = "$Id: dynprog_end.c 140653 2014-07-04 02:01:10Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -673,36 +673,6 @@ traceback_local_8_upper (List_T pairs, int *nmatches, int *nmismatches, int *nop
 
   /* We care only only about genomic coordinate c */
 
-#if 0
-  if (*c <= endc) {
-    /* Do nothing */
-
-  } else if ((dir = directions_nogap[*c][*r]) == DIAG) {
-    /* Not an indel.  Do nothing. */
-
-  } else {
-    /* Must be HORIZ */
-    dist = 1;
-    while (*c > 1 && directions_Egap[*c][*r] != DIAG) {
-      dist++;
-      (*c)--;
-    }
-    (*c)--;
-    /* dir = directions_nogap[*c][*r]; */
-
-    debug(printf("H%d: ",dist));
-    pairs = Pairpool_add_genomeskip(&add_dashes_p,pairs,*r,(*c)+dist,dist,genomesequence,genomesequenceuc,
-				    queryoffset,genomeoffset,pairpool,revp,chroffset,chrhigh,
-				    cdna_direction,watsonp,dynprogindex,/*use_genomicseg_p*/true);
-    if (add_dashes_p == true) {
-      *nopens += 1;
-      *nindels += dist;
-    }
-    debug(printf("\n"));
-
-  }
-#endif
-
   while (*r > 0 && *c > endc) {
     if ((dir = directions_nogap[*c][*r]) != DIAG) {
       /* Must be HORIZ */
@@ -710,8 +680,7 @@ traceback_local_8_upper (List_T pairs, int *nmatches, int *nmismatches, int *nop
       while (*c > endc && directions_Egap[(*c)--][*r] != DIAG) {
 	dist++;
       }
-      assert(c != endc);
-      dir = directions_nogap[*c][*r];
+      /* assert(*c != endc); */
 
       debug(printf("H%d: ",dist));
       pairs = Pairpool_add_genomeskip(&add_dashes_p,pairs,*r,(*c)+dist,dist,
@@ -723,9 +692,8 @@ traceback_local_8_upper (List_T pairs, int *nmatches, int *nmismatches, int *nop
 	*nindels += dist;
       }
       debug(printf("\n"));
-    }
 
-    if (dir == DIAG) {
+    } else {
       querycoord = (*r)-1;
       genomecoord = (*c)-1;
       if (revp == true) {
@@ -759,8 +727,8 @@ traceback_local_8_upper (List_T pairs, int *nmatches, int *nmismatches, int *nop
 	pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,
 			      c1,MISMATCH_COMP,c2,c2_alt,dynprogindex);
       }
-    (*r)--; (*c)--;
 
+      (*r)--; (*c)--;
     }
   }
 
@@ -801,48 +769,20 @@ traceback_local_8_lower (List_T pairs, int *nmatches, int *nmismatches, int *nop
   int querycoord, genomecoord;
   Direction8_T dir;
 
-  debug(printf("Starting traceback_local at r=%d,c=%d (roffset=%d, goffset=%d)\n",*r,*c,queryoffset,genomeoffset));
+  debug(printf("Starting traceback_local_8_lower at r=%d,c=%d (roffset=%d, goffset=%d)\n",*r,*c,queryoffset,genomeoffset));
 
   /* We care only only about genomic coordinate c */
-
-#if 0
-  if (*c <= endc) {
-    /* Do nothing */
-
-  } else if ((dir = directions_nogap[*r][*c]) == DIAG) {
-    /* Not an indel.  Do nothing. */
-
-  } else {
-    /* Must be VERT */
-    dist = 1;
-    while (*r > 1 && directions_Egap[*r][*c] != DIAG) {
-      dist++;
-      (*r)--;
-    }
-    (*r)--;
-    /* dir = directions_nogap[*r][*c]; */
-
-    debug(printf("V%d: ",dist));
-    pairs = Pairpool_add_queryskip(pairs,(*r)+dist,*c,dist,rsequence,
-				   queryoffset,genomeoffset,pairpool,revp,
-				   dynprogindex);
-    *nopens += 1;
-    *nindels += dist;
-    debug(printf("\n"));
-  }
-#endif
 
   while (*r > 0 && *c > endc) {
     if ((dir = directions_nogap[*r][*c]) != DIAG) {
       /* Must be VERT */
       dist = 1;
       /* Should not need to check for r > 0 if the main diagonal is populated with DIAG */
-      while (/* r > 0 && */ directions_Egap[(*r)--][*c] != DIAG) {
+      while (/* *r > 0 && */ directions_Egap[(*r)--][*c] != DIAG) {
 	dist++;
       }
-      assert(r != 0);
-      dir = directions_nogap[*r][*c];
-
+      /* assert(*r != 0); */
+			     
       debug(printf("V%d: ",dist));
       pairs = Pairpool_add_queryskip(pairs,(*r)+dist,*c,dist,rsequence,
 				     queryoffset,genomeoffset,pairpool,revp,
@@ -850,9 +790,8 @@ traceback_local_8_lower (List_T pairs, int *nmatches, int *nmismatches, int *nop
       *nopens += 1;
       *nindels += dist;
       debug(printf("\n"));
-    }
-
-    if (dir == DIAG) {
+      
+    } else {
       querycoord = (*r)-1;
       genomecoord = (*c)-1;
       if (revp == true) {
@@ -886,6 +825,7 @@ traceback_local_8_lower (List_T pairs, int *nmatches, int *nmismatches, int *nop
 	pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,
 			      c1,MISMATCH_COMP,c2,c2_alt,dynprogindex);
       }
+
       (*r)--; (*c)--;
     }
   }
@@ -929,35 +869,6 @@ traceback_local_16_upper (List_T pairs, int *nmatches, int *nmismatches, int *no
 
   /* We care only only about genomic coordinate c */
 
-#if 0
-  if (*c <= endc) {
-    /* Do nothing */
-
-  } else if ((dir = directions_nogap[*c][*r]) == DIAG) {
-    /* Not an indel.  Do nothing. */
-
-  } else {
-    /* Must be HORIZ */
-    dist = 1;
-    while (*c > 1 && directions_Egap[*c][*r] != DIAG) {
-      dist++;
-      (*c)--;
-    }
-    (*c)--;
-    /* dir = directions_nogap[c][r]; */
-
-    debug(printf("H%d: ",dist));
-    pairs = Pairpool_add_genomeskip(&add_dashes_p,pairs,*r,(*c)+dist,dist,genomesequence,genomesequenceuc,
-				    queryoffset,genomeoffset,pairpool,revp,chroffset,chrhigh,
-				    cdna_direction,watsonp,dynprogindex,/*use_genomicseg_p*/true);
-    if (add_dashes_p == true) {
-      *nopens += 1;
-      *nindels += dist;
-    }
-    debug(printf("\n"));
-  }
-#endif
-
   while (*r > 0 && *c > endc) {
     if ((dir = directions_nogap[*c][*r]) != DIAG) {
       /* Must be HORIZ */
@@ -965,7 +876,6 @@ traceback_local_16_upper (List_T pairs, int *nmatches, int *nmismatches, int *no
       while (*c > endc && directions_Egap[(*c)--][*r] != DIAG) {
 	dist++;
       }
-      dir = directions_nogap[*c][*r];
 
       debug(printf("H%d: ",dist));
       pairs = Pairpool_add_genomeskip(&add_dashes_p,pairs,*r,(*c)+dist,dist,
@@ -977,9 +887,8 @@ traceback_local_16_upper (List_T pairs, int *nmatches, int *nmismatches, int *no
 	*nindels += dist;
       }
       debug(printf("\n"));
-    }
 
-    if (dir == DIAG) {
+    } else {
       querycoord = (*r)-1;
       genomecoord = (*c)-1;
       if (revp == true) {
@@ -1013,8 +922,8 @@ traceback_local_16_upper (List_T pairs, int *nmatches, int *nmismatches, int *no
 	pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,
 			      c1,MISMATCH_COMP,c2,c2_alt,dynprogindex);
       }
-    (*r)--; (*c)--;
 
+      (*r)--; (*c)--;
     }
   }
 
@@ -1058,43 +967,15 @@ traceback_local_16_lower (List_T pairs, int *nmatches, int *nmismatches, int *no
 
   /* We care only only about genomic coordinate c */
 
-#if 0
-  if (*c <= endc) {
-    /* Do nothing */
-
-  } else if ((dir = directions_nogap[*r][*c]) == DIAG) {
-    /* Not an indel.  Do nothing. */
-
-  } else {
-    /* Must be VERT */
-    dist = 1;
-    while (*r > 1 && directions_Egap[*r][*c] != DIAG) {
-      dist++;
-      (*r)--;
-    }
-    (*r)--;
-    /* dir = directions_nogap[*r][*c]; */
-
-    debug(printf("V%d: ",dist));
-    pairs = Pairpool_add_queryskip(pairs,(*r)+dist,*c,dist,rsequence,
-				   queryoffset,genomeoffset,pairpool,revp,
-				   dynprogindex);
-    *nopens += 1;
-    *nindels += dist;
-    debug(printf("\n"));
-  }
-#endif
-
   while (*r > 0 && *c > endc) {
     if ((dir = directions_nogap[*r][*c]) != DIAG) {
       /* Must be VERT */
       dist = 1;
       /* Should not need to check for r > 0 if the main diagonal is populated with DIAG */
-      while (/* r > 0 && */ directions_Egap[(*r)--][*c] != DIAG) {
+      while (/* *r > 0 && */ directions_Egap[(*r)--][*c] != DIAG) {
 	dist++;
       }
-      assert(*r != 0);
-      dir = directions_nogap[*r][*c];
+      /* assert(*r != 0); */
 
       debug(printf("V%d: ",dist));
       pairs = Pairpool_add_queryskip(pairs,(*r)+dist,*c,dist,rsequence,
@@ -1103,9 +984,8 @@ traceback_local_16_lower (List_T pairs, int *nmatches, int *nmismatches, int *no
       *nopens += 1;
       *nindels += dist;
       debug(printf("\n"));
-    }
 
-    if (dir == DIAG) {
+    } else {
       querycoord = (*r)-1;
       genomecoord = (*c)-1;
       if (revp == true) {
@@ -1139,8 +1019,8 @@ traceback_local_16_lower (List_T pairs, int *nmatches, int *nmismatches, int *no
 	pairs = Pairpool_push(pairs,pairpool,queryoffset+querycoord,genomeoffset+genomecoord,
 			      c1,MISMATCH_COMP,c2,c2_alt,dynprogindex);
       }
+
       (*r)--; (*c)--;
-      
     }
   }
 
@@ -1758,7 +1638,7 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *missscore,
 #endif
 					   mismatchtype,open,extend,
 					   uband,/*for revp true*/!jump_late_p,/*revp*/true);
-    matrix16_lower = Dynprog_simd_16_upper(&directions16_lower_nogap,&directions16_lower_Egap,dynprog,
+    matrix16_lower = Dynprog_simd_16_lower(&directions16_lower_nogap,&directions16_lower_Egap,dynprog,
 					   rev_rsequence,rev_gsequence_uc,rev_gsequence_alt,
 					   rlength,glength,
 #ifdef DEBUG14
@@ -1781,119 +1661,125 @@ Dynprog_end5_splicejunction (int *dynprogindex, int *finalscore, int *missscore,
 					    !jump_late_p);
 #endif
 
-  *nmatches = *nmismatches = *nopens = *nindels = 0;
-#if defined(HAVE_SSE4_1) || defined(HAVE_SSE2)
-  if (use8p == true) {
-    if (bestc >= bestr) {
-      pairs = traceback_local_8_upper(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions8_upper_nogap,directions8_upper_Egap,&bestr,&bestc,/*endc*/contlength,
-				      rev_rsequence,rev_rsequenceuc,
-				      rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-				      rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    } else {
-      pairs = traceback_local_8_lower(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions8_lower_nogap,directions8_lower_Egap,&bestr,&bestc,/*endc*/contlength,
-				      rev_rsequence,rev_rsequenceuc,
-				      rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-				      rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    }
-
-    pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/rev_goffset_anchor - rev_goffset_far,
-				    /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
-
-    if (bestc >= bestr) {
-      pairs = traceback_local_8_upper(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions8_upper_nogap,directions8_upper_Egap,&bestr,&bestc,/*endc*/0,
-				      rev_rsequence,rev_rsequenceuc,
-				      rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-				      rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    } else {
-      pairs = traceback_local_8_lower(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions8_lower_nogap,directions8_lower_Egap,&bestr,&bestc,/*endc*/0,
-				      rev_rsequence,rev_rsequenceuc,
-				      rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-				      rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    }
+  if (*finalscore < 0) {
+    /* Need a reasonable alignment to call a splice */
+    return (List_T) NULL;
 
   } else {
-    if (bestc >= bestr) {
-      pairs = traceback_local_16_upper(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				       directions16_upper_nogap,directions16_upper_Egap,&bestr,&bestc,/*endc*/contlength,
-				       rev_rsequence,rev_rsequenceuc,
-				       rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-				       rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
-				       chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+    *nmatches = *nmismatches = *nopens = *nindels = 0;
+#if defined(HAVE_SSE4_1) || defined(HAVE_SSE2)
+    if (use8p == true) {
+      if (bestc >= bestr) {
+	pairs = traceback_local_8_upper(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					directions8_upper_nogap,directions8_upper_Egap,&bestr,&bestc,/*endc*/contlength,
+					rev_rsequence,rev_rsequenceuc,
+					rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+					rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
+					chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      } else {
+	pairs = traceback_local_8_lower(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					directions8_lower_nogap,directions8_lower_Egap,&bestr,&bestc,/*endc*/contlength,
+					rev_rsequence,rev_rsequenceuc,
+					rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+					rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
+					chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      }
+
+      pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/rev_goffset_anchor - rev_goffset_far,
+				      /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
+
+      if (bestc >= bestr) {
+	pairs = traceback_local_8_upper(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					directions8_upper_nogap,directions8_upper_Egap,&bestr,&bestc,/*endc*/0,
+					rev_rsequence,rev_rsequenceuc,
+					rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+					rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
+					chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      } else {
+	pairs = traceback_local_8_lower(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					directions8_lower_nogap,directions8_lower_Egap,&bestr,&bestc,/*endc*/0,
+					rev_rsequence,rev_rsequenceuc,
+					rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+					rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
+					chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      }
+
     } else {
-      pairs = traceback_local_16_lower(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				       directions16_lower_nogap,directions16_lower_Egap,&bestr,&bestc,/*endc*/contlength,
-				       rev_rsequence,rev_rsequenceuc,
-				       rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-				       rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
-				       chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      if (bestc >= bestr) {
+	pairs = traceback_local_16_upper(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					 directions16_upper_nogap,directions16_upper_Egap,&bestr,&bestc,/*endc*/contlength,
+					 rev_rsequence,rev_rsequenceuc,
+					 rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+					 rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
+					 chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      } else {
+	pairs = traceback_local_16_lower(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					 directions16_lower_nogap,directions16_lower_Egap,&bestr,&bestc,/*endc*/contlength,
+					 rev_rsequence,rev_rsequenceuc,
+					 rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+					 rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
+					 chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      }
+
+      pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/rev_goffset_anchor - rev_goffset_far,
+				      /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
+
+      if (bestc >= bestr) {
+	pairs = traceback_local_16_upper(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					 directions16_upper_nogap,directions16_upper_Egap,&bestr,&bestc,/*endc*/0,
+					 rev_rsequence,rev_rsequenceuc,
+					 rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+					 rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
+					 chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      } else {
+	pairs = traceback_local_16_lower(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					 directions16_lower_nogap,directions16_lower_Egap,&bestr,&bestc,/*endc*/0,
+					 rev_rsequence,rev_rsequenceuc,
+					 rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+					 rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
+					 chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      }
     }
+
+#else
+    pairs = traceback_local_std(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+				directions_nogap,directions_Egap,directions_Fgap,&bestr,&bestc,/*endc*/contlength,
+				rev_rsequence,rev_rsequenceuc,
+				rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+				rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
+				chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
 
     pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/rev_goffset_anchor - rev_goffset_far,
 				    /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
 
-    if (bestc >= bestr) {
-      pairs = traceback_local_16_upper(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				       directions16_upper_nogap,directions16_upper_Egap,&bestr,&bestc,/*endc*/0,
-				       rev_rsequence,rev_rsequenceuc,
-				       rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-				       rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
-				       chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    } else {
-      pairs = traceback_local_16_lower(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				       directions16_lower_nogap,directions16_lower_Egap,&bestr,&bestc,/*endc*/0,
-				       rev_rsequence,rev_rsequenceuc,
-				       rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-				       rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
-				       chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    }
-  }
-
-#else
-  pairs = traceback_local_std(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-			      directions_nogap,directions_Egap,directions_Fgap,&bestr,&bestc,/*endc*/contlength,
-			      rev_rsequence,rev_rsequenceuc,
-			      rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-			      rev_roffset,rev_goffset_far,pairpool,/*revp*/true,
-			      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-
-  pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/rev_goffset_anchor - rev_goffset_far,
-				  /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
-
-  pairs = traceback_local_std(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-			      directions_nogap,directions_Egap,directions_Fgap,&bestr,&bestc,/*endc*/0,
-			      rev_rsequence,rev_rsequenceuc,
-			      rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
-			      rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
-			      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+    pairs = traceback_local_std(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+				directions_nogap,directions_Egap,directions_Fgap,&bestr,&bestc,/*endc*/0,
+				rev_rsequence,rev_rsequenceuc,
+				rev_gsequence,rev_gsequence_uc,rev_gsequence_alt,
+				rev_roffset,rev_goffset_anchor,pairpool,/*revp*/true,
+				chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
 #endif
 
 
-  /* Score compared with perfect score, so heavy weight on mismatches may not be necessary */
-  *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ + (*nopens)*open + (*nindels)*extend;
-  *missscore = (*finalscore) - rlength*FULLMATCH;
-  debug6(printf("finalscore %d = %d*%d matches + %d*%d mismatches + %d*%d opens + %d*%d extends\n",
-		*finalscore,FULLMATCH,*nmatches,MISMATCH_ENDQ,*nmismatches,open,*nopens,extend,*nindels));
-  debug6(printf("missscore = %d\n",*missscore));
+    /* Score compared with perfect score, so heavy weight on mismatches may not be necessary */
+    *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ + (*nopens)*open + (*nindels)*extend;
+    *missscore = (*finalscore) - rlength*FULLMATCH;
+    debug6(printf("finalscore %d = %d*%d matches + %d*%d mismatches + %d*%d opens + %d*%d extends\n",
+		  *finalscore,FULLMATCH,*nmatches,MISMATCH_ENDQ,*nmismatches,open,*nopens,extend,*nindels));
+    debug6(printf("missscore = %d\n",*missscore));
 
-  /* Add 1 to count the match already in the alignment */
-  pairs = List_reverse(pairs); /* Look at 5' end to remove excess gaps */
-  while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == INDEL_COMP) {
-    pairs = List_next(pairs);
+    /* Add 1 to count the match already in the alignment */
+    pairs = List_reverse(pairs); /* Look at 5' end to remove excess gaps */
+    while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == INDEL_COMP) {
+      pairs = List_next(pairs);
+    }
+
+    debug6(Pair_dump_list(pairs,true));
+    debug6(printf("End of dynprog end5 gap splicejunction\n\n"));
+
+    *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
+    return List_reverse(pairs);
   }
-
-  debug6(Pair_dump_list(pairs,true));
-  debug6(printf("End of dynprog end5 gap splicejunction\n\n"));
-
-  *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
-  return List_reverse(pairs);
 }
 
 
@@ -2018,7 +1904,7 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 #endif
 					     mismatchtype,open,extend,
 					     uband,jump_late_p,/*revp*/false);
-      matrix16_lower = Dynprog_simd_16_upper(&directions16_lower_nogap,&directions16_lower_Egap,dynprog,
+      matrix16_lower = Dynprog_simd_16_lower(&directions16_lower_nogap,&directions16_lower_Egap,dynprog,
 					     rsequenceuc,gsequence,gsequence_alt,rlength,glength,
 #ifdef DEBUG14
 					     goffset,chroffset,chrhigh,watsonp,
@@ -2338,105 +2224,111 @@ Dynprog_end3_splicejunction (int *dynprogindex, int *finalscore, int *missscore,
 					    jump_late_p);
 #endif
 
-  *nmatches = *nmismatches = *nopens = *nindels = 0;
-#if defined(HAVE_SSE4_1) || defined(HAVE_SSE2)
-  if (use8p == true) {
-    if (bestc >= bestr) {
-      pairs = traceback_local_8_upper(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions8_upper_nogap,directions8_upper_Egap,&bestr,&bestc,/*endc*/contlength,
-				      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-				      roffset,goffset_far,pairpool,/*revp*/false,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    } else {
-      pairs = traceback_local_8_lower(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions8_lower_nogap,directions8_lower_Egap,&bestr,&bestc,/*endc*/contlength,
-				      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-				      roffset,goffset_far,pairpool,/*revp*/false,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    }
-    pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/goffset_far - goffset_anchor,
-				    /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
-    if (bestc >= bestr) {
-      pairs = traceback_local_8_upper(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions8_upper_nogap,directions8_upper_Egap,&bestr,&bestc,/*endc*/0,
-				      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-				      roffset,goffset_anchor,pairpool,/*revp*/false,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    } else {
-      pairs = traceback_local_8_lower(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions8_lower_nogap,directions8_lower_Egap,&bestr,&bestc,/*endc*/0,
-				      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-				      roffset,goffset_anchor,pairpool,/*revp*/false,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    }
+  if (*finalscore < 0) {
+    /* Need a reasonable alignment to call a splice */
+    return (List_T) NULL;
 
   } else {
-    if (bestc >= bestr) {
-      pairs = traceback_local_16_upper(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions16_upper_nogap,directions16_upper_Egap,&bestr,&bestc,/*endc*/contlength,
-				      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-				      roffset,goffset_far,pairpool,/*revp*/false,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+    *nmatches = *nmismatches = *nopens = *nindels = 0;
+#if defined(HAVE_SSE4_1) || defined(HAVE_SSE2)
+    if (use8p == true) {
+      if (bestc >= bestr) {
+	pairs = traceback_local_8_upper(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					directions8_upper_nogap,directions8_upper_Egap,&bestr,&bestc,/*endc*/contlength,
+					rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+					roffset,goffset_far,pairpool,/*revp*/false,
+					chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      } else {
+	pairs = traceback_local_8_lower(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					directions8_lower_nogap,directions8_lower_Egap,&bestr,&bestc,/*endc*/contlength,
+					rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+					roffset,goffset_far,pairpool,/*revp*/false,
+					chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      }
+      pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/goffset_far - goffset_anchor,
+				      /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
+      if (bestc >= bestr) {
+	pairs = traceback_local_8_upper(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					directions8_upper_nogap,directions8_upper_Egap,&bestr,&bestc,/*endc*/0,
+					rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+					roffset,goffset_anchor,pairpool,/*revp*/false,
+					chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      } else {
+	pairs = traceback_local_8_lower(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					directions8_lower_nogap,directions8_lower_Egap,&bestr,&bestc,/*endc*/0,
+					rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+					roffset,goffset_anchor,pairpool,/*revp*/false,
+					chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      }
+
     } else {
-      pairs = traceback_local_16_lower(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions16_lower_nogap,directions16_lower_Egap,&bestr,&bestc,/*endc*/contlength,
-				      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-				      roffset,goffset_far,pairpool,/*revp*/false,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      if (bestc >= bestr) {
+	pairs = traceback_local_16_upper(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					 directions16_upper_nogap,directions16_upper_Egap,&bestr,&bestc,/*endc*/contlength,
+					 rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+					 roffset,goffset_far,pairpool,/*revp*/false,
+					 chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      } else {
+	pairs = traceback_local_16_lower(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					 directions16_lower_nogap,directions16_lower_Egap,&bestr,&bestc,/*endc*/contlength,
+					 rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+					 roffset,goffset_far,pairpool,/*revp*/false,
+					 chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      }
+      pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/goffset_far - goffset_anchor,
+				      /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
+      if (bestc >= bestr) {
+	pairs = traceback_local_16_upper(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					 directions16_upper_nogap,directions16_upper_Egap,&bestr,&bestc,/*endc*/0,
+					 rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+					 roffset,goffset_anchor,pairpool,/*revp*/false,
+					 chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      } else {
+	pairs = traceback_local_16_lower(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+					 directions16_lower_nogap,directions16_lower_Egap,&bestr,&bestc,/*endc*/0,
+					 rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+					 roffset,goffset_anchor,pairpool,/*revp*/false,
+					 chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+      }
     }
-    pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/goffset_far - goffset_anchor,
-				    /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
-    if (bestc >= bestr) {
-      pairs = traceback_local_16_upper(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions16_upper_nogap,directions16_upper_Egap,&bestr,&bestc,/*endc*/0,
-				      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-				      roffset,goffset_anchor,pairpool,/*revp*/false,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    } else {
-      pairs = traceback_local_16_lower(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-				      directions16_lower_nogap,directions16_lower_Egap,&bestr,&bestc,/*endc*/0,
-				      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-				      roffset,goffset_anchor,pairpool,/*revp*/false,
-				      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
-    }
-  }
 
 #else
-  /* Non-SIMD methods */
-  pairs = traceback_local_std(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-			      directions_nogap,directions_Egap,directions_Fgap,&bestr,&bestc,/*endc*/contlength,
-			      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-			      roffset,goffset_far,pairpool,/*revp*/false,
-			      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+    /* Non-SIMD methods */
+    pairs = traceback_local_std(NULL,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+				directions_nogap,directions_Egap,directions_Fgap,&bestr,&bestc,/*endc*/contlength,
+				rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+				roffset,goffset_far,pairpool,/*revp*/false,
+				chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
   
-  pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/goffset_far - goffset_anchor,
-				  /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
+    pairs = Pairpool_push_gapholder(pairs,pairpool,/*queryjump*/0,/*genomejump*/goffset_far - goffset_anchor,
+				    /*leftpair*/NULL,/*rightpair*/NULL,/*knownp*/true);
 
-  pairs = traceback_local_std(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
-			      directions_nogap,directions_Egap,directions_Fgap,&bestr,&bestc,/*endc*/0,
-			      rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
-			      roffset,goffset_anchor,pairpool,/*revp*/false,
-			      chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
+    pairs = traceback_local_std(pairs,&(*nmatches),&(*nmismatches),&(*nopens),&(*nindels),
+				directions_nogap,directions_Egap,directions_Fgap,&bestr,&bestc,/*endc*/0,
+				rsequence,rsequenceuc,gsequence,gsequence_uc,gsequence_alt,
+				roffset,goffset_anchor,pairpool,/*revp*/false,
+				chroffset,chrhigh,cdna_direction,watsonp,*dynprogindex);
 #endif
 
-  /* Score compared with perfect score, so heavy weight on mismatches may not be necessary */
-  *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ + (*nopens)*open + (*nindels)*extend;
-  *missscore = (*finalscore) - rlength*FULLMATCH;
-  debug6(printf("finalscore %d = %d*%d matches + %d*%d mismatches + %d*%d opens + %d*%d extends\n",
-		*finalscore,FULLMATCH,*nmatches,MISMATCH_ENDQ,*nmismatches,open,*nopens,extend,*nindels));
-  debug6(printf("missscore = %d\n",*missscore));
+    /* Score compared with perfect score, so heavy weight on mismatches may not be necessary */
+    *finalscore = (*nmatches)*FULLMATCH + (*nmismatches)*MISMATCH_ENDQ + (*nopens)*open + (*nindels)*extend;
+    *missscore = (*finalscore) - rlength*FULLMATCH;
+    debug6(printf("finalscore %d = %d*%d matches + %d*%d mismatches + %d*%d opens + %d*%d extends\n",
+		  *finalscore,FULLMATCH,*nmatches,MISMATCH_ENDQ,*nmismatches,open,*nopens,extend,*nindels));
+    debug6(printf("missscore = %d\n",*missscore));
 
-  /* Add 1 to count the match already in the alignment */
-  pairs = List_reverse(pairs); /* Look at 3' end to remove excess gaps */
-  while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == INDEL_COMP) {
-    pairs = List_next(pairs);
+    /* Add 1 to count the match already in the alignment */
+    pairs = List_reverse(pairs); /* Look at 3' end to remove excess gaps */
+    while (pairs != NULL && (pair = List_head(pairs)) && pair->comp == INDEL_COMP) {
+      pairs = List_next(pairs);
+    }
+
+    debug6(Pair_dump_list(pairs,true));
+    debug6(printf("End of dynprog end3 gap splicejunction\n\n"));
+
+    *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
+    return pairs;			/* not List_reverse(pairs) */
   }
-
-  debug6(Pair_dump_list(pairs,true));
-  debug6(printf("End of dynprog end3 gap splicejunction\n\n"));
-
-  *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
-  return pairs;			/* not List_reverse(pairs) */
 }
 
 

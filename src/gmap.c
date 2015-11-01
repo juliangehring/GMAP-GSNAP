@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 138000 2014-06-04 02:04:31Z twu $";
+static char rcsid[] = "$Id: gmap.c 145604 2014-08-20 17:43:03Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -575,6 +575,11 @@ print_program_version () {
 #else
   fprintf(stdout,"no pthreads, ");
 #endif
+#ifdef HAVE_ALLOCA
+  fprintf(stdout,"alloca available, ");
+#else
+  fprintf(stdout,"no alloca, ");
+#endif
 #ifdef HAVE_ZLIB
   fprintf(stdout,"zlib available, ");
 #else
@@ -942,6 +947,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
   int sensedir;
   int nmatches_posttrim, max_match_length, ambig_end_length_5, ambig_end_length_3;
   Splicetype_T ambig_splicetype_5, ambig_splicetype_3;
+  double ambig_prob_5, ambig_prob_3;
   double defect_rate, min_splice_prob;
   double stage3_runtime;
   int subseq_offset;
@@ -1002,7 +1008,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 			       &matches,&nmatches_posttrim,&max_match_length,
 			       &ambig_end_length_5,&ambig_end_length_3,
 			       &ambig_splicetype_5,&ambig_splicetype_3,
-			       &unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
+			       &ambig_prob_5,&ambig_prob_3,&unknowns,&mismatches,&qopens,&qindels,&topens,&tindels,
 			       &ncanonical,&nsemicanonical,&nnoncanonical,&min_splice_prob,stage2,
 #ifdef PMAP
 			       /*queryaaseq_ptr*/Sequence_fullpointer(queryseq),
@@ -2115,10 +2121,17 @@ find_breakpoint (int *cdna_direction, int *chimerapos, int *chimeraequivpos, int
 
   if (Stage3_queryend(from) < Stage3_querystart(to)) {
     /* Gap exists between the two parts */
-    leftpos = Stage3_queryend(from) - 8;
-    rightpos = Stage3_querystart(to) + 8;
+    if ((leftpos = Stage3_queryend(from) - 8) < 0) {
+      leftpos = 0;
+    }
+    if ((rightpos = Stage3_querystart(to) + 8) >= queryntlength) {
+      rightpos = queryntlength - 1;
+    }
     maxpeelback_from = 8;
     maxpeelback_to = 8;
+    debug2(printf("overlap: leftpos %d, rightpos %d, queryntlength %d, maxpeelback_from %d, maxpeelback_to %d\n",
+		  leftpos,rightpos,queryntlength,maxpeelback_from,maxpeelback_to));
+
     if (Stage3_watsonp(from) == true && Stage3_watsonp(to) == true) {
       queryjump = Stage3_querystart(to) - Stage3_queryend(from) - 1;
       genomejump = Stage3_genomicstart(to) - Stage3_genomicend(from) - 1U;
@@ -2146,8 +2159,8 @@ find_breakpoint (int *cdna_direction, int *chimerapos, int *chimeraequivpos, int
     /* maxpeelback_to = Stage3_queryend(from) - leftpos; */
     maxpeelback_from = rightpos - midpos;
     maxpeelback_to = midpos - leftpos;
-    debug2(printf("overlap: leftpos %d, rightpos %d, midpos %d, maxpeelback_from %d, maxpeelback_to %d\n",
-		  leftpos,rightpos,midpos,maxpeelback_from,maxpeelback_to));
+    debug2(printf("overlap: leftpos %d, rightpos %d, midpos %d, queryntlength %d, maxpeelback_from %d, maxpeelback_to %d\n",
+		  leftpos,rightpos,midpos,queryntlength,maxpeelback_from,maxpeelback_to));
 #if 0
     if (Stage3_watsonp(from) == true && Stage3_watsonp(to) == true) {
       queryjump = Stage3_queryend(from) - Stage3_querystart(to) - 1;
@@ -2305,6 +2318,8 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
     if (five_margin < chimera_margin && three_margin < chimera_margin) {
       debug2(printf("Insufficient margins\n"));
     } else if (five_margin > three_margin) {
+#if 0
+      /* extension makes it harder to find the other alignment.  The merging process will help fill in any gap. */
       extension = CHIMERA_SLOP;
       debug2(printf("Comparing extension %d with %d = (effective_start %d)/2\n",
 		    extension,effective_start/2,effective_start));
@@ -2313,6 +2328,9 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
 	debug2(printf("Proposed extension of %d is too long relative to effective_start %d\n",extension,effective_start));
 	extension = effective_start/3;
       }
+#else
+      extension = 0;
+#endif
       if ((querysubseq = Sequence_subsequence(queryseq,0,effective_start+extension)) != NULL) {
 	if ((querysubuc = Sequence_subsequence(queryuc,0,effective_start+extension)) != NULL) {
 	  debug2(printf("5 margin > 3 margin.  "));
@@ -2402,6 +2420,8 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
 		    npaths_sub1,npaths_sub2,List_length(nonjoinable)));
 
     } else {
+#if 0
+      /* extension makes it harder to find the other alignment.  The merging process will help fill in any gap. */
       extension = CHIMERA_SLOP;
       debug2(printf("Comparing extension %d with %d = (queryntlength %d - effective_end %d)/2\n",
 		    extension,(queryntlength-effective_end)/2,queryntlength,effective_end));
@@ -2411,6 +2431,9 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
 		      extension,queryntlength,effective_end));
 	extension = (queryntlength - effective_end)/3;
       }
+#else
+      extension = 0;
+#endif
       if ((querysubseq = Sequence_subsequence(queryseq,effective_end-extension,queryntlength)) != NULL) {
 	if ((querysubuc = Sequence_subsequence(queryuc,effective_end-extension,queryntlength)) != NULL) {
 	  debug2(printf("5 margin <= 3 margin.  "));

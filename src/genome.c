@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 136793 2014-05-21 18:08:15Z twu $";
+static char rcsid[] = "$Id: genome.c 140510 2014-07-03 01:48:26Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -8709,7 +8709,7 @@ uncompress_fileio (char *gbuffer1, T this, Univcoord_T startpos,
 }
 
 static void
-ntcounts_fileio (int *na, int *nc, int *ng, int *nt,
+ntcounts_fileio (Univcoord_T *na, Univcoord_T *nc, Univcoord_T *ng, Univcoord_T *nt,
 		 T this, Univcoord_T startpos, Univcoord_T endpos,
 		 const char defaultchars[], const char flagchars[]) {
   /* Chrpos_T length = endpos - startpos; */
@@ -9451,7 +9451,7 @@ uncompress_one_char_ignore_flags (Genomecomp_T *blocks, Univcoord_T pos) {
 
 
 static void
-Genome_ntcounts_mmap (int *na, int *nc, int *ng, int *nt, Genomecomp_T *blocks,
+Genome_ntcounts_mmap (Univcoord_T *na, Univcoord_T *nc, Univcoord_T *ng, Univcoord_T *nt, Genomecomp_T *blocks,
 		      Univcoord_T startpos, Univcoord_T endpos, const char defaultchars[],
 		      const char flagchars[]) {
   /* Chrpos_T length = endpos - startpos; */
@@ -11071,11 +11071,11 @@ Genome_get_segment_snp (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T ch
 }
 
 
-int
-Genome_ntcounts (int *na, int *nc, int *ng, int *nt,
-		 T this, Univcoord_T left, Chrpos_T length) {
+Univcoord_T
+Genome_ntcounts (Univcoord_T *na, Univcoord_T *nc, Univcoord_T *ng, Univcoord_T *nt,
+		 T this, Univcoord_T left, Univcoord_T length) {
   char *gbuffer, *p;
-  unsigned int i;
+  Univcoord_T i;
   
   *na = *nc = *ng = *nt = 0;
 

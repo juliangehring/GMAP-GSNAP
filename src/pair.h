@@ -1,4 +1,4 @@
-/* $Id: pair.h 133832 2014-04-21 21:34:20Z twu $ */
+/* $Id: pair.h 141662 2014-07-16 01:30:15Z twu $ */
 #ifndef PAIR_INCLUDED
 #define PAIR_INCLUDED
 
@@ -241,7 +241,8 @@ extern int
 Pair_array_nmatches_posttrim (struct T *pairs, int npairs, int pos5, int pos3);
 extern int
 Pair_nmismatches_region (int *nindelbreaks, struct T *pairs, int npairs,
-			 int trim_left, int trim_right, int querylength);
+			 int trim_left, int trim_right, int start_amb_nmatches, int end_amb_nmatches,
+			 int querylength);
 
 extern void
 Pair_fracidentity_simple (int *matches, int *unknowns, int *mismatches, List_T pairs);
@@ -305,7 +306,7 @@ Pair_end_bound (int *cdna_direction, List_T pairs, int breakpoint);
 
 
 extern List_T
-Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs);
+Pair_trim_ends (bool *trim5p, bool *trim3p, List_T pairs, int ambig_end_length_5, int ambig_end_length_3);
 
 #ifdef GSNAP
 extern float

@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 138745 2014-06-11 19:04:25Z twu $ */
+/* $Id: stage3hr.h 145604 2014-08-20 17:43:03Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -182,9 +182,9 @@ Stage3end_npairs (T this);
 extern Chrpos_T
 Stage3end_distance (T this);
 extern Chrpos_T
-Stage3end_shortexon_acceptor_distance (T this);
+Stage3end_shortexonA_distance (T this);
 extern Chrpos_T
-Stage3end_shortexon_donor_distance (T this);
+Stage3end_shortexonD_distance (T this);
 extern double
 Stage3end_chimera_prob (T this);
 extern double
@@ -323,25 +323,24 @@ Stage3end_new_splice (int *found_score, int donor_nmismatches, int acceptor_nmis
 		      Substring_T donor, Substring_T acceptor, Chrpos_T distance,
 		      bool shortdistancep, int splicing_penalty, int querylength, int amb_nmatches,
 #ifdef LARGE_GENOMES
-		      Uint8list_T ambcoords_left, Uint8list_T ambcoords_right,
+		      Uint8list_T ambcoords_donor, Uint8list_T ambcoords_acceptor,
 #else
-		      Uintlist_T ambcoords_left, Uintlist_T ambcoords_right,
+		      Uintlist_T ambcoords_donor, Uintlist_T ambcoords_acceptor,
 #endif
-		      Intlist_T amb_knowni_left, Intlist_T amb_knowni_right,
-		      Intlist_T amb_nmismatches_left, Intlist_T amb_nmismatches_right,
+		      Intlist_T amb_knowni_donor, Intlist_T amb_knowni_acceptor,
+		      Intlist_T amb_nmismatches_donor, Intlist_T amb_nmismatches_acceptor,
 		      bool copy_donor_p, bool copy_acceptor_p,
 		      bool first_read_p, int sensedir, bool sarrayp);
 extern T
 Stage3end_new_shortexon (int *found_score, Substring_T donor, Substring_T acceptor, Substring_T shortexon,
-			 Chrpos_T acceptor_distance, Chrpos_T donor_distance,
 			 int amb_nmatches_donor, int amb_nmatches_acceptor,
 #ifdef LARGE_GENOMES
-			 Uint8list_T ambcoords_left, Uint8list_T ambcoords_right,
+			 Uint8list_T ambcoords_donor, Uint8list_T ambcoords_acceptor,
 #else
-			 Uintlist_T ambcoords_left, Uintlist_T ambcoords_right,
+			 Uintlist_T ambcoords_donor, Uintlist_T ambcoords_acceptor,
 #endif
-			 Intlist_T amb_knowni_left, Intlist_T amb_knowni_right,
-			 Intlist_T amb_nmismatches_left, Intlist_T amb_nmismatches_right,
+			 Intlist_T amb_knowni_donor, Intlist_T amb_knowni_acceptor,
+			 Intlist_T amb_nmismatches_donor, Intlist_T amb_nmismatches_acceptor,
 			 bool copy_donor_p, bool copy_acceptor_p, bool copy_shortexon_p,
 			 int splicing_penalty, int querylength, int sensedir, bool sarrayp);
 
@@ -349,8 +348,8 @@ extern T
 Stage3end_new_gmap (int nmismatches_whole, int nmatches_posttrim, int max_match_length,
 		    int ambig_end_length_5, int ambig_end_length_3,
 		    Splicetype_T ambig_splicetype_5, Splicetype_T ambig_splicetype_3,
-		    double min_splice_prob, struct Pair_T *pairarray, int npairs,
-		    int nsegments, int nintrons, int nindelbreaks,
+		    double ambig_prob_5, double ambig_prob_3, double min_splice_prob,
+		    struct Pair_T *pairarray, int npairs, int nsegments, int nintrons, int nindelbreaks,
 		    Univcoord_T left, int genomiclength, bool plusp, int genestrand, bool first_read_p, int querylength,
 		    Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength,
 		    int cdna_direction, int sensedir);
@@ -375,7 +374,7 @@ Stage3pair_remove_excess_terminals (List_T hitpairlist);
 extern List_T
 Stage3end_optimal_score (List_T hitlist, int cutoff_level, int suboptimal_mismatches,
 			 Compress_T query_compress_fwd, Compress_T query_compress_rev,
-			 bool keep_gmap_p, bool finalp);
+			 int querylength, bool keep_gmap_p, bool finalp);
 extern bool
 Stage3pair_sense_consistent_p (List_T hitpairlist);
 extern List_T
@@ -384,8 +383,6 @@ extern List_T
 Stage3end_linearize_3 (List_T hitlist);
 extern List_T
 Stage3end_remove_circular_alias (List_T hitlist);
-extern int
-Stage3end_noptimal (List_T hitlist);
 extern List_T
 Stage3end_remove_duplicates (List_T hitlist);
 extern List_T
@@ -446,7 +443,7 @@ extern List_T
 Stage3pair_optimal_score (List_T hitpairlist, int cutoff_level, int suboptimal_mismatches,
 			  Compress_T query5_compress_fwd, Compress_T query5_compress_rev,
 			  Compress_T query3_compress_fwd, Compress_T query3_compress_rev,
-			  bool keep_gmap_p, bool finalp);
+			  int querylength5, int querylength3, bool keep_gmap_p, bool finalp);
 
 #if 0
 extern List_T

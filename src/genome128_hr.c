@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome128_hr.c 140368 2014-07-02 00:56:33Z twu $";
+static char rcsid[] = "$Id: genome128_hr.c 151045 2014-10-16 19:08:17Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -19,7 +19,6 @@ static char rcsid[] = "$Id: genome128_hr.c 140368 2014-07-02 00:56:33Z twu $";
 
 #include "assert.h"
 #include "except.h"
-#include "mem.h"
 #include "cmet.h"
 #include "atoi.h"
 #include "compress.h"
@@ -31,7 +30,13 @@ static char rcsid[] = "$Id: genome128_hr.c 140368 2014-07-02 00:56:33Z twu $";
 #ifdef HAVE_SSE4_1
 #include <smmintrin.h>
 #endif
-#if defined(HAVE_LZCNT) || defined(HAVE_BMI1) || defined(HAVE_POPCNT)
+#ifdef HAVE_POPCNT
+#include <immintrin.h>
+#elif defined(HAVE_MM_POPCNT)
+#include <nmmintrin.h>
+#endif
+
+#if defined(HAVE_LZCNT) || defined(HAVE_BMI1)
 #include <immintrin.h>
 #endif
 
@@ -67,6 +72,13 @@ static char rcsid[] = "$Id: genome128_hr.c 140368 2014-07-02 00:56:33Z twu $";
 #define debug3(x) x
 #else
 #define debug3(x)
+#endif
+
+/* count_leading_zeroes and count_trailing_zeroes */
+#ifdef DEBUG4
+#define debug4(x) x
+#else
+#define debug4(x)
 #endif
 
 /* 32-bit shortcuts */
@@ -16474,8 +16486,7 @@ static const int score_high[] =
 /* Genome_hr code starts here */
 
 #ifdef DEBUG
-#ifdef HAVE_SSE2
-/* For debugging */
+#ifdef HAVE_SSE4_1
 static void
 print_vector_hex (__m128i x) {
   printf("%08X %08X %08X %08X\n",
@@ -16487,6 +16498,26 @@ static void
 print_vector_dec (__m128i x) {
   printf("%u %u %u %u\n",
 	 _mm_extract_epi32(x,0),_mm_extract_epi32(x,1),_mm_extract_epi32(x,2),_mm_extract_epi32(x,3));
+  return;
+}
+#else
+static void
+print_vector_hex (__m128i x) {
+  printf("%08X %08X %08X %08X\n",
+	 (_mm_extract_epi16(x,1) << 16) | (_mm_extract_epi16(x,0) & 0x0000FFFF),
+	 (_mm_extract_epi16(x,3) << 16) | (_mm_extract_epi16(x,2) & 0x0000FFFF),
+	 (_mm_extract_epi16(x,5) << 16) | (_mm_extract_epi16(x,4) & 0x0000FFFF),
+	 (_mm_extract_epi16(x,7) << 16) | (_mm_extract_epi16(x,6) & 0x0000FFFF));
+  return;
+}
+
+static void
+print_vector_dec (__m128i x) {
+  printf("%u %u %u %u\n",
+	 (_mm_extract_epi16(x,1) << 16) | (_mm_extract_epi16(x,0) & 0x0000FFFF),
+	 (_mm_extract_epi16(x,3) << 16) | (_mm_extract_epi16(x,2) & 0x0000FFFF),
+	 (_mm_extract_epi16(x,5) << 16) | (_mm_extract_epi16(x,4) & 0x0000FFFF),
+	 (_mm_extract_epi16(x,7) << 16) | (_mm_extract_epi16(x,6) & 0x0000FFFF));
   return;
 }
 #endif
@@ -18280,34 +18311,75 @@ clear_end (__m128i _diff, int enddiscard) {
   return _mm_andnot_si128(_mask, _diff);
 }
   
+
 #ifdef HAVE_SSE4_1
+
 #ifdef HAVE_POPCNT
 #define popcount_ones(_diff) (_popcnt64(_mm_extract_epi64(_diff,0)) + _popcnt64(_mm_extract_epi64(_diff,1)))
+#elif defined(HAVE_MM_POPCNT)
+#define popcount_ones(_diff) (_mm_popcnt_u64(_mm_extract_epi64(_diff,0)) + _mm_popcnt_u64(_mm_extract_epi64(_diff,1)))
 #else
 #define popcount_ones(_diff) (__builtin_popcountll(_mm_extract_epi64(_diff,0)) + __builtin_popcountll(_mm_extract_epi64(_diff,1)))
 #endif
 
 #elif 0
-/* Cannot use _mm_extract_ps which is also SSE4.1 */
+/* Naive method for SSE2.  Requires four popcount operations. */
+
+static int
+popcount_ones (__m128i _diff) {
+  UINT4 diff[4];
+
+  _mm_store_si128((__m128i *) diff,_diff);
+
 #ifdef HAVE_POPCNT
-#define popcount_ones(_diff) (_popcnt32(_mm_extract_ps(_diff,0)) + _popcnt32(_mm_extract_ps(_diff,1)) + _popcnt32(_mm_extract_ps(_diff,2)) + _popcnt32(_mm_extract_ps(_diff,3)))
+  return _popcnt32(diff[0]) + _popcnt32(diff[1]) + _popcnt32(diff[2]) + _popcnt32(diff[3]);
+#elif defined(HAVE_MM_POPCNT)
+  return _mm_popcnt_u32(diff[0]) + _mm_popcnt_u32(diff[1]) + _mm_popcnt_u32(diff[2]) + _mm_popcnt_u32(diff[3]);
 #else
-#define popcount_ones(_diff) (__builtin_popcount(_mm_extract_ps(_diff,0)) + __builtin_popcount(_mm_extract_ps(_diff,1)) + __builtin_popcount(_mm_extract_ps(_diff,2)) + __builtin_popcount(_mm_extract_ps(_diff,3)))
+  return __builtin_popcount(diff[0]) + __builtin_popcount(diff[1]) + __builtin_popcount(diff[2]) + __builtin_popcount(diff[3]);
 #endif
+}
 
 #else
-/* Not tested yet */
+/************************************************************************
+ *  Method for SSE2: Using Harley's method to reduce number of
+ *  popcount operations when we need to compute four 32-bit popcounts
+ *  in a 128-bit register.
+ *
+ *  The naive method is to do _popcnt32(diff[0]) + _popcnt32(diff[1]) + _popcnt32(diff[2]) + _popcnt32(diff[3]);
+ *
+ *  Harley's method uses a carry-save adder (CSA) to reduce the number
+ *  of popcount operations for 3 elements from 3 to 2.
+ ************************************************************************/
+
+#define CSA(h,l, a,b,c, u,v) u = a ^ b; v = c; h = (a & b) | (u & v); l = u ^ v;
+
+static int
+popcount_ones (__m128i _diff) {
+  UINT4 ones, twos, u, v;
+  UINT4 diff[4];
+
+  _mm_store_si128((__m128i *) diff,_diff);
+
+  CSA(twos, ones, diff[0], diff[1], diff[2], u, v);
+
 #ifdef HAVE_POPCNT
-#define popcount_ones(_diff) (_popcnt32(((UINT4 *) &_diff)[0]) + _popcnt32(((UINT4 *) &_diff)[1]) + _popcnt32(((UINT4 *) &_diff)[2]) + _popcnt32(((UINT4 *) &_diff)[3]))
+  return 2*_popcnt32(twos) + _popcnt32(ones) + _popcnt32(diff[3]);
+#elif defined(HAVE_MM_POPCNT)
+  return 2*_mm_popcnt_u32(twos) + _mm_popcnt_u32(ones) + _mm_popcnt_u32(diff[3]);
 #else
-#define popcount_ones(_diff) (__builtin_popcount(((UINT4 *) &_diff)[0]) + __builtin_popcount(((UINT4 *) &_diff)[1]) + __builtin_popcount(((UINT4 *) &_diff)[2]) + __builtin_popcount(((UINT4 *) &_diff)[3]))
+  return 2*__builtin_popcount(twos) + __builtin_popcount(ones) + __builtin_popcount(diff[3]);
 #endif
+}
 
 #endif
 
 
 static int
 count_leading_zeroes (__m128i _diff) {
+  debug4(printf("Entered count_leading_zeroes with "));
+  debug4(print_vector_hex(_diff));
+
 #ifdef HAVE_SSE4_1
   UINT8 x;
 
@@ -18330,24 +18402,34 @@ count_leading_zeroes (__m128i _diff) {
   UINT4 x;
 
 #ifdef HAVE_LZCNT
-  if ((x = ((UINT4 *) &_diff)[3]) != 0) {
+  if ((x = (_mm_extract_epi16(_diff,7) << 16) | (_mm_extract_epi16(_diff,6) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 3 is non-empty, so returning %d\n",_lzcnt_u32(x)));
     return _lzcnt_u32(x);
-  } else if ((x = ((UINT4 *) &_diff)[2]) != 0) {
+  } else if ((x = (_mm_extract_epi16(_diff,5) << 16) | (_mm_extract_epi16(_diff,4) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 2 is non-empty, so returning 32 + %d\n",_lzcnt_u32(x)));
     return 32 + _lzcnt_u32(x);
-  } else if ((x = ((UINT4 *) &_diff)[1]) != 0) {
+  } else if ((x = (_mm_extract_epi16(_diff,3) << 16) | (_mm_extract_epi16(_diff,2) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 1 is non-empty, so returning 64 + %d\n",_lzcnt_u32(x)));
     return 64 + _lzcnt_u32(x);
   } else {
-    return 96 + _lzcnt_u32(((UINT4 *) &_diff)[0]);
+    x = (_mm_extract_epi16(_diff,1) << 16) | (_mm_extract_epi16(_diff,0) & 0x0000FFFF);
+    debug4(printf("word 0 is non-empty, so returning 96 + %d\n",_lzcnt_u32(x)));
+    return 96 + _lzcnt_u32(x);
   }
 #else
-  if ((x = ((UINT4 *) &_diff)[3]) != 0) {
+  if ((x = (_mm_extract_epi16(_diff,7) << 16) | (_mm_extract_epi16(_diff,6) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 3 is non-empty, so returning %d vs %d\n",__builtin_clz(x),__builtin_clz(((UINT4 *) &_diff)[3])));
     return __builtin_clz(x);
-  } else if ((x = ((UINT4 *) &_diff)[2]) != 0) {
+  } else if ((x = (_mm_extract_epi16(_diff,5) << 16) | (_mm_extract_epi16(_diff,4) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 2 is non-empty, so returning 32 + %d vs %d\n",__builtin_clz(x),__builtin_clz(((UINT4 *) &_diff)[2])));
     return 32 + __builtin_clz(x);
-  } else if ((x = ((UINT4 *) &_diff)[1]) != 0) {
+  } else if ((x = (_mm_extract_epi16(_diff,3) << 16) | (_mm_extract_epi16(_diff,2) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 1 is non-empty, so returning 64 + %d vs %d\n",__builtin_clz(x),__builtin_clz(((UINT4 *) &_diff)[1])));
     return 64 + __builtin_clz(x);
   } else {
-    return 96 + __builtin_clz(((UINT4 *) &_diff)[0]);
+    x = (_mm_extract_epi16(_diff,1) << 16) | (_mm_extract_epi16(_diff,0) & 0x0000FFFF);
+    debug4(printf("word 0 is non-empty, so returning 96 + %d vs %d\n",__builtin_clz(x),__builtin_clz(((UINT4 *) &_diff)[0])));
+    return 96 + __builtin_clz(x);
   }
 #endif
 
@@ -18356,6 +18438,9 @@ count_leading_zeroes (__m128i _diff) {
 
 static int
 count_trailing_zeroes (__m128i _diff) {
+  debug4(printf("Entered count_trailing_zeroes with "));
+  debug4(print_vector_hex(_diff));
+
 #ifdef HAVE_SSE4_1
   UINT8 x;
 
@@ -18378,24 +18463,34 @@ count_trailing_zeroes (__m128i _diff) {
   UINT4 x;
 
 #ifdef HAVE_BMI1
-  if ((x = ((UINT4 *) &_diff)[0]) != 0) {
+  if ((x = (_mm_extract_epi16(_diff,1) << 16) | (_mm_extract_epi16(_diff,0) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 0 is non-empty, so returning %d\n",_tzcnt_u32(x)));
     return _tzcnt_u32(x);
-  } else if ((x = ((UINT4 *) &_diff)[1]) != 0) {
+  } else if ((x = (_mm_extract_epi16(_diff,3) << 16) | (_mm_extract_epi16(_diff,2) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 1 is non-empty, so returning 32 + %d\n",_tzcnt_u32(x)));
     return 32 + _tzcnt_u32(x);
-  } else if ((x = ((UINT4 *) &_diff)[2]) != 0) {
+  } else if ((x = (_mm_extract_epi16(_diff,5) << 16) | (_mm_extract_epi16(_diff,4) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 2 is non-empty, so returning 64 + %d\n",_tzcnt_u32(x)));
     return 64 + _tzcnt_u32(x);
   } else {
-    return 96 + _tzcnt_u32(((UINT4 *) &_diff)[3]);
+    x = (_mm_extract_epi16(_diff,7) << 16) | (_mm_extract_epi16(_diff,6) & 0x0000FFFF);
+    debug4(printf("word 3 is non-empty, so returning 96 + %d\n",_tzcnt_u32(x)));
+    return 96 + _tzcnt_u32(x);
   }
 #else
-  if ((x = ((UINT4 *) &_diff)[0]) != 0) {
+  if ((x = (_mm_extract_epi16(_diff,1) << 16) | (_mm_extract_epi16(_diff,0) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 0 is non-empty, so returning %d vs %d\n",__builtin_ctz(x),__builtin_ctz(((UINT4 *) &_diff)[0])));
     return __builtin_ctz(x);
-  } else if ((x = ((UINT4 *) &_diff)[1]) != 0) {
+  } else if ((x = (_mm_extract_epi16(_diff,3) << 16) | (_mm_extract_epi16(_diff,2) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 1 is non-empty, so returning 32 + %d vs %d\n",__builtin_ctz(x),__builtin_ctz(((UINT4 *) &_diff)[1])));
     return 32 + __builtin_ctz(x);
-  } else if ((x = ((UINT4 *) &_diff)[2]) != 0) {
+  } else if ((x = (_mm_extract_epi16(_diff,5) << 16) | (_mm_extract_epi16(_diff,4) & 0x0000FFFF)) != 0) {
+    debug4(printf("word 2 is non-empty, so returning 64 + %d vs %d\n",__builtin_ctz(x),__builtin_ctz(((UINT4 *) &_diff)[2])));
     return 64 + __builtin_ctz(x);
   } else {
-    return 96 + __builtin_ctz(((UINT4 *) &_diff)[3]);
+    x = (_mm_extract_epi16(_diff,7) << 16) | (_mm_extract_epi16(_diff,6) & 0x0000FFFF);
+    debug4(printf("word 3 is non-empty, so returning 96 + %d vs %d\n",__builtin_ctz(x),__builtin_ctz(((UINT4 *) &_diff)[3])));
+    return 96 + __builtin_ctz(x);
   }
 #endif
 
@@ -18540,6 +18635,8 @@ print_diff_leading_zeroes (__m128i _diff, int offset) {
 
 #ifdef HAVE_POPCNT
 #define popcount_ones(diff) (_popcnt32(diff))
+#elif defined(HAVE_MM_POPCNT)
+#define popcount_ones(diff) (_mm_popcnt_u32(diff))
 #elif defined(HAVE_BUILTIN_POPCOUNT)
 #define popcount_ones(diff) (__builtin_popcount(diff))
 #else
@@ -18552,7 +18649,7 @@ print_diff_leading_zeroes (__m128i _diff, int offset) {
 #elif defined(HAVE_BUILTIN_CLZ)
 #define count_leading_zeroes(diff) __builtin_clz(diff)
 #else
-#define count_leading_zeroes(diff) ((top = diff >> 16) ? clz_table[top] : 16 + clz_table[diff])
+#define count_leading_zeroes(diff) ((diff >> 16) ? clz_table[diff >> 16] : 16 + clz_table[diff])
 #endif
 
 #ifdef HAVE_BMI1
@@ -18604,6 +18701,8 @@ print_diff_leading_zeroes (UINT4 diff, int offset) {
 
 #ifdef HAVE_POPCNT
 #define popcount_ones_32(diff) (_popcnt32(diff))
+#elif defined(HAVE_MM_POPCNT)
+#define popcount_ones_32(diff) (_mm_popcnt_u32(diff))
 #elif defined(HAVE_BUILTIN_POPCOUNT)
 #define popcount_ones_32(diff) (__builtin_popcount(diff))
 #else
@@ -18615,7 +18714,7 @@ print_diff_leading_zeroes (UINT4 diff, int offset) {
 #elif defined(HAVE_BUILTIN_CLZ)
 #define count_leading_zeroes_32(diff) __builtin_clz(diff)
 #else
-#define count_leading_zeroes_32(diff) ((top = diff >> 16) ? clz_table[top] : 16 + clz_table[diff])
+#define count_leading_zeroes_32(diff) ((diff >> 16) ? clz_table[diff >> 16] : 16 + clz_table[diff])
 #endif
 
 #ifdef HAVE_BMI1
@@ -20180,6 +20279,9 @@ Genome_count_mismatches_fragment_left (Compress_T query_compress, int pos5, int 
 #ifdef HAVE_POPCNT
   debug1(printf("nmismatches %08X => %d\n",diff,_popcnt32(diff)));
   return _popcnt32(diff);
+#elif defined(HAVE_MM_POPCNT)
+  debug1(printf("nmismatches %08X => %d\n",diff,_popcnt32(diff)));
+  return _mm_popcnt_u32(diff);
 #elif defined(HAVE_BUILTIN_POPCOUNT)
   debug1(printf("nmismatches %08X => %d\n",diff,__builtin_popcount(diff)));
   return __builtin_popcount(diff);
@@ -20237,6 +20339,9 @@ Genome_count_mismatches_fragment_right (Compress_T query_compress, int pos5, int
 #ifdef HAVE_POPCNT
   debug1(printf("nmismatches %08X => %d\n",diff,_popcnt32(diff)));
   return _popcnt32(diff);
+#elif defined(HAVE_MM_POPCNT)
+  debug1(printf("nmismatches %08X => %d\n",diff,_popcnt32(diff)));
+  return _mm_popcnt_u32(diff);
 #elif defined(HAVE_BUILTIN_POPCOUNT)
   debug1(printf("nmismatches %08X => %d\n",diff,__builtin_popcount(diff)));
   return __builtin_popcount(diff);

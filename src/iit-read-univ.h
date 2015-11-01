@@ -1,6 +1,9 @@
-/* $Id: iit-read-univ.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: iit-read-univ.h 149319 2014-09-30 02:15:42Z twu $ */
 #ifndef IIT_READ_UNIV_INCLUDED
 #define IIT_READ_UNIV_INCLUDED
+
+typedef struct Univ_IIT_T *Univ_IIT_T;
+
 #include <stdio.h>
 #include "bool.h"
 #include "uintlist.h"
@@ -10,7 +13,6 @@
 #include "iit-read.h"		/* For IIT_divint */
 
 #define T Univ_IIT_T
-typedef struct T *T;
 
 extern bool
 Univ_IIT_coord_values_8p (T this);
@@ -65,6 +67,8 @@ Univ_IIT_dump_fai (T this);
 extern void
 Univ_IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_group_name,
 		   char *sam_read_group_library, char *sam_read_group_platform);
+extern Chrpos_T *
+Univ_IIT_chrlengths (T this);
 extern void
 Univ_IIT_dump_labels (FILE *fp, T this);
 extern char

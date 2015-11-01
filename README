@@ -806,6 +806,10 @@ if --barcode-length is not 0.
 XP: Prints the primer inferred from a paired-end read.  Applies only
 if the --adapter-strip flag is specified.
 
+XH: Prints the part of the query sequence that was hard-clipped.
+Sequence is printed in plus-genomic order and replaces the "H" part of
+the CIGAR string.
+
 XS: Prints the strand orientation (+ or -) for a splice.  Appears only
 if splicing is allowed (-N or -s flag provided), and only for reads
 containing a splice.  The value "+" means the expected GT-AG, GC-AG,
@@ -848,6 +852,11 @@ genome.  Therefore, these are known variant positions.  The sum of XW
 and XV provides the number of differences relative to the reference
 genome, and with the exception of indels, should equal the value of
 NM.
+
+XG: Indicates which method within GSNAP generated the alignment.  A:
+suffix array method, T: terminal alignment, M: GMAP method, O: merging
+of overlaps.  Absence of XG flag indicates the standard GSNAP hash
+table method.
 
 
 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmapindex.c 140511 2014-07-03 01:50:36Z twu $";
+static char rcsid[] = "$Id: gmapindex.c 150409 2014-10-09 21:55:59Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -47,6 +47,23 @@ typedef Tableuint_T Table_chrpos_T;
 #include "bytecoding.h"
 #include "bitpack64-write.h"
 
+#ifdef HAVE_SSE2
+#include <emmintrin.h>
+#endif
+#ifdef HAVE_SSE4_1
+#include <smmintrin.h>
+#endif
+#ifdef HAVE_POPCNT
+#include <immintrin.h>
+#endif
+#if defined(HAVE_MM_POPCNT)
+#include <nmmintrin.h>
+#endif
+#if defined(HAVE_LZCNT) || defined(HAVE_BMI1)
+#include <immintrin.h>
+#endif
+
+
 #ifdef WORDS_BIGENDIAN
 #include "bigendian.h"
 #else
@@ -85,6 +102,87 @@ static char *mitochondrial_string = NULL;
 static Sorttype_T divsort = CHROM_SORT;
 static char *sortfilename = NULL;
 static bool huge_offsets_p = false;
+
+
+static void
+check_compiler_assumptions () {
+  unsigned int x = rand(), y = rand();
+#ifdef HAVE_SSE2
+  int z;
+  __m128i a;
+#ifdef HAVE_SSE4_1
+  char negx, negy;
+#endif
+#endif
+
+
+  fprintf(stderr,"Checking compiler assumptions for popcnt: ");
+  fprintf(stderr,"%08X ",x);
+#ifdef HAVE_LZCNT
+  fprintf(stderr,"_lzcnt_u32=%d ",_lzcnt_u32(x));
+#endif
+#ifdef HAVE_BUILTIN_CLZ
+  fprintf(stderr,"__builtin_clz=%d ",__builtin_clz(x));
+#endif
+#ifdef HAVE_BMI1
+  fprintf(stderr,"_tzcnt_u32=%d ",_tzcnt_u32(x));
+#endif
+#ifdef HAVE_BUILTIN_CTZ
+  fprintf(stderr,"__builtin_ctz=%d ",__builtin_ctz(x));
+#endif
+
+#ifdef HAVE_POPCNT
+  fprintf(stderr,"_popcnt32=%d ",_popcnt32(x));
+#endif
+#if defined(HAVE_MM_POPCNT)
+  fprintf(stderr,"_mm_popcnt_u32=%d ",_mm_popcnt_u32(x));
+#endif
+#if defined(HAVE_BUILTIN_POPCOUNT)
+  fprintf(stderr,"__builtin_popcount=%d ",__builtin_popcount(x));
+#endif
+
+  fprintf(stderr,"\n");
+
+#ifdef HAVE_SSE2
+  fprintf(stderr,"Checking compiler assumptions for SSE2: ");
+  fprintf(stderr,"%08X %08X",x,y);
+  a = _mm_xor_si128(_mm_set1_epi32(x),_mm_set1_epi32(y));
+  z = _mm_cvtsi128_si32(a);
+  fprintf(stderr," xor=%08X\n",z);
+
+#ifdef HAVE_SSE4_1
+  if ((negx = (char) x) > 0) {
+    negx = -negx;
+  }
+  if ((negy = (char) y) > 0) {
+    negy = -negy;
+  }
+
+  fprintf(stderr,"Checking compiler assumptions for SSE4.1: ");
+  fprintf(stderr,"%d %d",negx,negy);
+  a = _mm_max_epi8(_mm_set1_epi8(negx),_mm_set1_epi8(negy));
+  z = _mm_extract_epi8(a,0);
+  fprintf(stderr," max=%d => ",z);
+  if (negx > negy) {
+    if (z == (int) negx) {
+      fprintf(stderr,"compiler sign extends\n"); /* technically incorrect, but SIMD procedures behave properly */
+    } else {
+      fprintf(stderr,"compiler zero extends\n");
+    }
+  } else {
+    if (z == (int) negy) {
+      fprintf(stderr,"compiler sign extends\n"); /* technically incorrect, but SIMD procedures behave properly */
+    } else {
+      fprintf(stderr,"compiler zero extends\n");
+    }
+  }
+
+#endif
+
+#endif
+
+  return;
+}
 
 
 #if 0
@@ -923,6 +1021,7 @@ add_compression_type (char *string) {
   }
 }
 
+
 static char CHARTABLE[4] = {'A','C','G','T'};
 static char *mode_prefix = ".";
 /* static char *mode_prefix = ".metct."; */
@@ -988,7 +1087,7 @@ main (int argc, char *argv[]) {
   extern char *optarg;
   char *string;
 
-  while ((c = getopt(argc,argv,"F:D:d:z:k:q:ArlGUNHOPSLXYWw:e:Ss:n:m")) != -1) {
+  while ((c = getopt(argc,argv,"F:D:d:z:k:q:ArlGUNHOPSLXYWw:e:Ss:n:m9")) != -1) {
     switch (c) {
     case 'F': sourcedir = optarg; break;
     case 'D': destdir = optarg; break;
@@ -1048,6 +1147,11 @@ main (int argc, char *argv[]) {
     case 'n': sortfilename = optarg; break;
 
     case 'm': mask_lowercase_p = true; break;
+
+    case '9': check_compiler_assumptions(); return 0; break;
+
+    default: fprintf(stderr,"Unknown flag %c\n",c); exit(9);
+
     }
   }
   argc -= (optind - 1);

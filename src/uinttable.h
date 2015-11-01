@@ -1,4 +1,4 @@
-/* $Id: uinttable.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: uinttable.h 145990 2014-08-25 21:47:32Z twu $ */
 #ifndef UINTTABLE_INCLUDED
 #define UINTTABLE_INCLUDED
 #include "bool.h"
@@ -24,6 +24,8 @@ Uinttable_map (T table,
 	       void *cl);
 extern unsigned int *
 Uinttable_keys (T table, bool sortp);
+extern void
+Uinttable_fill_keys (unsigned int *keyarray, T table, bool sortp);
 extern unsigned int *
 Uinttable_keys_by_timeindex (T table);
 extern void **

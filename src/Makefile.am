@@ -7,7 +7,8 @@ CLEANFILES = fa_coords gmap_process
 # time
 
 bin_PROGRAMS = gmap gmapl get-genome gmapindex iit_store iit_get iit_dump \
-               gsnap gsnapl uniqscan uniqscanl snpindex cmetindex atoiindex
+               gsnap gsnapl uniqscan uniqscanl snpindex cmetindex atoiindex \
+               sam_sort
 
 
 GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
@@ -50,7 +51,7 @@ GMAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 
 gmap_CC = $(PTHREAD_CC)
-gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
+gmap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\"
 gmap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 gmap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 
@@ -97,7 +98,7 @@ GMAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 
 gmapl_CC = $(PTHREAD_CC)
-gmapl_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DLARGE_GENOMES=1
+gmapl_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DLARGE_GENOMES=1
 gmapl_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 gmapl_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 
@@ -147,7 +148,7 @@ GSNAP_FILES = fopen.h bool.h types.h separator.h comp.h \
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 
 gsnap_CC = $(PTHREAD_CC)
-gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
+gsnap_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
 gsnap_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(GOBY_LDFLAGS)
 gsnap_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS) $(GOBY_LIBS)
 
@@ -195,7 +196,7 @@ GSNAPL_FILES = fopen.h bool.h types.h separator.h comp.h \
 # Note: dist_ commands get read by bootstrap, and don't follow the flags
 
 gsnapl_CC = $(PTHREAD_CC)
-gsnapl_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1 -DLARGE_GENOMES=1
+gsnapl_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) $(GOBY_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1 -DLARGE_GENOMES=1
 gsnapl_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG) $(GOBY_LDFLAGS)
 gsnapl_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS) $(GOBY_LIBS)
 
@@ -237,7 +238,7 @@ UNIQSCAN_FILES = fopen.h bool.h types.h separator.h comp.h \
  getopt.c getopt1.c getopt.h uniqscan.c
 
 uniqscan_CC = $(PTHREAD_CC)
-uniqscan_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
+uniqscan_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1
 uniqscan_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 uniqscan_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 
@@ -278,7 +279,7 @@ UNIQSCANL_FILES = fopen.h bool.h types.h separator.h comp.h \
  getopt.c getopt1.c getopt.h uniqscan.c
 
 uniqscanl_CC = $(PTHREAD_CC)
-uniqscanl_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1 -DLARGE_GENOMES=1
+uniqscanl_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DTARGET=\"$(target)\" -DGMAPDB=\"$(GMAPDB)\" -DMAX_READLENGTH=$(MAX_READLENGTH) -DGSNAP=1 -DLARGE_GENOMES=1
 uniqscanl_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 uniqscanl_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 
@@ -305,7 +306,7 @@ GMAPINDEX_FILES = fopen.h bool.h types.h \
  gmapindex.c
 
 gmapindex_CC = $(PTHREAD_CC)
-gmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_CFLAGS) -DUTILITYP=1
+gmapindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DUTILITYP=1
 gmapindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 gmapindex_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 dist_gmapindex_SOURCES = $(GMAPINDEX_FILES)
@@ -328,7 +329,7 @@ SNPINDEX_FILES = fopen.h bool.h types.h \
  getopt.c getopt1.c getopt.h snpindex.c
 
 snpindex_CC = $(PTHREAD_CC)
-snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_FLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
+snpindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
 snpindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 snpindex_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 dist_snpindex_SOURCES = $(SNPINDEX_FILES)
@@ -353,7 +354,7 @@ CMETINDEX_FILES = fopen.h bool.h types.h \
  getopt.c getopt1.c getopt.h cmetindex.c
 
 cmetindex_CC = $(PTHREAD_CC)
-cmetindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_FLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
+cmetindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
 cmetindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 cmetindex_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 dist_cmetindex_SOURCES = $(CMETINDEX_FILES)
@@ -378,7 +379,7 @@ ATOIINDEX_FILES = fopen.h bool.h types.h \
  getopt.c getopt1.c getopt.h atoiindex.c
 
 atoiindex_CC = $(PTHREAD_CC)
-atoiindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(SIMD_FLAGS) $(POPCNT_FLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
+atoiindex_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) $(POPCNT_CFLAGS) $(SIMD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
 atoiindex_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
 atoiindex_LDADD = $(PTHREAD_LIBS) $(ZLIB_LIBS) $(BZLIB_LIBS)
 dist_atoiindex_SOURCES = $(ATOIINDEX_FILES)
@@ -456,3 +457,21 @@ iit_dump_LDADD = $(PTHREAD_LIBS)
 dist_iit_dump_SOURCES = $(IIT_DUMP_FILES)
 
 
+SAM_SORT_FILES = bool.h types.h \
+ except.c except.h assert.c assert.h mem.c mem.h \
+ littleendian.c littleendian.h bigendian.c bigendian.h \
+ genomicpos.h chrnum.h \
+ intlistdef.h intlist.c intlist.h listdef.h list.c list.h \
+ stopwatch.c stopwatch.h access.c access.h \
+ univinterval.c univinterval.h interval.c interval.h \
+ uintlist.c uintlist.h \
+ iit-read-univ.c iit-read-univ.h iitdef.h iit-read.c iit-read.h \
+ samflags.h samheader.c samheader.h samread.c samread.h \
+ datadir.c datadir.h \
+ getopt.c getopt1.c getopt.h sam_sort.c
+
+sam_sort_CC = $(PTHREAD_CC)
+sam_sort_CFLAGS = $(AM_CFLAGS) $(PTHREAD_CFLAGS) -DGMAPDB=\"$(GMAPDB)\" -DUTILITYP=1
+sam_sort_LDFLAGS = $(AM_LDFLAGS) $(STATIC_LDFLAG)
+sam_sort_LDADD = $(PTHREAD_LIBS)
+dist_sam_sort_SOURCES = $(SAM_SORT_FILES)

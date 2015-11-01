@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gregion.c 112656 2013-10-25 16:33:21Z twu $";
+static char rcsid[] = "$Id: gregion.c 151507 2014-10-22 19:37:48Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,9 @@ static char rcsid[] = "$Id: gregion.c 112656 2013-10-25 16:33:21Z twu $";
 
 
 #define MAX_GENOMICLENGTH 2000000
+#define MAX_NCHRS_FOR_ALLOCA 100
+#define MAX_GREGIONS_FOR_ALLOCA 100
+
 
 #define EXTRA_SHORTEND  30000
 #define EXTRA_LONGEND   100000
@@ -516,17 +519,16 @@ Gregion_filter_unique (List_T gregionlist) {
 	}
 	);
 
-  eliminate = (bool *) CALLOC(n,sizeof(bool));
-
-  /* Not necessary if false is zero */
-  /*
-  for (i = 0; i < n; i++) {
-    eliminate[i] = false;
+  if (n < MAX_GREGIONS_FOR_ALLOCA) {
+    eliminate = (bool *) CALLOCA(n,sizeof(bool));
+    array = (T *) MALLOCA(n * sizeof(T));
+    List_fill_array_and_free((void **) array,&gregionlist);
+  } else {
+    eliminate = (bool *) CALLOC(n,sizeof(bool));
+    array = (T *) List_to_array(gregionlist,NULL);
+    List_free(&gregionlist);
   }
-  */
 
-  array = (T *) List_to_array(gregionlist,NULL);
-  List_free(&gregionlist);
   qsort(array,n,sizeof(T),weight_cmp);
 
   for (i = 0; i < n; i++) {
@@ -566,8 +568,13 @@ Gregion_filter_unique (List_T gregionlist) {
     }
   }
 
-  FREE(eliminate);
-  FREE(array);
+  if (n < MAX_GREGIONS_FOR_ALLOCA) {
+    FREEA(eliminate);
+    FREEA(array);
+  } else {
+    FREE(eliminate);
+    FREE(array);
+  }
 
   debug(
 	for (p = unique, i = 0; p != NULL; p = p->rest, i++) {
@@ -838,13 +845,27 @@ Gregion_sort_low_descending (List_T gregions) {
 
   if ((n = List_length(gregions)) == 0) {
     return (List_T) NULL;
-  } else {
-    array = (Gregion_T *) List_to_array(gregions,NULL);
+
+  } else if (n < MAX_GREGIONS_FOR_ALLOCA) {
+    array = (Gregion_T *) MALLOCA(n * sizeof(Gregion_T));
+    List_fill_array((void **) array,gregions);
+
     qsort(array,n,sizeof(Gregion_T),Gregion_low_descending_cmp);
-    
     for (i = n-1; i >= 0; i--) {
       sorted = List_push(sorted,array[i]);
     }
+
+    FREEA(array);
+    return sorted;
+
+  } else {
+    array = (Gregion_T *) List_to_array(gregions,NULL);
+
+    qsort(array,n,sizeof(Gregion_T),Gregion_low_descending_cmp);
+    for (i = n-1; i >= 0; i--) {
+      sorted = List_push(sorted,array[i]);
+    }
+
     FREE(array);
     return sorted;
   }
@@ -860,13 +881,27 @@ Gregion_sort_high_ascending (List_T gregions) {
 
   if ((n = List_length(gregions)) == 0) {
     return (List_T) NULL;
-  } else {
-    array = (Gregion_T *) List_to_array(gregions,NULL);
+
+  } else if (n < MAX_GREGIONS_FOR_ALLOCA) {
+    array = (Gregion_T *) MALLOCA(n * sizeof(Gregion_T));
+    List_fill_array((void **) array,gregions);
+
     qsort(array,n,sizeof(Gregion_T),Gregion_high_ascending_cmp);
-    
     for (i = n-1; i >= 0; i--) {
       sorted = List_push(sorted,array[i]);
     }
+
+    FREEA(array);
+    return sorted;
+
+  } else {
+    array = (Gregion_T *) List_to_array(gregions,NULL);
+
+    qsort(array,n,sizeof(Gregion_T),Gregion_high_ascending_cmp);
+    for (i = n-1; i >= 0; i--) {
+      sorted = List_push(sorted,array[i]);
+    }
+
     FREE(array);
     return sorted;
   }
@@ -884,6 +919,7 @@ struct Base_T {
   bool usedp;
 };
 
+#if 0
 static void
 Base_free (Base_T *old) {
   if ((*old)->gregions != NULL) {
@@ -892,6 +928,7 @@ Base_free (Base_T *old) {
   FREE(*old);
   return;
 }
+#endif
 
 
 static Base_T
@@ -958,7 +995,12 @@ compute_ceilings (Uinttable_T low_basetable) {
   int n, i;
   
   n = Uinttable_length(low_basetable);
-  keys = Uinttable_keys(low_basetable,/*sortp*/true);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    keys = (Chrpos_T *) MALLOCA(n * sizeof(Chrpos_T));
+    Uinttable_fill_keys(keys,low_basetable,/*sortp*/true);
+  } else {
+    keys = Uinttable_keys(low_basetable,/*sortp*/true);
+  }
   debug2(printf("low_basetable has %d entries\n",n));
   
   prevpos = 0U;
@@ -1049,7 +1091,12 @@ compute_ceilings (Uinttable_T low_basetable) {
     }
   }
 
-  FREE(keys);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    FREEA(keys);
+  } else {
+    FREE(keys);
+  }
+
   return bestprevpos;
 }
 
@@ -1070,7 +1117,12 @@ compute_floors (Uinttable_T high_basetable) {
   int n, i;
 
   n = Uinttable_length(high_basetable);
-  keys = Uinttable_keys(high_basetable,/*sortp*/true);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    keys = (Chrpos_T *) MALLOCA(n * sizeof(Chrpos_T));
+    Uinttable_fill_keys(keys,high_basetable,/*sortp*/true);
+  } else {
+    keys = Uinttable_keys(high_basetable,/*sortp*/true);
+  }
   debug2(printf("high_basetable has %d entries\n",n));
 
   prevpos = (Chrpos_T) -1U;
@@ -1160,7 +1212,12 @@ compute_floors (Uinttable_T high_basetable) {
     }
   }
 
-  FREE(keys);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    FREEA(keys);
+  } else {
+    FREE(keys);
+  }
+
   return bestprevpos;
 }
 
@@ -1174,7 +1231,12 @@ traceback_ceilings (Uinttable_T low_basetable, Chrpos_T prevpos) {
   int n, i;
   
   n = Uinttable_length(low_basetable);
-  keys = Uinttable_keys(low_basetable,/*sortp*/true);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    keys = (Chrpos_T *) MALLOCA(n * sizeof(Chrpos_T));
+    Uinttable_fill_keys(keys,low_basetable,/*sortp*/true);
+  } else {
+    keys = Uinttable_keys(low_basetable,/*sortp*/true);
+  }
 
   ceiling = (Chrpos_T) -1U;
 
@@ -1205,7 +1267,11 @@ traceback_ceilings (Uinttable_T low_basetable, Chrpos_T prevpos) {
     i--;
   }
 
-  FREE(keys);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    FREEA(keys);
+  } else {
+    FREE(keys);
+  }
 
   return;
 }
@@ -1220,7 +1286,12 @@ traceback_floors (Uinttable_T high_basetable, Chrpos_T prevpos) {
   int n, i;
 
   n = Uinttable_length(high_basetable);
-  keys = Uinttable_keys(high_basetable,/*sortp*/true);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    keys = (Chrpos_T *) MALLOCA(n * sizeof(Chrpos_T));
+    Uinttable_fill_keys(keys,high_basetable,/*sortp*/true);
+  } else {
+    keys = Uinttable_keys(high_basetable,/*sortp*/true);
+  }
 
   floor = 0U;
 
@@ -1251,7 +1322,11 @@ traceback_floors (Uinttable_T high_basetable, Chrpos_T prevpos) {
     i++;
   }
 
-  FREE(keys);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    FREEA(keys);
+  } else {
+    FREE(keys);
+  }
 
   return;
 }
@@ -1267,7 +1342,12 @@ bound_gregions (Uinttable_T low_basetable, Uinttable_T high_basetable) {
   int n, i;
 
   n = Uinttable_length(low_basetable);
-  keys = Uinttable_keys(low_basetable,/*sortp*/true);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    keys = (Chrpos_T *) MALLOCA(n * sizeof(Chrpos_T));
+    Uinttable_fill_keys(keys,low_basetable,/*sortp*/true);
+  } else {
+    keys = Uinttable_keys(low_basetable,/*sortp*/true);
+  }
 
   for (i = 0; i < n; i++) {
     base_low = (Base_T) Uinttable_get(low_basetable,keys[i]);
@@ -1286,11 +1366,20 @@ bound_gregions (Uinttable_T low_basetable, Uinttable_T high_basetable) {
     }
   }
 
-  FREE(keys);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    FREEA(keys);
+  } else {
+    FREE(keys);
+  }
 
 
   n = Uinttable_length(high_basetable);
-  keys = Uinttable_keys(high_basetable,/*sortp*/true);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    keys = (Chrpos_T *) MALLOCA(n * sizeof(Chrpos_T));
+    Uinttable_fill_keys(keys,high_basetable,/*sortp*/true);
+  } else {
+    keys = Uinttable_keys(high_basetable,/*sortp*/true);
+  }
 
   for (i = n-1; i >= 0; i--) {
     base_high = (Base_T) Uinttable_get(high_basetable,keys[i]);
@@ -1309,7 +1398,11 @@ bound_gregions (Uinttable_T low_basetable, Uinttable_T high_basetable) {
     }
   }
 
-  FREE(keys);
+  if (n < MAX_NCHRS_FOR_ALLOCA) {
+    FREEA(keys);
+  } else {
+    FREE(keys);
+  }
 
   return;
 }
@@ -1317,17 +1410,19 @@ bound_gregions (Uinttable_T low_basetable, Uinttable_T high_basetable) {
 
 
 
-List_T
+/* Called only if USE_CLEAN is defined in stage1.c */
+void
 Gregion_filter_clean (List_T gregionlist, int nchrs) {
   Uinttable_T *low_basetables, *high_basetables, basetable;
   Base_T base;
   Chrpos_T prevpos;
   Chrnum_T chrnum;
 
-  List_T unique = NULL, p;
+  List_T p;
   T gregion;
   int n;
 #if 0
+  List_T unique = NULL;
   T x, y, *array;
   int i, j;
   bool *eliminate;
@@ -1337,9 +1432,8 @@ Gregion_filter_clean (List_T gregionlist, int nchrs) {
   int i;
 #endif
 
-  n = List_length(gregionlist);
-  if (n == 0) {
-    return NULL;
+  if ((n = List_length(gregionlist)) == 0) {
+    return;
   }
 
   debug(
@@ -1350,8 +1444,13 @@ Gregion_filter_clean (List_T gregionlist, int nchrs) {
 	}
 	);
 
-  low_basetables = (Uinttable_T *) CALLOC(nchrs+1,sizeof(Uinttable_T));
-  high_basetables = (Uinttable_T *) CALLOC(nchrs+1,sizeof(Uinttable_T));
+  if (nchrs < MAX_NCHRS_FOR_ALLOCA) {
+    low_basetables = (Uinttable_T *) CALLOCA(nchrs+1,sizeof(Uinttable_T));
+    high_basetables = (Uinttable_T *) CALLOCA(nchrs+1,sizeof(Uinttable_T));
+  } else {
+    low_basetables = (Uinttable_T *) CALLOC(nchrs+1,sizeof(Uinttable_T));
+    high_basetables = (Uinttable_T *) CALLOC(nchrs+1,sizeof(Uinttable_T));
+  }
 
   for (p = gregionlist; p != NULL; p = List_next(p)) {
     gregion = (T) List_head(p);
@@ -1392,13 +1491,15 @@ Gregion_filter_clean (List_T gregionlist, int nchrs) {
   
   /* Todo: Free each table */
 
-  FREE(high_basetables);
-  FREE(low_basetables);
+  if (nchrs < MAX_NCHRS_FOR_ALLOCA) {
+    FREEA(high_basetables);
+    FREEA(low_basetables);
+  } else {
+    FREE(high_basetables);
+    FREE(low_basetables);
+  }
 
 #if 0
-
-
-
   eliminate = (bool *) CALLOC(n,sizeof(bool));
 
   /* Not necessary if false is zero */
@@ -1452,9 +1553,11 @@ Gregion_filter_clean (List_T gregionlist, int nchrs) {
 	}
 	);
 
+  return unique;
+
 #endif
 
-  return unique;
+  return;
 }
 
 #endif

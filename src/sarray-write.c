@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sarray-write.c 140591 2014-07-03 16:08:23Z twu $";
+static char rcsid[] = "$Id: sarray-write.c 151046 2014-10-16 19:08:41Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,7 +24,6 @@ static char rcsid[] = "$Id: sarray-write.c 140591 2014-07-03 16:08:23Z twu $";
 #include "genome128_hr.h"
 #include "uintlist.h"
 #include "intlist.h"
-#include "popcount.h"
 
 
 #ifdef WORDS_BIGENDIAN

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: list.c 50911 2011-10-27 22:15:37Z twu $";
+static char rcsid[] = "$Id: list.c 148359 2014-09-19 22:09:34Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -24,6 +24,15 @@ List_push (T list, void *x) {
 T
 List_push_keep (T list, void *x) {
   T new = (T) MALLOC_KEEP(sizeof(*new));
+  
+  new->first = x;
+  new->rest = list;
+  return new;
+}
+
+T
+List_push_out (T list, void *x) {
+  T new = (T) MALLOC_OUT(sizeof(*new));
   
   new->first = x;
   new->rest = list;
@@ -75,9 +84,11 @@ List_free (T *list) {
   T prev;
 
   while ((prev = *list) != NULL) {
-    *list = (*list)->rest;
+    *list = prev->rest;
     FREE(prev);
   }
+
+  return;
 }
 
 void
@@ -87,6 +98,16 @@ List_free_keep (T *list) {
   while ((prev = *list) != NULL) {
     *list = (*list)->rest;
     FREE_KEEP(prev);
+  }
+}
+
+void
+List_free_out (T *list) {
+  T prev;
+
+  while ((prev = *list) != NULL) {
+    *list = (*list)->rest;
+    FREE_OUT(prev);
   }
 }
 
@@ -146,6 +167,50 @@ List_to_array (T list, void *end) {
   }
 #endif
 }
+
+void
+List_fill_array (void **array, T list) {
+  int i = 0;
+
+  while (list) {
+    array[i++] = list->first;
+    list = list->rest;
+  }
+  return;
+}
+
+void
+List_fill_array_and_free (void **array, T *list) {
+  T prev;
+  int i = 0;
+
+  while ((prev = *list) != NULL) {
+    array[i++] = prev->first;
+    *list = prev->rest;
+    FREE(prev);
+  }
+
+  return;
+}
+
+T
+List_fill_array_with_handle (struct T *new, void **array, int nelts) {
+  T list = NULL;
+  int i;
+
+  for (i = nelts; i > 0; i--) {
+    new[i].first = array[i-1];
+    new[i].rest = list;
+    list = &(new[i]);
+  }
+
+  /* Add initial list element as a handle */
+  new[0].first = (void *) NULL;
+  new[0].rest = list;
+
+  return &(new[0]);
+}
+    
 
 void **
 List_to_array_out (T list, void *end) {

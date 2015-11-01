@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: smooth.c 135447 2014-05-07 22:25:45Z twu $";
+static char rcsid[] = "$Id: smooth.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -421,15 +421,13 @@ zero_net_gap (int *starti, int *startj, int i, int j, int *intronlengths) {
 }
 
 
-static int *
-find_internal_shorts_by_netgap (bool *deletep, int *exonmatches, int nexons,
+static void
+find_internal_shorts_by_netgap (bool *deletep, int *exonstatus, int *exonmatches, int nexons,
 				int *intronlengths) {
-  int *exonstatus;
   int starti, startj, i, j;
   int exonlen;
 
   *deletep = false;
-  exonstatus = (int *) CALLOC(nexons,sizeof(int));
   for (i = 0; i < nexons; i++) {
     exonstatus[i] = KEEP;
   }
@@ -466,20 +464,19 @@ find_internal_shorts_by_netgap (bool *deletep, int *exonmatches, int nexons,
     }
   }
 
-  return exonstatus;
+  return;
 }
 
 
-static int *
-find_internal_shorts_by_size (bool *shortp, bool *deletep, int *exonmatches, int *exonprotects, int nexons,
+static void
+find_internal_shorts_by_size (bool *shortp, bool *deletep, int *exonstatus,
+			      int *exonmatches, int *exonprotects, int nexons,
 			      int *intronlengths, int stage2_indexsize) {
-  int *exonstatus;
   int i;
   int exonlen, intronlen;
   double prob;
 
   *shortp = *deletep = false;
-  exonstatus = (int *) CALLOC(nexons,sizeof(int));
   for (i = 0; i < nexons; i++) {
     exonstatus[i] = KEEP;
   }
@@ -502,7 +499,7 @@ find_internal_shorts_by_size (bool *shortp, bool *deletep, int *exonmatches, int
     }
   }
 
-  return exonstatus;
+  return;
 }
 
 
@@ -568,14 +565,13 @@ Smoothcell_cmp (const void *x, const void *y) {
 }
 
 
-static int *
-find_internal_bads_by_prob (bool *deletep, int *exonmatches, int *exon_denominator, int nexons,
+static void
+find_internal_bads_by_prob (bool *deletep, int *exonstatus, int *exonmatches, int *exon_denominator, int nexons,
 			    double *donor_probs, double *acceptor_probs,
 			    int *intron_matches_left, int *intron_denominator_left,
 			    int *intron_matches_right, int *intron_denominator_right,
 			    int total_matches, int total_denominator) {
   struct Smoothcell_T *cells;
-  int *exonstatus;
   int starti, startj, i, j;
   int exonlen;
   double theta_1, theta0, theta1;
@@ -586,8 +582,7 @@ find_internal_bads_by_prob (bool *deletep, int *exonmatches, int *exon_denominat
   int worst_exoni = -1;
 
   *deletep = false;
-  exonstatus = (int *) MALLOC(nexons * sizeof(int));
-  cells = (struct Smoothcell_T *) MALLOC(nexons * sizeof(struct Smoothcell_T));
+  cells = (struct Smoothcell_T *) MALLOCA(nexons * sizeof(struct Smoothcell_T));
   for (i = 0; i < nexons; i++) {
     exonstatus[i] = KEEP;
     cells[i].exoni = i;
@@ -633,21 +628,20 @@ find_internal_bads_by_prob (bool *deletep, int *exonmatches, int *exon_denominat
     }
     i++;
   }
-  FREE(cells);
+  FREEA(cells);
 
-  return exonstatus;
+  return;
 }
 
 
 
 /* For ends, we turn off the indexsize parameter */
-static int *
-find_end_shorts (bool *deletep, int *exonmatches, int nexons, int *intronlengths) {
-  int *exonstatus, i;
+static void
+find_end_shorts (bool *deletep, int *exonstatus, int *exonmatches, int nexons, int *intronlengths) {
+  int i;
   bool shortp;
 
   *deletep = false;
-  exonstatus = (int *) CALLOC(nexons,sizeof(int));
   for (i = 0; i < nexons; i++) {
     exonstatus[i] = KEEP;
   }
@@ -678,7 +672,7 @@ find_end_shorts (bool *deletep, int *exonmatches, int nexons, int *intronlengths
     --i;
   }
     
-  return exonstatus;
+  return;
 }
 
 
@@ -932,7 +926,8 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool) {
 	  );
 
     debug(printf("\nFind internal shorts\n"));
-    exonstatus = find_internal_shorts_by_netgap(&(*deletep),exonmatches,nexons,intronlengths);
+    exonstatus = (int *) MALLOCA(nexons * sizeof(int));
+    find_internal_shorts_by_netgap(&(*deletep),exonstatus,exonmatches,nexons,intronlengths);
     debug(printf("\nRemove internal shorts\n"));
     if (*deletep == true) {
       debug(print_exon_status(exonstatus,exonmatches,exonprotects,nexons));
@@ -951,7 +946,7 @@ Smooth_pairs_by_netgap (bool *deletep, List_T pairs, Pairpool_T pairpool) {
 	  );
 #endif
 
-    FREE(exonstatus);
+    FREEA(exonstatus);
     FREE(intronlengths);
     FREE(exonprotects);
     FREE(exonmatches);
@@ -985,14 +980,15 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
     intronlengths = get_intronlengths(&nintrons,pairs,/*bysizep*/true);
 
     debug(printf("\nFind end shorts\n"));
-    exonstatus = find_end_shorts(&delete1p,exonmatches,nexons,intronlengths);
+    exonstatus = (int *) MALLOCA(nexons * sizeof(int));
+    find_end_shorts(&delete1p,exonstatus,exonmatches,nexons,intronlengths);
     if (delete1p == true) {
       *deletep = true;
       debug(print_exon_status(exonstatus,exonmatches,exonprotects,nexons));
       pairs = delete_and_mark_exons(pairs,pairpool,exonstatus,/*markp*/false,/*bysizep*/true);
     }
 
-    FREE(exonstatus);
+    FREEA(exonstatus);
 
     FREE(intronlengths);
     FREE(exonprotects);
@@ -1016,7 +1012,8 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
 	  );
 
     debug(printf("\nFind internal shorts\n"));
-    exonstatus = find_internal_shorts_by_size(&(*shortp),&delete2p,exonmatches,exonprotects,nexons,intronlengths,stage2_indexsize);
+    exonstatus = (int *) MALLOCA(nexons * sizeof(int));
+    find_internal_shorts_by_size(&(*shortp),&delete2p,exonstatus,exonmatches,exonprotects,nexons,intronlengths,stage2_indexsize);
     debug(printf("\nRemove internal shorts\n"));
     if (delete2p == true) {
       *deletep = true;
@@ -1035,7 +1032,7 @@ Smooth_pairs_by_size (bool *shortp, bool *deletep, List_T pairs, Pairpool_T pair
 	  printf("Exon %d of length %d\n",nexons-1,exonlengths[nexons-1]);
 	  );
 
-    FREE(exonstatus);
+    FREEA(exonstatus);
     FREE(intronlengths);
     FREE(exonprotects);
     FREE(exonmatches);
@@ -1068,14 +1065,15 @@ Smooth_mark_short_exons (List_T pairs, Pairpool_T pairpool, int stage2_indexsize
     intronlengths = get_intronlengths(&nintrons,pairs,/*bysizep*/true);
 
     debug(printf("\nFind end shorts\n"));
-    exonstatus = find_end_shorts(&delete1p,exonmatches,nexons,intronlengths);
+    exonstatus = (int *) MALLOCA(nexons * sizeof(int));
+    find_end_shorts(&delete1p,exonstatus,exonmatches,nexons,intronlengths);
     pairs = mark_exons(pairs,
 #ifdef WASTE
 		       pairpool,
 #endif
 		       exonstatus);
 
-    FREE(exonstatus);
+    FREEA(exonstatus);
 
     FREE(intronlengths);
     FREE(exonmatches);
@@ -1097,7 +1095,8 @@ Smooth_mark_short_exons (List_T pairs, Pairpool_T pairpool, int stage2_indexsize
 	  );
 
     debug(printf("\nFind internal shorts\n"));
-    exonstatus = find_internal_shorts_by_size(&shortp,&delete2p,exonmatches,nexons,intronlengths,stage2_indexsize);
+    exonstatus = (int *) MALLOCA(nexons * sizeof(int));
+    find_internal_shorts_by_size(&shortp,&delete2p,exonstatus,exonmatches,nexons,intronlengths,stage2_indexsize);
     debug(printf("\nMark internal shorts\n"));
     pairs = mark_exons(pairs,
 #ifdef WASTE
@@ -1114,7 +1113,7 @@ Smooth_mark_short_exons (List_T pairs, Pairpool_T pairpool, int stage2_indexsize
 	  printf("Exon %d of length %d\n",nexons-1,exonlengths[nexons-1]);
 	  );
 
-    FREE(exonstatus);
+    FREEA(exonstatus);
     FREE(intronlengths);
     FREE(exonmatches);
     FREE(exonlengths);
@@ -1167,11 +1166,12 @@ Smooth_pairs_by_intronprobs (bool *badp, List_T pairs, Pairpool_T pairpool) {
 	    );
 
       debug(printf("\nFind internal bads\n"));
-      exonstatus = find_internal_bads_by_prob(&(*badp),exonmatches,exon_denominator,nexons,
-					      donor_probs,acceptor_probs,
-					      intron_matches_left,intron_denominator_left,
-					      intron_matches_right,intron_denominator_right,
-					      total_matches,total_denominator);
+      exonstatus = (int *) MALLOCA(nexons * sizeof(int));
+      find_internal_bads_by_prob(&(*badp),exonstatus,exonmatches,exon_denominator,nexons,
+				 donor_probs,acceptor_probs,
+				 intron_matches_left,intron_denominator_left,
+				 intron_matches_right,intron_denominator_right,
+				 total_matches,total_denominator);
       debug(printf("\nRemove internal bads\n"));
       if (*badp == false) {
 	debug(printf("No internal bads\n"));
@@ -1193,7 +1193,7 @@ Smooth_pairs_by_intronprobs (bool *badp, List_T pairs, Pairpool_T pairpool) {
 #endif
 
       debug(FREE(intronlengths));
-      FREE(exonstatus);
+      FREEA(exonstatus);
       FREE(intron_denominator_right);
       FREE(intron_matches_right);
       FREE(intron_denominator_left);

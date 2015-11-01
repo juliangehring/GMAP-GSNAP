@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uinttable.c 81281 2012-12-11 19:43:28Z twu $";
+static char rcsid[] = "$Id: uinttable.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -175,6 +175,26 @@ Uinttable_keys (T table, bool sortp) {
   }
 
   return keyarray;
+}
+
+
+void
+Uinttable_fill_keys (unsigned int *keyarray, T table, bool sortp) {
+  int i, j = 0;
+  struct binding *p;
+
+  assert(table);
+  for (i = 0; i < table->size; i++) {
+    for (p = table->buckets[i]; p; p = p->link) {
+      keyarray[j++] = p->key;
+    }
+  }
+
+  if (sortp == true) {
+    qsort(keyarray,table->length,sizeof(unsigned int),uint_compare);
+  }
+
+  return;
 }
 
 static int

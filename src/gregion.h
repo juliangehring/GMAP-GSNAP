@@ -1,4 +1,4 @@
-/* $Id: gregion.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: gregion.h 145990 2014-08-25 21:47:32Z twu $ */
 #ifndef GREGION_INCLUDED
 #define GREGION_INCLUDED
 #include "bool.h"
@@ -112,7 +112,7 @@ Gregion_extend (T this, Chrpos_T extension5, Chrpos_T extension3, int querylengt
 extern int
 Gregion_cmp (const void *a, const void *b);
 
-extern List_T
+extern void
 Gregion_filter_clean (List_T gregionlist, int nchrs);
 
 #undef T

@@ -1,4 +1,4 @@
-/* $Id: genome.h 140510 2014-07-03 01:48:26Z twu $ */
+/* $Id: genome.h 145990 2014-08-25 21:47:32Z twu $ */
 #ifndef GENOME_INCLUDED
 #define GENOME_INCLUDED
 
@@ -64,11 +64,11 @@ extern char
 Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength, char chartable[]);
 extern char
 Genome_get_char_blocks (char *charalt, Univcoord_T left);
-extern char *
-Genome_get_segment_blocks_right (char **segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chrhigh,
+extern void
+Genome_get_segment_blocks_right (char *segment, char *segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chrhigh,
 				 bool revcomp);
-extern char *
-Genome_get_segment_blocks_left (char **segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chroffset,
+extern void
+Genome_get_segment_blocks_left (char *segment, char *segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chroffset,
 				bool revcomp);
 extern Sequence_T
 Genome_get_segment (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T chromosome_iit,

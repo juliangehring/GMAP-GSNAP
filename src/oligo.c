@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligo.c 133760 2014-04-20 05:16:56Z twu $";
+static char rcsid[] = "$Id: oligo.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1983,7 +1983,7 @@ Oligo_mark_repetitive (bool **repetitivep, Storedoligomer_T *oligos,
   Storedoligomer_T *q;
 
   n = last_querypos - first_querypos + 1;
-  cells = (struct Cell_T *) CALLOC(n,sizeof(struct Cell_T));
+  cells = (struct Cell_T *) MALLOCA(n * sizeof(struct Cell_T));
   for (i = 0, querypos = first_querypos; i < n; i++, querypos++) {
     cells[i].querypos = querypos;
     cells[i].oligo = oligos[querypos];
@@ -2015,7 +2015,8 @@ Oligo_mark_repetitive (bool **repetitivep, Storedoligomer_T *oligos,
     binary_threshold -= BINARY_FOLDDIFF;
   }
 
-  FREE(cells);
+  FREEA(cells);
+
   return any_repetitive_p;
 }
 #endif
@@ -2043,7 +2044,7 @@ Oligo_mark_frequent (bool **frequentp, Storedoligomer_T *oligos, int n,
   int i, j, nremaining, binary_threshold;
   Storedoligomer_T *q;
 
-  cells = (struct Cell_T *) CALLOC(n,sizeof(struct Cell_T));
+  cells = (struct Cell_T *) MALLOCA(n * sizeof(struct Cell_T));
   for (i = 0; i < n; i++) {
     cells[i].querypos = i;
     cells[i].oligo = oligos[i];
@@ -2075,7 +2076,8 @@ Oligo_mark_frequent (bool **frequentp, Storedoligomer_T *oligos, int n,
     binary_threshold -= BINARY_FOLDDIFF;
   }
 
-  FREE(cells);
+  FREEA(cells);
+
   return any_frequent_p;
 }
 
@@ -2083,10 +2085,10 @@ Storedoligomer_T *
 Oligo_frequent_oligos (int *nfrequent, Indexdb_T indexdb, int size_threshold) {
   Storedoligomer_T *frequent_oligos, oligo;
   int npositions, i, k;
-  bool *frequentp;
-
+  bool *frequentp[NREPETITIVE];
+  
   *nfrequent = 0;
-  frequentp = (bool *) CALLOC(NREPETITIVE,sizeof(bool));
+  memset(frequentp,/*false*/0,NREPETITIVE * sizeof(bool));
   for (i = 0; i < NREPETITIVE; i++) {
     oligo = all_repetitive_oligos[i];
     npositions = Indexdb_count_no_subst(indexdb,oligo);
@@ -2114,7 +2116,6 @@ Oligo_frequent_oligos (int *nfrequent, Indexdb_T indexdb, int size_threshold) {
     }
   }
 
-  FREE(frequentp);
   return frequent_oligos;
 }
 

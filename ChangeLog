@@ -1,3 +1,501 @@
+2014-10-22  twu
+
+    * gregion.c: Checking size before deciding to use alloca or malloc.
+
+2014-10-16  twu
+
+    * stage2.c: Fixed an uninitialized variable in grand_fwd and grand_rev
+      procedures, plus the checks on maxintronlen in computing
+      grand_fwd_lookforward and grand_rev_lookforward.
+
+    * shortread.c: Allowing queryseq1 to be equal to SKIPPED.  Removed unused
+      parameter acc from input_oneline routines.
+
+    * VERSION, index.html: Updated version number
+
+    * stage1hr.c: Added debugging statement
+
+    * sarray-read.c: Don't limit filling of best elt based on nmatches being
+      more than half of the read length
+
+    * stage3hr.c: Restored previous behavior where soft clips avoid
+      circularization
+
+    * indexdb-write.c, sarray-write.c: Removed unnecessary includes of
+      popcount.h
+
+    * bitpack64-write.c, genome128_hr.c: In lookups of clz_table, removing the
+      intermediate variable "top".
+
+    * stage3hr.c: Not allowing soft-clipping at ends to avoid circularization. 
+      Added pre-processor macro SOFT_CLIPS_AVOID_CIRCULARIZATION to preserve
+      previous code.
+
+2014-10-15  twu
+
+    * VERSION, config.site.rescomp.prd, config.site.rescomp.tst, index.html:
+      Updated version number
+
+    * outbuffer.c: Added gff3 header for GMAP gff3 output to stdout.  Added HD
+      and PG headers for GMAP sam output to --split-output files.
+
+2014-10-14  twu
+
+    * Makefile.gsnaptoo.am: Changed variable name to SIMD_CFLAGS
+
+    * configure.ac: Changed variable name to SIMD_CFLAGS.  Setting -mpopcnt
+      based only on acx_mpopcnt_ok, and not on individual builtin functions.
+
+    * builtin-popcount.m4: Setting CFLAGS instead of LIBS.  Checking for builtin
+      functions regardless of whether -mpopcnt works.
+
+    * ax_ext.m4: Setting CFLAGS instead of LIBS.  Changed variable name to
+      SIMD_CFLAGS
+
+    * builtin-popcount.m4, configure.ac: Changed macro name to
+      ACX_BUILTIN_POPCOUNT
+
+    * acinclude.m4: Renamed program to builtin-popcount.m4
+
+    * builtin-popcount.m4, builtin.m4: Renamed program to builtin-popcount.m4
+
+    * popcnt.m4: Added comment
+
+    * builtin.m4: Added check from popcnt.m4
+
+    * shortread.c: Made input procedures robust to incomplete entries
+
+    * indexdb.c: Fixed bug where munmap was called twice on positions_high for
+      GSNAPL and GMAPL.
+
+2014-10-09  twu
+
+    * VERSION: Updated version number
+
+    * ax_ext.m4: Seeing of avx and avx2 are enabled
+
+    * configure.ac: Added ability to disable avx and avx2
+
+    * gmap_build.pl.in: Calling gmapindex initially to check for compiler
+      assumptions
+
+    * gmapindex.c: Added check for compiler assumptions
+
+    * gmap.c, gsnap.c: Added description of --check option to --help message
+
+    * gmap.c, gsnap.c: Improved check for compiler assumptions, and added
+      --check option
+
+    * samprint.c: Fixed flag for merged overlap to not have PAIRED_READ set. 
+      When clipdir == 0, not calling adjust_hardclips.
+
+2014-10-07  twu
+
+    * sarray-read.c: Fixed bug when setting array_stop and finalptr is less than
+      4
+
+2014-10-02  twu
+
+    * samprint.c: Further fixes to mapping quality for merged alignments
+
+    * samprint.c: For merged alignments, printing mapping quality of 40
+
+2014-10-01  twu
+
+    * pair.c, samprint.c: Putting XB and XP tags after XH
+
+    * VERSION: Updated version number
+
+    * samprint.c: Calling GMAP procedure for querystart and queryend when
+      necessary in adjust_hardclips
+
+    * stage3.c: Initializing variables
+
+    * pair.c: Passing correct values for hardclip_low and hardclip_high to
+      hardclip_pairs
+
+    * samprint.c: Removed static initialization of hide_soft_clips_p
+
+    * outbuffer.c, pair.c, pair.h, samprint.c, samprint.h, src, trunk: Merged
+      revisions 149547 through 149570 from branches/2014-10-01-hardclip-adj to
+      improve adjustment of hardclipping
+
+    * stage3.c: Removed diagnosticp from some procedures
+
+2014-09-30  twu
+
+    * sam_sort.c: Providing timing information to user
+
+    * sam_sort.c, samread.c, samread.h: Changed algorithm to parse just for
+      linelengths initially, which allows for the SAM file to be read using
+      buffers
+
+    * VERSION, index.html: Updated version number
+
+    * sam_sort.c: Fixed usage statement
+
+    * samread.c, samread.h: Commented out unused procedures
+
+    * samread.c: Added header file
+
+    * samheader.c, samheader.h: Removing computation of .sortinfo file
+
+    * chimera.c, chimera.h, get-genome.c, gmap.c, gsnap.c, iit-read-univ.c,
+      iit-read-univ.h, outbuffer.c, outbuffer.h, pair.c, pair.h, samprint.c,
+      samprint.h, shortread.c, shortread.h, stage3.c, stage3.h, uniqscan.c:
+      Removing computation of .sortinfo file
+
+    * Makefile.gsnaptoo.am: Removed sortinfo.c and sortinfo.h
+
+    * sam_sort.c, samflags.h, samheader.c, samheader.h, samread.c, samread.h:
+      Made sam_sort independent of a .sortinfo file.  Computes sortinfo
+      information directly from the SAM input file
+
+2014-09-27  twu
+
+    * outbuffer.c: Providing sortinfo to Pair_print_sam_nomapping
+
+    * VERSION, index.html: Updated version number
+
+    * index.html, outbuffer.c, pair.c, pair.h, sam_sort.c, samflags.h,
+      samprint.c, samprint.h, samread.c, samread.h, sortinfo.c, sortinfo.h, src,
+      stage3.c, trunk: Merged revisions 148987 through 149172 from
+      branches/2014-09-25-sam-sort to yield a working version of sortinfo
+      feature
+
+    * stage3hr.c: Reverting to previous version 149160 in trunk
+
+    * stage3hr.c: Rewrote Stage3pair_remove_overlap procedures to use
+      hitpair_overlap_score_cmp, hitpair_overlap_test,
+      hitpair_equiv_preference_cmp, and hitpair_equiv_tst
+
+2014-09-25  twu
+
+    * samprint.c: Not merging paired ends if there is no overlap
+
+    * pair.c: Enabled call to Sortinfo_update to work for GMAP
+
+    * VERSION, index.html: Updated version number
+
+    * chimera.c, chimera.h, pair.c, samprint.c: Using @ instead of : for
+      coordinates for XT field.  Made GMAP XT field same as that for GSNAP.
+
+    * config.site.rescomp.tst: Allowing builtin_popcount
+
+    * README: Added description of XH field
+
+    * Makefile.gsnaptoo.am: Added samheader.c to sam_sort
+
+    * sam_sort.c: Handling single-end alignments
+
+    * samread.c: Setting terminating character at end of computation
+
+    * samheader.c, samheader.h: Implemented change of HD header to SO:sorted
+
+    * sam_sort.c, samread.c, samread.h: Handling hard-clipped alignments
+
+    * pair.c, pair.h, samprint.c, shortread.c, shortread.h: Added XH field to
+      provide hard-clipped sequence
+
+2014-09-24  twu
+
+    * substring.c: For --merge-overlap feature, in deciding whether to add
+      insertion, deletion, or intron between the pieces, using <= instead of <
+      to decide.
+
+    * samprint.c: In SAM_compute_chrpos, always using substring_low to compute
+      chrpos
+
+    * indel.c: Initializing variables
+
+    * sam_sort.c: Implemented --dups-only and --uniq-only
+
+    * sortinfo.c: Fixed typo in comment
+
+    * pair.c, pair.h, samprint.c, sortinfo.c, sortinfo.h: Sortinfo_update uses
+      sign on chrnum to indicate whether a read is the low or high end
+
+    * iit-read-univ.c: Using safer computation of an average
+
+    * Makefile.gsnaptoo.am, sam_sort.c, samread.c, samread.h: Implemented
+      --mark-dups function into sam_sort.  Works except for hard-clipping.
+
+    * samread.c, samread.h: Brought over copy from GSTRUCT
+
+    * sam_sort.c: Introduced readindex, needed for marking duplicates
+
+    * Makefile.gsnaptoo.am, iit-read-univ.c, iit-read-univ.h, sam_sort.c,
+      sortinfo.c: Using genome chromosome_iit file in sam_sort, instead of
+      storing information in .sortinfo files
+
+    * VERSION: Updated version number
+
+    * Makefile.gsnaptoo.am, chimera.c, chimera.h, chrnum.h, get-genome.c,
+      gmap.c, gsnap.c, iit-read-univ.c, iit-read-univ.h, outbuffer.c,
+      outbuffer.h, pair.c, pair.h, sam_sort.c, samheader.c, samheader.h,
+      samprint.c, samprint.h, shortread.c, shortread.h, sortinfo.c, sortinfo.h,
+      src, stage1hr.h, stage3.c, stage3.h, trunk, types.h, uint8list.h,
+      uintlist.h, uniqscan.c: Merged revisions 148659 through 148720 from
+      branches/2014-09-23-sam-sort to add --make-sortinfo option and sam_sort
+      program
+
+    * index.html: Updated version number
+
+2014-09-23  twu
+
+    * VERSION: Updated version number
+
+    * splice.c: Fixed bug in reading Stage3end_T object that was already freed
+
+    * configure.ac: Loading default ./config.site file only if it exists
+
+    * VERSION, config.site.rescomp.prd, config.site.rescomp.tst, configure.ac,
+      index.html: Handling cases differently if CONFIG_SITE file begins with ./.
+       Allowing for multiple files in CONFIG_SITE.
+
+    * Makefile.gsnaptoo.am: Interchanged order of POPCNT_CFLAGS and SIMD_FLAGS
+
+    * samprint.c: Fixed bugs introduced in adding --merge-overlap feature
+
+2014-09-22  twu
+
+    * INSTALL, config.guess, config.sub, ltmain.sh: Updated to more recent
+      version of autoconf
+
+    * bootstrap.gsnaptoo: Changed /usr/bin/touch to touch
+
+    * configure.ac: Testing first for ./ in front of CONFIG_SITE.  Added
+      AC_SUBST of POPCNT_CFLAGS
+
+    * shortread.c, shortread.h: Removed unused procedures
+
+    * stage1hr.c: Changed nmisses_allowed for sarray method to be querylength,
+      for both --use-sarray=2 and normal method
+
+2014-09-21  twu
+
+    * pair.c: Changed PG field to XG
+
+    * configure.ac: Change flag to --disable-builtin-popcount
+
+    * splice.c: In procedures that group for ambiguous hits, separating sense
+      and antisense segments
+
+    * substring.c: Improved debugging statements
+
+    * stage3hr.c: Improved debugging statements
+
+    * stage1hr.c: Improved debugging statements
+
+2014-09-19  twu
+
+    * stage3.c: Using new interface to Pair_print_sam
+
+    * ax_ext.m4, builtin.m4: Restoring value of LIBS at end of procedure
+
+    * builtin.m4: Setting LIBS to -mpopcnt before running tests
+
+    * gsnap.c: Added comment that --merge-overlap is a beta implementation
+
+    * VERSION, config.site.rescomp.tst, gsnap.c, index.html, list.c, list.h,
+      outbuffer.c, outbuffer.h, pair.c, pair.h, samprint.c, samprint.h,
+      shortread.c, shortread.h, src, stage3hr.c, stage3hr.h, substring.c,
+      substring.h, trunk: Merged revisions 148190 through 1418357 from
+      branches/2014-10-18-merge-overlap to add --merge-overlap feature
+
+    * ax_ext.m4: Changed name of cpu features to sse4.1 and sse4.2
+
+    * configure.ac: Showing pthread and popcnt flags at end
+
+    * README: Explaining XG flag
+
+    * samprint.c: Changed PG flag to XG flag
+
+    * samheader.c: Commenting out code for extra @PG lines
+
+    * configure.ac: Setting POPCNT_CFLAGS based on result from builtin.m4
+
+    * builtin.m4: Setting a variable ax_cv_compile_builtin_ext
+
+    * ax_ext.m4: Setting LIBS properly before running AC_LINK_IFELSE
+
+2014-09-18  twu
+
+    * genome128_hr.c: Using Harley's method to reduce number of popcount
+      operations for SSE2
+
+    * genome128_hr.c: Fixed HAVE_MM_POPCNT alternative for SSE2-based popcount
+
+    * archive.html, index.html: Updated for version 2014-09-18
+
+    * VERSION: Updated version number
+
+    * genome128_hr.c: Added macro for debug4
+
+    * genome128_hr.c: Using _mm_extract_epi16 for SSE2 code instead of casting
+      to (UINT4 *), because casting leads some compilers to generate wrong
+      ordering of statements
+
+2014-09-16  twu
+
+    * ax_ext.m4, configure.ac: Providing information to user about SIMD cpu
+      features available and compiler flags to be used
+
+    * gmap.c, gsnap.c: Added extra information to --version about type of popcnt
+      supported
+
+    * ax_ext.m4: Changed ordering of ifthen clauses.  Added variable to indicate
+      compiler or linker problems.
+
+    * configure.ac: Added warnings for compiler or linker problems for SIMD
+      extensions
+
+    * configure.ac: Changed flag name from --enable-popcnt to
+      --enable-builtin-popcnt
+
+    * genome128_hr.c, sarray-read.c: Using mm_popcnt when _popcnt not available
+
+    * ax_ext.m4: Revamped tests to check for CPU, compile, and linking, in that
+      order.  Renamed variables more systematically.
+
+2014-09-15  twu
+
+    * pair.c, pair.h, pairpool.c, pairpool.h, stage3.c, stage3.h: Moved
+      Pairpool_clip_bounded to pair.c, and created Pair_clip_bounded_pairs for
+      computing chimeras by the working thread and Pair_clip_bounded_array for
+      truncation by the output thread.  This enables the --truncate flag to work
+      again for GMAP.
+
+    * gmap.c: Improved error message when invalid argument is given to -f
+
+    * stage3.c: Made cdna direction choices based on splice site scores more
+      stringent, so both donor and acceptor sites have to be significantly
+      better.
+
+2014-09-13  twu
+
+    * gmap.c, outbuffer.c, pair.c, pair.h, stage3hr.c, stage3hr.h, substring.c,
+      substring.h: For BLAST m8 output, adding endings to accessions for
+      paired-end reads
+
+2014-09-12  twu
+
+    * gmap.c, gsnap.c, outbuffer.c, outbuffer.h, pair.c, pair.h, stage3hr.c,
+      stage3hr.h, substring.c, substring.h, uniqscan.c: Added implementation of
+      BLAST m8 output format
+
+2014-09-10  twu
+
+    * VERSION: Updated version number
+
+    * ax_ext.m4: Fixed typo for handling AVX
+
+2014-09-09  twu
+
+    * uniqscan.c: Using new interface to Stage1hr_setup
+
+    * stage1hr.c, stage1hr.h: Added option --use-sarray=2 to use only suffix
+      array algorithm
+
+    * gsnap.c: Added option --use-sarray=2 to use only suffix array algorithm
+
+    * stage3hr.c: Stopped using alloca for hitlists, since they can cause stack
+      overflow.  Made loops more efficient for pair_up_concordant_aux.
+
+2014-09-08  twu
+
+    * gmap.c: Stopping memory error when a chimera is found, --npaths is set to
+      1, and one part of the chimera fails the conditions for --min-identity or
+      --min-trimmed-coverage
+
+2014-09-05  twu
+
+    * sarray-read.c: Implemented faster SIMD algorithm for
+      Elt_fill_positions_filtered
+
+    * sarray-read.c: Implemented Elt_fill_positions_filtered using alloca and
+      copying from stack, instead of guessing allocation
+
+2014-09-03  twu
+
+    * VERSION, config.site.rescomp.prd: Updated version number
+
+    * stage3hr.c: In pair_remove_bad_superstretches, keeping track of better and
+      worse children separately, and handling list order correctly.  Now chooses
+      shorter insert lengths correctly.  Added OUTERLENGTH_SLOP.
+
+2014-09-02  twu
+
+    * stage3hr.c: In Stage3end_optimal_score_aux and
+      Stage3pair_optimal_score_aux, counting indels only if they are within
+      trim_left and trim_right
+
+    * gsnap.c, stage3hr.c, stage3hr.h, uniqscan.c: Added option
+      --order-among-best to GSNAP to control randomization among best alignments
+
+    * stage3hr.c: When SCORE_INDELS is true for comparing alignments, not
+      counting indel_penalty in new->penalties to avoid double-counting
+
+    * stage2.c: Turned off debugging
+
+    * stage1hr.c: Calling GMAP pairsearch if indels5 or indels3 is not NULL, as
+      well as if found_score is too high
+
+    * src, trunk: Merged revisions 145502 to 146146 from
+      branches/2014-08-19-stack-alloca and 146146 to 146618 from
+      branches/2014-08-27-parallel-stage2
+
+    * oligoindex_hr.c: Merging revisions 145502 to 146146 from
+      branches/2014-08-19-stack-alloca to ignore check on querylength and to use
+      alloca for GSNAP
+
+    * stage2.c, stage2.h: Merging revisions 146146 to 146618 from
+      branches/2014-08-27-parallel-stage2 to make stage 2 computation faster
+
+    * list.c, list.h, spanningelt.c, spanningelt.h: Merging revisions 145502 to
+      146146 from branches/2014-08-19-stack-alloca to work directly on arrays of
+      Spanningelt_T objects
+
+    * dynprog_simd.c, dynprog_single.c: Merging revisions 146146 to 146618 from
+      branches/2014-08-27-parallel-stage2 to fix debugging procedures and to use
+      a stricter check for using 8-bit SIMD
+
+    * diag.c: Merging revisions 145502 to 146146 from
+      branches/2014-08-19-stack-alloca to ignore check on querylength and to use
+      alloca for GSNAP
+
+    * gmap.c, gsnap.c, stage3.c, stage3.h: Merging revisions 145502 to 146146
+      from branches/2014-08-19-stack-alloca to use stage2_alloc only for GMAP
+      initial stage 2 computation
+
+    * stage1hr.c, stage1hr.h: Merging revisions 145502 to 146146 from
+      branches/2014-08-19-stack-alloca to work directly on arrays of
+      Spanningelt_T objects
+
+    * stage3hr.c: Turned off debugging
+
+    * stage3.c: Turned off debugging
+
+    * stage1hr.c: Fixed debugging statements
+
+2014-08-25  twu
+
+    * configure.ac, trunk: Merged revisions 145989 through 145990 from
+      branches/2014-08-19-stack-alloca to adde flag to configure.ac
+
+    * VERSION, boyer-moore.c, boyer-moore.h, chimera.c, chop_primers.c, diag.c,
+      doublelist.c, doublelist.h, dynprog.c, dynprog_cdna.c, dynprog_end.c,
+      dynprog_genome.c, dynprog_simd.c, dynprog_single.c, genome.c, genome.h,
+      genome128_hr.c, genome_sites.c, genomicpos.h, gmap.c, gregion.c,
+      gregion.h, gsnap.c, gvf_iit.pl.in, indel.c, index.html, intlist.c,
+      intlist.h, list.c, list.h, mapq.c, mem.c, mem.h, oligo.c, oligoindex_hr.c,
+      outbuffer.c, pair.c, pair.h, pairpool.c, parserange.c, samprint.c,
+      sarray-read.c, shortread.c, shortread.h, smooth.c, splice.c, splicetrie.c,
+      src, stage1.c, stage1hr.c, stage1hr.h, stage2.c, stage2.h, stage3.c,
+      stage3.h, stage3hr.c, substring.c, trunk, uint8list.c, uint8list.h,
+      uintlist.c, uintlist.h, uinttable.c, uinttable.h: Merged revisions 145503
+      through 145988 from branches/2014-08-19-stack-alloca to use alloca
+
 2014-08-20  twu
 
     * uniqscan.c: Using new interface to Shortread_new

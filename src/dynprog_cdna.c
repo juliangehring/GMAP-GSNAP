@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_cdna.c 138117 2014-06-04 20:28:44Z twu $";
+static char rcsid[] = "$Id: dynprog_cdna.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -937,24 +937,27 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
 #endif
 
 
+  rev_gsequence = (char *) MALLOCA((glength+1) * sizeof(char));
+  rev_gsequence_alt = (char *) MALLOCA((glength+1) * sizeof(char));
+  gsequence = (char *) MALLOCA((glength+1) * sizeof(char));
+  gsequence_alt = (char *) MALLOCA((glength+1) * sizeof(char));
+
   if (watsonp) {
-    rev_gsequence = Genome_get_segment_blocks_left(&rev_gsequence_alt,/*left*/chroffset+rev_goffset+1,glength,chroffset,/*revcomp*/false);
-    gsequence = Genome_get_segment_blocks_right(&gsequence_alt,/*left*/chroffset+goffset,glength,chrhigh,/*revcomp*/false);
+    Genome_get_segment_blocks_left(rev_gsequence,rev_gsequence_alt,/*right*/chroffset+rev_goffset+1,
+				   glength,chroffset,/*revcomp*/false);
+    Genome_get_segment_blocks_right(gsequence,gsequence_alt,/*left*/chroffset+goffset,
+				    glength,chrhigh,/*revcomp*/false);
   } else {
-    rev_gsequence = Genome_get_segment_blocks_right(&rev_gsequence_alt,/*left*/chrhigh-rev_goffset,glength,chrhigh,/*revcomp*/true);
-    gsequence = Genome_get_segment_blocks_left(&gsequence_alt,/*left*/chrhigh-goffset+1,glength,chroffset,/*revcomp*/true);
+    Genome_get_segment_blocks_right(rev_gsequence,rev_gsequence_alt,/*left*/chrhigh-rev_goffset,
+				    glength,chrhigh,/*revcomp*/true);
+    Genome_get_segment_blocks_left(gsequence,gsequence_alt,/*right*/chrhigh-goffset+1,
+				   glength,chroffset,/*revcomp*/true);
   }
-  if (gsequence == NULL) {
-    if (rev_gsequence_alt != rev_gsequence) {
-      FREE(rev_gsequence_alt);
-    }
-    FREE(rev_gsequence);
-    return (List_T) NULL;
-  } else if (rev_gsequence == NULL) {
-    if (gsequence_alt != gsequence) {
-      FREE(gsequence_alt);
-    }
-    FREE(gsequence);
+  if (gsequence[0] == '\0' || rev_gsequence[0] == '\0') {
+    FREEA(gsequence_alt);
+    FREEA(gsequence);
+    FREEA(rev_gsequence_alt);
+    FREEA(rev_gsequence);
     return (List_T) NULL;
   }
 
@@ -1078,12 +1081,10 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
       pairs = (List_T) NULL;
     }
 
-    if (gsequence_alt != gsequence) {
-      FREE(gsequence_alt);
-      FREE(rev_gsequence_alt);
-    }
-    FREE(gsequence);
-    FREE(rev_gsequence);
+    FREEA(gsequence_alt);
+    FREEA(gsequence);
+    FREEA(rev_gsequence_alt);
+    FREEA(rev_gsequence);
 
     debug(printf("End of dynprog cDNA gap\n"));
 
@@ -1208,12 +1209,10 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
       pairs = (List_T) NULL;
     }
 
-    if (gsequence_alt != gsequence) {
-      FREE(gsequence_alt);
-      FREE(rev_gsequence_alt);
-    }
-    FREE(gsequence);
-    FREE(rev_gsequence);
+    FREEA(gsequence_alt);
+    FREEA(gsequence);
+    FREEA(rev_gsequence_alt);
+    FREEA(rev_gsequence);
 
     debug(printf("End of dynprog cDNA gap\n"));
 
@@ -1303,12 +1302,10 @@ Dynprog_cdna_gap (int *dynprogindex, int *finalscore, bool *incompletep,
     pairs = (List_T) NULL;
   }
 
-  if (gsequence_alt != gsequence) {
-    FREE(gsequence_alt);
-    FREE(rev_gsequence_alt);
-  }
-  FREE(gsequence);
-  FREE(rev_gsequence);
+  FREEA(gsequence_alt);
+  FREEA(gsequence);
+  FREEA(rev_gsequence_alt);
+  FREEA(rev_gsequence);
 
   debug(printf("End of dynprog cDNA gap\n"));
 

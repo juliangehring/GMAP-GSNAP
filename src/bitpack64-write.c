@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: bitpack64-write.c 132144 2014-04-02 16:02:28Z twu $";
+static char rcsid[] = "$Id: bitpack64-write.c 151045 2014-10-16 19:08:17Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,10 +17,12 @@ static char rcsid[] = "$Id: bitpack64-write.c 132144 2014-04-02 16:02:28Z twu $"
 #include "mem.h"
 #include "assert.h"
 #include "fopen.h"
+#include "popcount.h"
 
 #ifdef HAVE_SSE2
 #include <emmintrin.h>
 #endif
+
 
 /* #define ALLOW_ODD_PACKSIZES 1 */
 
@@ -4424,7 +4426,7 @@ static int
 compute_q4_diffs_bidir (UINT4 *diffs, UINT4 *values) {
   UINT4 packsize;
   int i;
-  UINT4 maxdiff = 0, top;
+  UINT4 maxdiff = 0;
   int firstbit, msb;
 
 #if 0
@@ -4460,7 +4462,7 @@ compute_q4_diffs_bidir (UINT4 *diffs, UINT4 *values) {
     asm("bsr %1,%0" : "=r"(msb) : "r"(maxdiff));
     packsize = msb + 1;
 #else
-    firstbit = ((top = maxdiff >> 16) ? clz_table[top] : 16 + clz_table[maxdiff]);
+    firstbit = ((maxdiff >> 16) ? clz_table[maxdiff >> 16] : 16 + clz_table[maxdiff]);
     packsize = 32 - firstbit;
 #endif
 
@@ -4477,7 +4479,7 @@ static int
 compute_q1_diffs (UINT4 *diffs, UINT4 *values) {
   UINT4 packsize;
   int i;
-  UINT4 maxdiff = 0, top;
+  UINT4 maxdiff = 0;
   int firstbit, msb;
 
 #if 0
@@ -4502,7 +4504,7 @@ compute_q1_diffs (UINT4 *diffs, UINT4 *values) {
     asm("bsr %1,%0" : "=r"(msb) : "r"(maxdiff));
     packsize = msb + 1;
 #else
-    firstbit = ((top = maxdiff >> 16) ? clz_table[top] : 16 + clz_table[maxdiff]);
+    firstbit = ((maxdiff >> 16) ? clz_table[maxdiff >> 16] : 16 + clz_table[maxdiff]);
     packsize = 32 - firstbit;
 #endif
 
@@ -4521,7 +4523,7 @@ static int
 compute_q4_diffs_bidir_huge (UINT4 *diffs, UINT8 *values) {
   UINT4 packsize;
   int i;
-  UINT4 maxdiff = 0, top;
+  UINT4 maxdiff = 0;
   int firstbit, msb;
 
 
@@ -4552,7 +4554,7 @@ compute_q4_diffs_bidir_huge (UINT4 *diffs, UINT8 *values) {
     asm("bsr %1,%0" : "=r"(msb) : "r"(maxdiff));
     packsize = msb + 1;
 #else
-    firstbit = ((top = maxdiff >> 16) ? clz_table[top] : 16 + clz_table[maxdiff]);
+    firstbit = ((maxdiff >> 16) ? clz_table[maxdiff >> 16] : 16 + clz_table[maxdiff]);
     packsize = 32 - firstbit;
 #endif
 
@@ -5314,7 +5316,7 @@ Bitpack64_write_fixed10_huge (char *pagesfile, char *ptrsfile, char *compfile,
 static int
 compute_packsize (UINT4 *values) {
   UINT4 packsize;
-  UINT4 maxvalue = 0, top;
+  UINT4 maxvalue = 0;
   int i;
   int firstbit, msb;
 
@@ -5334,7 +5336,7 @@ compute_packsize (UINT4 *values) {
     asm("bsr %1,%0" : "=r"(msb) : "r"(maxvalue));
     packsize = msb + 1;
 #else
-    firstbit = ((top = maxvalue >> 16) ? clz_table[top] : 16 + clz_table[maxvalue]);
+    firstbit = ((maxvalue >> 16) ? clz_table[maxvalue >> 16] : 16 + clz_table[maxvalue]);
     packsize = 32 - firstbit;
 #endif
 

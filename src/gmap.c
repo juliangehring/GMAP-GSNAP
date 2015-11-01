@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gmap.c 145604 2014-08-20 17:43:03Z twu $";
+static char rcsid[] = "$Id: gmap.c 150408 2014-10-09 21:55:35Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17,6 +17,16 @@ static char rcsid[] = "$Id: gmap.c 145604 2014-08-20 17:43:03Z twu $";
 #ifdef HAVE_SSE4_1
 #include <smmintrin.h>
 #endif
+#ifdef HAVE_POPCNT
+#include <immintrin.h>
+#endif
+#if defined(HAVE_MM_POPCNT)
+#include <nmmintrin.h>
+#endif
+#if defined(HAVE_LZCNT) || defined(HAVE_BMI1)
+#include <immintrin.h>
+#endif
+
 
 #ifdef HAVE_PTHREAD
 #include <pthread.h>
@@ -139,6 +149,7 @@ static char rcsid[] = "$Id: gmap.c 145604 2014-08-20 17:43:03Z twu $";
  ************************************************************************/
 
 static Univ_IIT_T chromosome_iit = NULL;
+static Univcoord_T genomelength;
 static int circular_typeint = -1;
 static int nchrs;
 static bool *circularp = NULL;
@@ -485,7 +496,7 @@ static struct option long_options[] = {
   {"noexceptions", no_argument, 0, '0'}, /* exception_raise_p */
   {"graphic", no_argument, 0, '6'}, /* debug_graphic_p */
   {"stage3debug", required_argument, 0, '8'}, /* stage3debug, diagnosticp */
-  {"check", no_argument, 0, '9'}, /* checkp */
+  {"diagnostic", no_argument, 0, '9'}, /* checkp */
   {"npaths", required_argument, 0, 'n'}, /* maxpaths */
 #if 0
   {"quiet-if-excessive", no_argument, 0, 0}, /* quiet_if_excessive_p */
@@ -551,6 +562,7 @@ static struct option long_options[] = {
   {"min-identity", required_argument, 0, 0},	/* min_identity */
 
   /* Help options */
+  {"check", no_argument, 0, 0}, /* check_compiler_assumptions */
   {"version", no_argument, 0, 0}, /* print_program_version */
   {"help", no_argument, 0, 0}, /* print_program_usage */
   {0, 0, 0, 0}
@@ -607,16 +619,27 @@ print_program_version () {
 #endif
   fprintf(stdout,"\n");
 
+  fprintf(stdout,"Popcnt:");
+#ifdef HAVE_POPCNT
+  fprintf(stdout," popcnt/lzcnt/tzcnt");
+#endif
+#ifdef HAVE_MM_POPCNT
+  fprintf(stdout," mm_popcnt");
+#endif
+#ifdef HAVE_BUILTIN_POPCOUNT
+  fprintf(stdout," builtin_popcount");
+#endif
+  fprintf(stdout,"\n");
 
   fprintf(stdout,"Builtin functions:");
 #ifdef HAVE_BUILTIN_CLZ
-  fprintf(stdout," clz");
+  fprintf(stdout," builtin_clz");
 #endif
 #ifdef HAVE_BUILTIN_CTZ
-  fprintf(stdout," ctz");
+  fprintf(stdout," builtin_ctz");
 #endif
 #ifdef HAVE_BUILTIN_POPCOUNT
-  fprintf(stdout," popcount");
+  fprintf(stdout," builtin_popcount");
 #endif
   fprintf(stdout,"\n");
 
@@ -689,15 +712,29 @@ check_compiler_assumptions () {
 
   fprintf(stderr,"Checking compiler assumptions for popcnt: ");
   fprintf(stderr,"%08X ",x);
+#ifdef HAVE_LZCNT
+  fprintf(stderr,"_lzcnt_u32=%d ",_lzcnt_u32(x));
+#endif
 #ifdef HAVE_BUILTIN_CLZ
-  fprintf(stderr,"clz=%d ",__builtin_clz(x));
+  fprintf(stderr,"__builtin_clz=%d ",__builtin_clz(x));
+#endif
+#ifdef HAVE_BMI1
+  fprintf(stderr,"_tzcnt_u32=%d ",_tzcnt_u32(x));
 #endif
 #ifdef HAVE_BUILTIN_CTZ
-  fprintf(stderr,"clz=%d ",__builtin_ctz(x));
+  fprintf(stderr,"__builtin_ctz=%d ",__builtin_ctz(x));
 #endif
-#ifdef HAVE_BUILTIN_POPCOUNT
-  fprintf(stderr,"popcount=%d ",__builtin_popcount(x));
+
+#ifdef HAVE_POPCNT
+  fprintf(stderr,"_popcnt32=%d ",_popcnt32(x));
 #endif
+#if defined(HAVE_MM_POPCNT)
+  fprintf(stderr,"_mm_popcnt_u32=%d ",_mm_popcnt_u32(x));
+#endif
+#if defined(HAVE_BUILTIN_POPCOUNT)
+  fprintf(stderr,"__builtin_popcount=%d ",__builtin_popcount(x));
+#endif
+
   fprintf(stderr,"\n");
 
 #ifdef HAVE_SSE2
@@ -861,11 +898,11 @@ stage3array_from_list (int *npaths, int *first_absmq, int *second_absmq, List_T 
     return array0;
 
   } else {
-    eliminate = (bool *) CALLOC(norig,sizeof(bool));
+    eliminate = (bool *) CALLOCA(norig,sizeof(bool));
 
     /* Initial sort to remove subsumed alignments */
-    array0 = (Stage3_T *) List_to_array(stage3list,NULL);
-    List_free(&stage3list);
+    array0 = (Stage3_T *) MALLOCA(norig * sizeof(Stage3_T));
+    List_fill_array_and_free((void **) array0,&stage3list);
     qsort(array0,norig,sizeof(Stage3_T),Stage3_cmp);
     for (i = 0; i < norig; i++) {
       x = array0[i];
@@ -884,7 +921,7 @@ stage3array_from_list (int *npaths, int *first_absmq, int *second_absmq, List_T 
       }
     }
 
-    array1 = (Stage3_T *) CALLOC(*npaths,sizeof(Stage3_T));
+    array1 = (Stage3_T *) MALLOC((*npaths) * sizeof(Stage3_T)); /* Return value */
     j = 0;
     for (i = 0; i < norig; i++) {
       x = array0[i];
@@ -894,8 +931,8 @@ stage3array_from_list (int *npaths, int *first_absmq, int *second_absmq, List_T 
 	array1[j++] = x;
       }
     }
-    FREE(array0);
-    FREE(eliminate);
+    FREEA(array0);
+    FREEA(eliminate);
 
     threshold_score = Stage3_goodness(array1[0]) - suboptimal_score;
     i = 1;
@@ -920,7 +957,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 #ifdef PMAP
 		   Sequence_T queryntseq,
 #endif
-		   Sequence_T queryuc,
+		   Sequence_T queryuc, Stage2_alloc_T stage2_alloc,
 		   Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 		   Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool, int straintype, char *strain,
 		   Chrnum_T chrnum, Univcoord_T chroffset, Univcoord_T chrhigh, Chrpos_T chrlength,
@@ -988,8 +1025,7 @@ update_stage3list (List_T stage3list, bool lowidentityp, Sequence_T queryseq,
 				     Sequence_trimpointer(queryseq),Sequence_trimpointer(queryuc),
 				     Sequence_trimlength(queryseq),/*query_offset*/0,
 				     chrstart,chrend,chroffset,chrhigh,/*plusp*/watsonp,genestrand,
-
-				     oligoindices_major,/*proceed_pctcoverage*/0.3,
+				     stage2_alloc,oligoindices_major,/*proceed_pctcoverage*/0.3,
 				     pairpool,diagpool,cellpool,sufflookback,nsufflookback,maxintronlen_bound,
 				     /*localp*/true,/*skip_repetitive_p*/true,
 				     /*favor_right_p*/false,/*max_nalignments*/MAX_NALIGNMENTS,debug_graphic_p,
@@ -1132,7 +1168,7 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 #ifdef PMAP
 			 Sequence_T queryntseq,
 #endif
-			 Sequence_T usersegment,
+			 Sequence_T usersegment, Stage2_alloc_T stage2_alloc,
 			 Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 			 Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 			 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
@@ -1153,7 +1189,7 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 #ifdef PMAP
 				 queryntseq,
 #endif
-				 queryuc,oligoindices_major,oligoindices_minor,
+				 queryuc,stage2_alloc,oligoindices_major,oligoindices_minor,
 				 pairpool,diagpool,cellpool,/*straintype*/0,/*strain*/NULL,
 				 chrnum,chroffset,chrhigh,chrlength,
 				 /*chrstart*/0,/*chrend*/chrhigh,/*watsonp*/true,/*genestrand*/0,
@@ -1167,7 +1203,7 @@ stage3_from_usersegment (int *npaths, int *first_absmq, int *second_absmq,
 #ifdef PMAP
 				 queryntseq,
 #endif
-				 queryuc,oligoindices_major,oligoindices_minor,
+				 queryuc,stage2_alloc,oligoindices_major,oligoindices_minor,
 				 pairpool,diagpool,cellpool,/*straintype*/0,/*strain*/NULL,
 				 chrnum,chroffset,chrhigh,chrlength,
 				 /*chrstart*/0,/*chrend*/chrhigh,/*watsonp*/false,/*genestrand*/0,
@@ -1379,7 +1415,7 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp,
 #ifdef PMAP
 		      Sequence_T queryntseq,
 #endif
-		      Sequence_T usersegment,
+		      Sequence_T usersegment, Stage2_alloc_T stage2_alloc,
 		      Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 		      Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		      Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
@@ -1415,7 +1451,7 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp,
 			     Gregion_chrstart(gregion),Gregion_chrend(gregion),
 			     Gregion_chroffset(gregion),Gregion_chrhigh(gregion),
 			     /*plusp*/Gregion_revcompp(gregion) ? false : true,Gregion_genestrand(gregion),
-			     oligoindices_major,diagpool,debug_graphic_p,diagnosticp);
+			     stage2_alloc,oligoindices_major,diagpool,debug_graphic_p,diagnosticp);
       Gregion_set_ncovered(gregion,ncovered,stage2_source);
       if (diagnosticp == true) {
 	fprintf(stderr,"Scanned %d ncovered\n",ncovered);
@@ -1467,7 +1503,8 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp,
 #ifdef PMAP
 					 queryntseq,
 #endif
-					 queryuc,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					 queryuc,stage2_alloc,oligoindices_major,oligoindices_minor,
+					 pairpool,diagpool,cellpool,
 					 /*straintype*/0,/*strain*/NULL,Gregion_chrnum(gregion),
 					 Gregion_chroffset(gregion),Gregion_chrhigh(gregion),Gregion_chrlength(gregion),
 					 Gregion_chrstart(gregion),Gregion_chrend(gregion),
@@ -1499,7 +1536,8 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp,
 #ifdef PMAP
 					 queryntseq,
 #endif
-					 queryuc,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					 queryuc,stage2_alloc,oligoindices_major,oligoindices_minor,
+					 pairpool,diagpool,cellpool,
 					 /*straintype*/0,/*strain*/NULL,Gregion_chrnum(gregion),
 					 Gregion_chroffset(gregion),Gregion_chrhigh(gregion),Gregion_chrlength(gregion),
 					 Gregion_chrstart(gregion),Gregion_chrend(gregion),
@@ -1532,7 +1570,7 @@ stage3_from_gregions (List_T stage3list, List_T gregions, bool lowidentityp,
 #ifdef PMAP
 					       queryntseq,
 #endif					     
-					       queryuc,oligoindices_major,oligoindices_minor,
+					       queryuc,stage2_alloc,oligoindices_major,oligoindices_minor,
 					       pairpool,diagpool,straintype,strain,
 					       Gregion_chrnum(gregion),Gregion_chroffset(gregion),
 					       Gregion_chrhigh(gregion),Gregion_chrlength(gregion),
@@ -1757,8 +1795,8 @@ local_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1,
     *stage3array_sub2 = (Stage3_T *) NULL;
     *npaths_sub2 = 0;
   } else {
-    *stage3array_sub1 = (Stage3_T *) CALLOC(*npaths_sub1,sizeof(Stage3_T));
-    *stage3array_sub2 = (Stage3_T *) CALLOC(*npaths_sub2,sizeof(Stage3_T));
+    *stage3array_sub1 = (Stage3_T *) MALLOC((*npaths_sub1) * sizeof(Stage3_T)); /* Return value */
+    *stage3array_sub2 = (Stage3_T *) MALLOC((*npaths_sub2) * sizeof(Stage3_T)); /* Return value */
     j = k = 0;
     for (p = stage3list; p != NULL; p = List_next(p)) {
       stage3 = (Stage3_T) List_head(p);
@@ -1861,8 +1899,8 @@ distant_separate_paths (Stage3_T **stage3array_sub1, int *npaths_sub1,
     *stage3array_sub2 = (Stage3_T *) NULL;
     *npaths_sub2 = 0;
   } else {
-    *stage3array_sub1 = (Stage3_T *) CALLOC(*npaths_sub1,sizeof(Stage3_T));
-    *stage3array_sub2 = (Stage3_T *) CALLOC(*npaths_sub2,sizeof(Stage3_T));
+    *stage3array_sub1 = (Stage3_T *) MALLOC((*npaths_sub1) * sizeof(Stage3_T)); /* Return value */
+    *stage3array_sub2 = (Stage3_T *) MALLOC((*npaths_sub2) * sizeof(Stage3_T)); /* Return value */
     j = k = 0;
     for (p = stage3list; p != NULL; p = List_next(p)) {
       stage3 = (Stage3_T) List_head(p);
@@ -1975,7 +2013,7 @@ merge_left_and_right_readthrough (bool *mergedp, Stage3_T *stage3array_sub1, int
     if (npaths_sub1 + npaths_sub2 > 2) {
       /* Push rest of results, taking care not to have duplicates */
 
-      array = (Stage3_T *) CALLOC(npaths_sub1 + npaths_sub2 - 2,sizeof(Stage3_T));
+      array = (Stage3_T *) MALLOCA((npaths_sub1 + npaths_sub2 - 2) * sizeof(Stage3_T));
       k = 0;
       for (i = 0; i < npaths_sub1; i++) {
 	if (i != bestfrom) {
@@ -2009,7 +2047,7 @@ merge_left_and_right_readthrough (bool *mergedp, Stage3_T *stage3array_sub1, int
 	}
       }
 
-      FREE(array);
+      FREEA(array);
     }
 
     for (p = nonjoinable; p != NULL; p = List_next(p)) {
@@ -2057,7 +2095,7 @@ merge_left_and_right_transloc (Stage3_T *stage3array_sub1, int npaths_sub1, int 
   if (npaths_sub1 + npaths_sub2 > 2) {
     /* Push rest of results, taking care not to have duplicates */
 
-    array = (Stage3_T *) CALLOC(npaths_sub1 + npaths_sub2 - 2,sizeof(Stage3_T));
+    array = (Stage3_T *) MALLOCA((npaths_sub1 + npaths_sub2 - 2) * sizeof(Stage3_T));
     k = 0;
     for (i = 0; i < npaths_sub1; i++) {
       if (i != bestfrom) {
@@ -2087,7 +2125,7 @@ merge_left_and_right_transloc (Stage3_T *stage3array_sub1, int npaths_sub1, int 
       }
     }
 
-    FREE(array);
+    FREEA(array);
   }
 
   for (p = nonjoinable; p != NULL; p = List_next(p)) {
@@ -2250,7 +2288,7 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
 #ifdef PMAP
 		 Sequence_T queryntseq,
 #endif
-		 int queryntlength, Sequence_T usersegment, 
+		 int queryntlength, Sequence_T usersegment, Stage2_alloc_T stage2_alloc,
 		 Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 		 Matchpool_T matchpool, Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
@@ -2352,7 +2390,8 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
 #ifdef PMAP
 					      queryntseq,
 #endif
-					      usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,
 					      dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 #ifdef DEBUG2
 	    for (p = stage3list; p != NULL; p = List_next(p)) {
@@ -2393,7 +2432,8 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
 #ifdef PMAP
 					      queryntseq,
 #endif
-					      usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,
 					      dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 #ifdef DEBUG2
 	    for (p = stage3list; p != NULL; p = List_next(p)) {
@@ -2455,7 +2495,8 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
 #ifdef PMAP
 					      queryntseq,
 #endif
-					      usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,
 					      dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 #ifdef DEBUG2
 	    for (p = stage3list; p != NULL; p = List_next(p)) {
@@ -2496,7 +2537,8 @@ check_for_local (bool *mergedp, List_T stage3list, int effective_start, int effe
 #ifdef PMAP
 					      queryntseq,
 #endif
-					      usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,
 					      dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 #ifdef DEBUG2
 	    for (p = stage3list; p != NULL; p = List_next(p)) {
@@ -2608,7 +2650,7 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 #ifdef PMAP
 		   Sequence_T queryntseq,
 #endif
-		   int queryntlength, Sequence_T usersegment, 
+		   int queryntlength, Sequence_T usersegment, Stage2_alloc_T stage2_alloc,
 		   Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 		   Matchpool_T matchpool, Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		   Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
@@ -2705,7 +2747,8 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 #ifdef PMAP
 					      queryntseq,
 #endif
-					      usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,
 					      dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 #ifdef DEBUG2
 	    for (p = stage3list; p != NULL; p = List_next(p)) {
@@ -2746,7 +2789,8 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 #ifdef PMAP
 					      queryntseq,
 #endif
-					      usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,
 					      dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 #ifdef DEBUG2
 	    for (p = stage3list; p != NULL; p = List_next(p)) {
@@ -2803,7 +2847,8 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 #ifdef PMAP
 					      queryntseq,
 #endif
-					      usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,
 					      dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 #ifdef DEBUG2
 	    for (p = stage3list; p != NULL; p = List_next(p)) {
@@ -2844,7 +2889,8 @@ check_for_chimera (bool *mergedp, Chimera_T *chimera, List_T stage3list, int eff
 #ifdef PMAP
 					      queryntseq,
 #endif
-					      usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+					      usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,
 					      dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 #ifdef DEBUG2
 	    for (p = stage3list; p != NULL; p = List_next(p)) {
@@ -2983,7 +3029,8 @@ merge_middlepieces (List_T stage3list, Stage3_T from, Stage3_T to,
 #endif
 		    Sequence_T queryuc, int queryntlength,
 		    Pairpool_T pairpool, Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
-		    Oligoindex_array_T oligoindices_minor, Diagpool_T diagpool, Cellpool_T cellpool, int ngap) {
+		    Oligoindex_array_T oligoindices_minor, Diagpool_T diagpool, Cellpool_T cellpool,
+		    int ngap) {
   List_T newstage3list = NULL, merged;
   List_T nonjoinable, r;
   bool mergedAp, mergedBp;
@@ -3113,7 +3160,7 @@ check_middle_piece_local (bool *foundp, List_T stage3list, Sequence_T queryseq, 
 #ifdef PMAP
 			  Sequence_T queryntseq,
 #endif
-			  int queryntlength, Sequence_T usersegment, 
+			  int queryntlength, Sequence_T usersegment, Stage2_alloc_T stage2_alloc,
 			  Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 			  Matchpool_T matchpool, Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 			  Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
@@ -3191,7 +3238,8 @@ check_middle_piece_local (bool *foundp, List_T stage3list, Sequence_T queryseq, 
 #ifdef PMAP
 						  queryntseq,
 #endif
-						  querysubuc,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+						  querysubuc,stage2_alloc,oligoindices_major,oligoindices_minor,
+						  pairpool,diagpool,cellpool,
 						  /*straintype*/0,/*strain*/NULL,chrnum,
 						  chroffset,chrhigh,chrlength,chrstart,chrend,plusp,/*genestrand*/0,
 						  dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL)) != NULL) {
@@ -3299,7 +3347,7 @@ check_middle_piece_chimera (bool *foundp, List_T stage3list, Sequence_T queryseq
 #ifdef PMAP
 			    Sequence_T queryntseq,
 #endif
-			    int queryntlength, Sequence_T usersegment, 
+			    int queryntlength, Sequence_T usersegment, Stage2_alloc_T stage2_alloc,
 			    Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 			    Matchpool_T matchpool, Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 			    Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR) {
@@ -3401,7 +3449,8 @@ check_middle_piece_chimera (bool *foundp, List_T stage3list, Sequence_T queryseq
 #ifdef PMAP
 						queryntseq,
 #endif
-						usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+						usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+						pairpool,diagpool,cellpool,
 						dynprogL,dynprogM,dynprogR,/*worker_stopwatch*/NULL);
 	  }
 	  Diagnostic_free(&diagnostic);
@@ -3583,8 +3632,8 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 #ifdef PMAP
 	      Sequence_T queryntseq,
 #endif
-	      Sequence_T usersegment, Oligoindex_array_T oligoindices_major,
-	      Oligoindex_array_T oligoindices_minor,
+	      Sequence_T usersegment, Stage2_alloc_T stage2_alloc,
+	      Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 	      Matchpool_T matchpool, Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 	      Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR, Stopwatch_T worker_stopwatch) {
 #ifdef DEBUG2
@@ -3606,7 +3655,8 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 #ifdef PMAP
 				    queryntseq,
 #endif
-				    usersegment,oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
+				    usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
+				    pairpool,diagpool,cellpool,
 				    dynprogL,dynprogM,dynprogR,worker_stopwatch);
 
   debug2(printf("Initial search gives stage3list of length %d\n",List_length(stage3list)));
@@ -3675,7 +3725,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 #ifdef PMAP
 				     queryntseq,
 #endif
-				     queryntlength,usersegment,oligoindices_major,oligoindices_minor,
+				     queryntlength,usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
 				     matchpool,pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR);
 	
 	if (*mergedp == true) {
@@ -3686,7 +3736,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 #ifdef PMAP
 						queryntseq,
 #endif
-						queryntlength,usersegment,oligoindices_major,oligoindices_minor,
+						queryntlength,usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
 						matchpool,pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR);
 	  if (foundp == true) {
 	    /* Iterate */
@@ -3724,6 +3774,10 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 	debug2(printf("turned off\n"));
 	testchimerap = false;
 
+      } else if (maxpaths == 1) {
+	debug2(printf("maxpaths set to 1\n"));
+	testchimerap = false;
+
       } else if (Stage3_domain(nonchimericbest) < chimera_margin) {
 	debug2(printf("Existing alignment is too short, so won't look for chimera\n"));
 	testchimerap = false;
@@ -3757,7 +3811,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 #ifdef PMAP
 				       queryntseq,
 #endif
-				       queryntlength,usersegment,oligoindices_major,oligoindices_minor,
+				       queryntlength,usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
 				       matchpool,pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR);
 	if (*chimera != NULL) {
 	  testchimerap = false;
@@ -3770,7 +3824,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 #ifdef PMAP
 						    queryntseq,
 #endif
-						    queryntlength,usersegment,oligoindices_major,oligoindices_minor,
+						    queryntlength,usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
 						    matchpool,pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR);
 	    if (foundp == true) {
 	      /* Iterate */
@@ -3820,7 +3874,7 @@ apply_stage3 (bool *mergedp, Chimera_T *chimera, List_T gregions, bool lowidenti
 
 static Result_T
 process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
-		 Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
+		 Stage2_alloc_T stage2_alloc, Oligoindex_array_T oligoindices_major, Oligoindex_array_T oligoindices_minor,
 		 Dynprog_T dynprogL, Dynprog_T dynprogM, Dynprog_T dynprogR,
 		 Stopwatch_T worker_stopwatch) {
   Result_T result;
@@ -3899,7 +3953,7 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 #ifdef PMAP
 					    queryntseq,
 #endif
-					    usersegment,oligoindices_major,oligoindices_minor,
+					    usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
 					    pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
       result = Result_new(jobid,/*mergedp*/false,(Chimera_T) NULL,stage3array,npaths,first_absmq,second_absmq,diagnostic,NO_FAILURE);
 
@@ -3934,7 +3988,7 @@ process_request (Request_T request, Matchpool_T matchpool, Pairpool_T pairpool, 
 #ifdef PMAP
 				  queryntseq,
 #endif
-				  usersegment,oligoindices_major,oligoindices_minor,
+				  usersegment,stage2_alloc,oligoindices_major,oligoindices_minor,
 				  matchpool,pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,worker_stopwatch);
 	if (diag_debug == true) {
 	  result = Result_new_diag_debug(jobid,/*diagonals*/stage3list,diagnostic,NO_FAILURE);
@@ -4001,6 +4055,7 @@ signal_handler (int sig) {
 
 static void
 single_thread () {
+  Stage2_alloc_T stage2_alloc;
   Oligoindex_array_T oligoindices_major, oligoindices_minor;
   Dynprog_T dynprogL, dynprogM, dynprogR;
   Matchpool_T matchpool;
@@ -4014,6 +4069,7 @@ single_thread () {
   int noutput = 0;
   int jobid = 0;
 
+  stage2_alloc = Stage2_alloc_new(MAX_QUERYLENGTH_FOR_ALLOC);
   oligoindices_major = Oligoindex_array_new_major(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
   oligoindices_minor = Oligoindex_array_new_minor(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
   dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
@@ -4052,7 +4108,7 @@ single_thread () {
     }
     TRY
       result = process_request(request,matchpool,pairpool,diagpool,cellpool,
-  			       oligoindices_major,oligoindices_minor,
+  			       stage2_alloc,oligoindices_major,oligoindices_minor,
 			       dynprogL,dynprogM,dynprogR,worker_stopwatch);
     ELSE
       queryseq = Request_queryseq(request);
@@ -4075,7 +4131,8 @@ single_thread () {
       Outbuffer_print_result(outbuffer,result,request,/*headerseq*/Request_queryseq(request),
 			     noutput+1);
     }
-    Mem_usage_reset_max();
+    Mem_usage_reset_stack_max();
+    Mem_usage_reset_heap_max();
 #else
     if (user_pairalign_p == true) {
       Outbuffer_print_result(outbuffer,result,request,/*headerseq*/usersegment);
@@ -4103,6 +4160,7 @@ single_thread () {
   Dynprog_free(&dynprogL);
   Oligoindex_array_free(&oligoindices_minor);
   Oligoindex_array_free(&oligoindices_major);
+  Stage2_alloc_free(&stage2_alloc);
 
   return;
 }
@@ -4111,6 +4169,7 @@ single_thread () {
 #ifdef HAVE_PTHREAD
 static void *
 worker_thread (void *data) {
+  Stage2_alloc_T stage2_alloc;
   Oligoindex_array_T oligoindices_major, oligoindices_minor;
   Dynprog_T dynprogL, dynprogM, dynprogR;
   Matchpool_T matchpool;
@@ -4124,6 +4183,7 @@ worker_thread (void *data) {
   int jobid = 0;
 
   /* Thread-specific data and storage */
+  stage2_alloc = Stage2_alloc_new(MAX_QUERYLENGTH_FOR_ALLOC);
   oligoindices_major = Oligoindex_array_new_major(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
   oligoindices_minor = Oligoindex_array_new_minor(MAX_QUERYLENGTH_FOR_ALLOC,MAX_GENOMICLENGTH_FOR_ALLOC);
   dynprogL = Dynprog_new(nullgap,EXTRAQUERYGAP,maxpeelback,extramaterial_end,extramaterial_paired,
@@ -4150,7 +4210,7 @@ worker_thread (void *data) {
 
     TRY
       result = process_request(request,matchpool,pairpool,diagpool,cellpool,
-			       oligoindices_major,oligoindices_minor,
+			       stage2_alloc,oligoindices_major,oligoindices_minor,
 			       dynprogL,dynprogM,dynprogR,worker_stopwatch);
     ELSE
       queryseq = Request_queryseq(request);
@@ -4186,6 +4246,7 @@ worker_thread (void *data) {
   Dynprog_free(&dynprogL);
   Oligoindex_array_free(&oligoindices_minor);
   Oligoindex_array_free(&oligoindices_major);
+  Stage2_alloc_free(&stage2_alloc);
 
   return (void *) NULL;
 }
@@ -4197,6 +4258,7 @@ worker_thread (void *data) {
 static void
 align_relative (FILE *input, char **files, int nfiles, int nextchar,
 		Sequence_T queryseq, Sequence_T referenceseq) {
+  Stage2_alloc_T stage2_alloc;
   Oligoindex_array_T oligoindices_major, oligoindices_minor;
   Diagnostic_T diagnostic;
   bool lowidentityp;
@@ -4646,6 +4708,9 @@ main (int argc, char *argv[]) {
       if (!strcmp(long_name,"version")) {
 	print_program_version();
 	exit(0);
+      } else if (!strcmp(long_name,"check")) {
+	check_compiler_assumptions();
+	exit(0);
       } else if (!strcmp(long_name,"help")) {
 	print_program_usage();
 	exit(0);
@@ -5019,7 +5084,23 @@ main (int argc, char *argv[]) {
       } else if (!strcmp(optarg,"9") || !strcmp(optarg,"coords")) {
 	printtype = COORDS;
       } else {
-	fprintf(stderr,"Output format %s not recognized\n",optarg);
+	fprintf(stderr,"Output format \"%s\" not recognized.  Allowed formats are:\n",optarg);
+	fprintf(stderr,"  psl_nt (1)\n");
+#ifdef PMAP
+	fprintf(stderr,"  psl_pro (0)\n");
+#else
+	fprintf(stderr,"  psl\n");
+	fprintf(stderr,"  splicesites (6)\n");
+	fprintf(stderr,"  introns\n");
+	fprintf(stderr,"  samse\n");
+	fprintf(stderr,"  sampe\n");
+#endif
+	fprintf(stderr,"  gff3_gene (2)\n");
+	fprintf(stderr,"  gff3_match_cdna (3)\n");
+	fprintf(stderr,"  gff3_match_est (4)\n");
+	fprintf(stderr,"  map_exons (7)\n");
+	fprintf(stderr,"  map_ranges (8)\n");
+	fprintf(stderr,"  coords (9)\n");
 	exit(9);
       }
       break;
@@ -5195,6 +5276,8 @@ main (int argc, char *argv[]) {
       circular_typeint = Univ_IIT_typeint(chromosome_iit,"circular");
       circularp = Univ_IIT_circularp(chromosome_iit);
     }
+    genomelength = Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false);
+
     FREE(iitfile);
 
     if (map_iitfile == NULL) {
@@ -5297,7 +5380,10 @@ main (int argc, char *argv[]) {
     if ((usersegment = Sequence_read_unlimited(&nextchar,input)) == NULL) {
       fprintf(stderr,"File %s is empty\n",user_genomicseg);
       exit(9);
+    } else {
+      genomelength = (Univcoord_T) Sequence_fulllength(usersegment);
     }
+    
     if ((min_matches = Sequence_fulllength(usersegment)/2) > MIN_MATCHES) {
       min_matches = MIN_MATCHES;
     }
@@ -5838,7 +5924,7 @@ main (int argc, char *argv[]) {
 		    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
   Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p,
 	     force_xs_direction_p,md_lowercase_variant_p,
-	     /*snps_p*/genomecomp_alt ? true : false);
+	     /*snps_p*/genomecomp_alt ? true : false,genomelength);
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       require_splicedir_p,splicing_iit,splicing_divint_crosstable,
 	       donor_typeint,acceptor_typeint,
@@ -6396,6 +6482,7 @@ Filtering output options\n\
                                    of this filter\n\
 \n\
 Help options\n\
+  --check                        Check compiler assumptions\n\
   --version                      Show version\n\
   --help                         Show this help message\n\
 ");

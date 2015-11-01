@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uintlist.c 140368 2014-07-02 00:56:33Z twu $";
+static char rcsid[] = "$Id: uintlist.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -63,9 +63,11 @@ Uintlist_free (T *list) {
   T prev;
 
   while ((prev = *list) != NULL) {
-    *list = (*list)->rest;
+    *list = prev->rest;
     FREE(prev);
   }
+
+  return;
 }
 
 T
@@ -102,6 +104,32 @@ Uintlist_to_array (int *n, T list) {
     list = list->rest;
   }
   return array;
+}
+
+void
+Uintlist_fill_array (UINT4 *array, T list) {
+  int i = 0;
+
+  while (list) {
+    array[i++] = list->first;
+    list = list->rest;
+  }
+
+  return;
+}
+
+void
+Uintlist_fill_array_and_free (UINT4 *array, T *list) {
+  T prev;
+  int i = 0;
+
+  while ((prev = *list) != NULL) {
+    array[i++] = prev->first;
+    *list = prev->rest;
+    FREE(prev);
+  }
+
+  return;
 }
 
 UINT4 *

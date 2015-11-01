@@ -1,4 +1,4 @@
-/* $Id: substring.h 138720 2014-06-11 17:07:51Z twu $ */
+/* $Id: substring.h 148359 2014-09-19 22:09:34Z twu $ */
 #ifndef SUBSTRING_INCLUDED
 #define SUBSTRING_INCLUDED
 
@@ -27,7 +27,7 @@ Substring_setup (bool print_nsnpdiffs_p_in, bool print_snplabels_p_in,
 		 IIT_T splicesites_iit_in, int *splicesites_divint_crosstable_in,
 		 int donor_typeint_in, int acceptor_typeint_in, int trim_mismatch_score_in,
 		 bool novelsplicingp_in, bool knownsplicingp_in,
-		 bool output_sam_p_in, Mode_T mode_in);
+		 bool output_sam_p_in, Mode_T mode_in, Univcoord_T genomelength_in);
 
 #define T Substring_T
 typedef struct T *T;
@@ -223,6 +223,9 @@ Substring_sort_chimera_halves (List_T hitlist, bool ascendingp);
 
 
 extern void
+Substring_print_m8 (FILE *fp, T substring, Shortread_T headerseq, char *acc_suffix,
+		    char *chr, bool invertp);
+extern void
 Substring_print_single (FILE *fp, T substring, Shortread_T queryseq,
 			char *chr, bool invertp);
 extern void
@@ -287,6 +290,19 @@ Substring_assign_shortexon_prob (T shortexon);
 extern int
 Substring_count_mismatches_region (T this, int trim_left, int trim_right,
 				   Compress_T query_compress_fwd, Compress_T query_compress_rev);
+
+extern List_T
+Substring_convert_to_pairs (List_T pairs, T substring, Shortread_T queryseq,
+			    int clipdir, int hardclip, bool first_read_p, int queryseq_offset);
+extern List_T
+Substring_add_insertion (List_T pairs, T substringA, T substringB, int insertionlength, Shortread_T queryseq,
+			 int clipdir, int hardclip, bool first_read_p, int queryseq_offset);
+extern List_T
+Substring_add_deletion (List_T pairs, T substringA, T substringB, char *deletion, int deletionlength,
+			int clipdir, int hardclip, bool first_read_p, int queryseq_offset);
+extern List_T
+Substring_add_intron (List_T pairs, T substringA, T substringB,
+		      int clipdir, int hardclip, bool first_read_p, int queryseq_offset);
 
 #undef T
 #endif

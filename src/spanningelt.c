@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: spanningelt.c 129930 2014-03-13 03:29:20Z twu $";
+static char rcsid[] = "$Id: spanningelt.c 146624 2014-09-02 21:32:50Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -80,23 +80,24 @@ Spanningelt_init_positions_free (bool positions_fileio_p) {
 }
 
 void
-Spanningelt_free (T *old) {
+Spanningelt_gc (T old) {
 
-  if ((*old)->intersection_diagonals_reset != NULL) {
-    FREE((*old)->intersection_diagonals_reset);
+  if (old->intersection_diagonals_reset != NULL) {
+    FREE(old->intersection_diagonals_reset);
   }
-  if ((*old)->compoundpos != NULL) {
-    Compoundpos_free(&((*old)->compoundpos));
+  if (old->compoundpos != NULL) {
+    Compoundpos_free(&(old->compoundpos));
   }
 #ifdef LARGE_GENOMES
-  FREE((*old)->positions_high_allocated);
-  FREE((*old)->positions_low_allocated);
+  FREE(old->positions_high_allocated);
+  FREE(old->positions_low_allocated);
 #else
-  FREE((*old)->positions_allocated);
+  FREE(old->positions_allocated);
 #endif
   /* Should not free partner_positions */
 
-  FREE(*old);
+  /* FREE(old); -- Don't free, because allocated as an array */
+
   return;
 }
 
@@ -174,6 +175,19 @@ Spanningelt_print (T this) {
 }
 
 void
+Spanningelt_print_array (Spanningelt_T *array, int nelts) {
+  int i;
+
+  printf("Set of length %d\n",nelts);
+  for (i = 0; i < nelts; i++) {
+    Spanningelt_print(array[i]);
+  }
+  printf("\n");
+  return;
+}
+
+
+void
 Spanningelt_print_set (List_T spanningset) {
   List_T p;
 
@@ -187,19 +201,19 @@ Spanningelt_print_set (List_T spanningset) {
 
 
 
-static T
-Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
+static void
+Spanningelt_compute (int *candidates_score, Spanningelt_T new,
+		     Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 #ifdef LARGE_GENOMES
-		 unsigned char ***stage1_positions_high, UINT4 ***stage1_positions_low,
+		     unsigned char ***stage1_positions_high, UINT4 ***stage1_positions_low,
 #else
-		 Univcoord_T ***stage1_positions,
+		     Univcoord_T ***stage1_positions,
 #endif
-		 int **stage1_npositions, Indexdb_T indexdb, bool partnerp, int querypos1, int querypos2,
-		 int query_lastpos, int querylength, bool plusp) {
-  T new = (T) MALLOC(sizeof(*new));
+		     int **stage1_npositions, Indexdb_T indexdb, bool partnerp, int querypos1, int querypos2,
+		     int query_lastpos, int querylength, bool plusp) {
   int partnerpos, querypos;
 
-  debug(printf("Entered Spanningelt_new with querypos1 %d, querypos2 %d, query_lastpos %d, querylength %d\n",
+  debug(printf("Entered Spanningelt_compute with querypos1 %d, querypos2 %d, query_lastpos %d, querylength %d\n",
 	       querypos1,querypos2,query_lastpos,querylength));
   new->querylength = querylength;
   new->intersection_diagonals = (Univcoord_T *) NULL;
@@ -393,13 +407,15 @@ Spanningelt_new (Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
   new->partner_npositions_reset = new->partner_npositions;
   new->npositions_reset = new->npositions;
 
-  return new;
+  *candidates_score = new->candidates_score;
+  return;
 }
 
 
 
-static List_T
-make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
+static void
+make_spanningset_aux (int *minscore, int *nelts, Spanningelt_T *array,
+		      Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 #ifdef LARGE_GENOMES
 		      unsigned char ***stage1_positions_high, UINT4 ***stage1_positions_low,
 #else
@@ -407,10 +423,10 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
 #endif
 		      int **stage1_npositions, Indexdb_T indexdb, int query_lastpos, int querylength,
 		      int first, int last, bool plusp) {
-  List_T spanningset;
-  T elt;
+  /* T elt; */
   int worstpos, partnerpos, leftpos, rightpos, querypos, diff;
   int maxpositions = 0;
+  int candidates_score;
   bool first_anchored_p = true;
 
 
@@ -431,16 +447,18 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
   }
 
   /* Handle middle position first */
+  *nelts = 0;
   diff = (last - first) % spansize;
   if (diff == 0) {
-    elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),
+    Spanningelt_compute(&candidates_score,/*new*/array[(*nelts)++],
+			stage1_oligos,&(*stage1_retrievedp),
 #ifdef LARGE_GENOMES
-			  &(*stage1_positions_high),&(*stage1_positions_low),
+			&(*stage1_positions_high),&(*stage1_positions_low),
 #else
-			  &(*stage1_positions),
+			&(*stage1_positions),
 #endif
-			  &(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/worstpos,
-			  /*querypos2*/0,query_lastpos,querylength,plusp);
+			&(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/worstpos,
+			/*querypos2*/0,query_lastpos,querylength,plusp);
     leftpos = rightpos = worstpos;
   } else {
     if (first_anchored_p == true) {
@@ -452,56 +470,57 @@ make_spanningset_aux (int *minscore, Storedoligomer_T *stage1_oligos, bool **sta
       leftpos = partnerpos;
       rightpos = worstpos;
     }
-    elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),
+    Spanningelt_compute(&candidates_score,/*new*/array[(*nelts)++],
+			stage1_oligos,&(*stage1_retrievedp),
 #ifdef LARGE_GENOMES
-			  &(*stage1_positions_high),&(*stage1_positions_low),
+			&(*stage1_positions_high),&(*stage1_positions_low),
 #else
-			  &(*stage1_positions),
+			&(*stage1_positions),
 #endif
-			  &(*stage1_npositions),indexdb,/*partnerp*/true,/*querypos1*/partnerpos,
-			  /*querypos2*/worstpos,query_lastpos,querylength,plusp);
+			&(*stage1_npositions),indexdb,/*partnerp*/true,/*querypos1*/partnerpos,
+			/*querypos2*/worstpos,query_lastpos,querylength,plusp);
   }
-  spanningset = List_push(NULL,elt);
-  *minscore = elt->candidates_score;
+  *minscore = candidates_score;
 
   /* Add left positions */
   for (querypos = first; querypos < leftpos; querypos += spansize) {
-    elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),
+    Spanningelt_compute(&candidates_score,/*new*/array[(*nelts)++],
+			stage1_oligos,&(*stage1_retrievedp),
 #ifdef LARGE_GENOMES
-			  &(*stage1_positions_high),&(*stage1_positions_low),
+			&(*stage1_positions_high),&(*stage1_positions_low),
 #else
-			  &(*stage1_positions),
+			&(*stage1_positions),
 #endif
-			  &(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/querypos,
-			  /*querypos2*/0,query_lastpos,querylength,plusp);
-    spanningset = List_push(spanningset,elt);
-    if (elt->candidates_score < *minscore) {
-      *minscore = elt->candidates_score;
+			&(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/querypos,
+			/*querypos2*/0,query_lastpos,querylength,plusp);
+    if (candidates_score < *minscore) {
+      *minscore = candidates_score;
     }
   }
 
   /* Add right positions */
   for (querypos = last; querypos > rightpos; querypos -= spansize) {
-    elt = Spanningelt_new(stage1_oligos,&(*stage1_retrievedp),
+    Spanningelt_compute(&candidates_score,/*new*/array[(*nelts)++],
+			stage1_oligos,&(*stage1_retrievedp),
 #ifdef LARGE_GENOMES
-			  &(*stage1_positions_high),&(*stage1_positions_low),
+			&(*stage1_positions_high),&(*stage1_positions_low),
 #else
-			  &(*stage1_positions),
+			&(*stage1_positions),
 #endif
-			  &(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/querypos,
-			  /*querypos2*/0,query_lastpos,querylength,plusp);
-    spanningset = List_push(spanningset,elt);
-    if (elt->candidates_score < *minscore) {
-      *minscore = elt->candidates_score;
+			&(*stage1_npositions),indexdb,/*partnerp*/false,/*querypos1*/querypos,
+			/*querypos2*/0,query_lastpos,querylength,plusp);
+    if (candidates_score < *minscore) {
+      *minscore = candidates_score;
     }
   }
 
-  return spanningset;
+  return;
 }
 
 
-List_T
-Spanningelt_set (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
+void
+Spanningelt_set (int *minscore, int *nelts, Spanningelt_T *array,
+		 Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 #ifdef LARGE_GENOMES
 		 unsigned char ***stage1_positions_high, UINT4 ***stage1_positions_low,
 #else
@@ -525,14 +544,16 @@ Spanningelt_set (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_r
     last = query_lastpos + 2;
   }
 
-  return make_spanningset_aux(&(*minscore),stage1_oligos,&(*stage1_retrievedp),
+  make_spanningset_aux(&(*minscore),&(*nelts),array,
+		       stage1_oligos,&(*stage1_retrievedp),
 #ifdef LARGE_GENOMES
-			      &(*stage1_positions_high),&(*stage1_positions_low),
+		       &(*stage1_positions_high),&(*stage1_positions_low),
 #else
-			      &(*stage1_positions),
+		       &(*stage1_positions),
 #endif
-			      &(*stage1_npositions),indexdb,query_lastpos,querylength,
-			      first,last,plusp);
+		       &(*stage1_npositions),indexdb,query_lastpos,querylength,
+		       first,last,plusp);
+  return;
 }
 
 
@@ -940,7 +961,7 @@ Spanningelt_diagonals (int *ndiagonals, T this, int *miss_querypos5, int *miss_q
 	this->intersection_diagonals = (Univcoord_T *) NULL;
 	*ndiagonals = this->intersection_ndiagonals = 0;
       } else {
-	q = this->intersection_diagonals = (Univcoord_T *) CALLOC(this->npositions,sizeof(Univcoord_T));
+	q = this->intersection_diagonals = (Univcoord_T *) MALLOC(this->npositions * sizeof(Univcoord_T));
 #ifdef LARGE_GENOMES
 	p_high = this->positions_high;
 	p_low = this->positions_low;

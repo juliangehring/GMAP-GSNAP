@@ -1,4 +1,4 @@
-/* $Id: doublelist.h 40271 2011-05-28 02:29:18Z twu $ */
+/* $Id: doublelist.h 145990 2014-08-25 21:47:32Z twu $ */
 #ifndef DOUBLELIST_INCLUDED
 #define DOUBLELIST_INCLUDED
 
@@ -14,6 +14,8 @@ extern T Doublelist_reverse (T list);
 extern int Doublelist_length (T list);
 extern double *
 Doublelist_to_array (int *n, T list);
+extern void
+Doublelist_fill_array (double *array, T list);
 extern T Doublelist_from_string (char *string);
 extern double
 Doublelist_max (T this);

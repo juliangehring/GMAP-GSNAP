@@ -1,4 +1,4 @@
-/* $Id: outbuffer.h 136794 2014-05-21 18:58:14Z twu $ */
+/* $Id: outbuffer.h 149319 2014-09-30 02:15:42Z twu $ */
 #ifndef OUTBUFFER_INCLUDED
 #define OUTBUFFER_INCLUDED
 
@@ -31,11 +31,11 @@ typedef struct T *T;
 
 extern T
 Outbuffer_new (unsigned int output_buffer_size, unsigned int nread, char *sevenway_root, char *failedinput_root,
-	       bool appendp, Univ_IIT_T chromosome_iit,
-	       bool timingp, bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
+	       bool appendp, Univ_IIT_T chromosome_iit, bool timingp,
+	       bool output_sam_p, bool sam_headers_p, char *sam_read_group_id, char *sam_read_group_name,
 	       char *sam_read_group_library, char *sam_read_group_platform,
 	       int nworkers, bool orderedp, Gobywriter_T gobywriter, bool nofailsp, bool failsonlyp,
-	       bool fastq_format_p, bool clip_overlap_p, bool merge_samechr_p,
+	       bool fastq_format_p, bool clip_overlap_p, bool merge_overlap_p, bool merge_samechr_p, bool print_m8_p,
 	       int maxpaths_report, bool quiet_if_excessive_p, int quality_shift,
 	       bool invert_first_p, bool invert_second_p, Chrpos_T pairmax,
 	       int argc, char **argv, int optind);

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage2.c 145495 2014-08-19 18:38:55Z twu $";
+static char rcsid[] = "$Id: stage2.c 151086 2014-10-16 23:52:16Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -16,6 +16,7 @@ static char rcsid[] = "$Id: stage2.c 145495 2014-08-19 18:38:55Z twu $";
 #include "pairdef.h"
 #include "listdef.h"
 #include "intlist.h"
+#include "intlistdef.h"
 #include "diag.h"
 #include "genome_sites.h"
 #include "complement.h"
@@ -198,7 +199,7 @@ Stage2_setup (bool splicingp_in, bool cross_species_p,
 /* Dynamic programming */
 /* Can also define debug9(x) as: if (querypos == XX) {x;} */
 #ifdef DEBUG9
-#define debug9(x) if (querypos == 67) {x;}
+#define debug9(x) x
 #else 
 #define debug9(x)
 #endif
@@ -223,6 +224,49 @@ Stage2_setup (bool splicingp_in, bool cross_species_p,
 #else 
 #define debug12(x)
 #endif
+
+
+struct Stage2_alloc_T {
+  int max_querylength_alloc;
+
+  bool *coveredp;
+  Chrpos_T **mappings;
+  int *npositions;
+  unsigned int *minactive;
+  unsigned int *maxactive;
+  int *firstactive;
+  int *nactive;
+};
+
+void
+Stage2_alloc_free (Stage2_alloc_T *old) {
+  FREE((*old)->firstactive);
+  FREE((*old)->nactive);
+  FREE((*old)->maxactive);
+  FREE((*old)->minactive);
+  FREE((*old)->npositions);
+  FREE((*old)->mappings);
+  FREE((*old)->coveredp);
+  FREE(*old);
+  return;
+}
+
+Stage2_alloc_T
+Stage2_alloc_new (int max_querylength_alloc) {
+  Stage2_alloc_T new = (Stage2_alloc_T) MALLOC(sizeof(*new));
+
+  new->max_querylength_alloc = max_querylength_alloc;
+
+  new->coveredp = (bool *) MALLOC(max_querylength_alloc * sizeof(bool));
+  new->mappings = (Chrpos_T **) MALLOC(max_querylength_alloc * sizeof(Chrpos_T *));
+  new->npositions = (int *) MALLOC(max_querylength_alloc * sizeof(int));
+  new->minactive = (unsigned int *) MALLOC(max_querylength_alloc * sizeof(unsigned int));
+  new->maxactive = (unsigned int *) MALLOC(max_querylength_alloc * sizeof(unsigned int));
+  new->firstactive = (int *) MALLOC(max_querylength_alloc * sizeof(int));
+  new->nactive = (int *) MALLOC(max_querylength_alloc * sizeof(int));
+
+  return new;
+}
 
 
 #define T Stage2_T
@@ -376,7 +420,7 @@ Linkmatrix_print_both (struct Link_T **links, Chrpos_T **mappings, int length1,
   int i, j;
   char *oligo;
 
-  oligo = (char *) CALLOC(indexsize+1,sizeof(char));
+  oligo = (char *) MALLOCA((indexsize+1) * sizeof(char));
   for (i = 0; i <= length1-indexsize; i++) {
     strncpy(oligo,&(queryseq_ptr[i]),indexsize);
     printf("Querypos %d (%s, %d positions):",i,oligo,npositions[i]);
@@ -391,7 +435,8 @@ Linkmatrix_print_both (struct Link_T **links, Chrpos_T **mappings, int length1,
   }
   printf("\n");
 
-  FREE(oligo);
+  FREEA(oligo);
+
   return;
 }
 
@@ -405,7 +450,7 @@ Linkmatrix_print_fwd (struct Link_T **links, Chrpos_T **mappings, int length1,
   char *oligo;
   Intlist_T p, q;
 
-  oligo = (char *) CALLOC(indexsize+1,sizeof(char));
+  oligo = (char *) MALLOCA((indexsize+1) * sizeof(char));
   lastpos = length1 - indexsize;
 
   for (i = 0; i <= lastpos; i++) {
@@ -420,7 +465,8 @@ Linkmatrix_print_fwd (struct Link_T **links, Chrpos_T **mappings, int length1,
   }
   printf("\n");
 
-  FREE(oligo);
+  FREEA(oligo);
+
   return;
 }
 
@@ -578,31 +624,11 @@ active_bounds_dump_R (Chrpos_T *minactive, Chrpos_T *maxactive,
 }
 
 
-#if 0
-#define diffdist_penalty_nosplicing(x) (x + 1)
-#define diffdist_penalty_splicing(x) (x/TEN_THOUSAND + 1)
-#endif
-
-
 #ifdef PMAP
 #define QUERYDIST_PENALTY_FACTOR 2
 #else
 #define QUERYDIST_PENALTY_FACTOR 8
 #endif
-
-#if 0
-/* querydistance already has indexsize_nt subtracted */
-static int
-querydist_penalty (int querydistance) {
-#ifdef PMAP
-  return querydistance/2;
-#else
-  return querydistance/8;
-#endif
-}
-#endif
-
-
 
 
 /************************************************************************
@@ -623,217 +649,6 @@ print_last_dinucl (int *last_dinucl, int genomiclength) {
   return;
 }
 
-#endif
-
-
-
-#if 0
-static void
-check_canonical_dinucleotides_hr (int *lastGT, int *lastAG, 
-#ifndef PMAP
-				  int *lastCT, int *lastAC,
-#endif
-				  Univcoord_T genomicstart, Univcoord_T genomicend, bool plusp,
-				  int genomiclength) {
-
-  int pos;
-  int lastpos1, lastpos2;
-
-  /* printf("genomicstart %u, genomicend %u, genomiclength %d\n",genomicstart,genomicend,genomiclength); */
-
-#if 1
-  pos = 6;
-  while (pos <= genomiclength-4) {
-    lastpos1 = lastGT[pos];
-    lastpos2 = Genome_prev_donor_position(pos,/*pos5 (wrong)*/1,chroffset,chrhigh,plusp);
-    /* printf("at pos %d, lastpos1 %d, lastpos2 %d\n",pos,lastpos1,lastpos2); */
-    if (lastpos1 != lastpos2 && lastpos1 != -1) {
-      printf("donor plusp %d: at pos %d, lastpos1 %d != lastpos2 %d\n",plusp,pos,lastpos1,lastpos2);
-      abort();
-    }
-    pos++;
-  }
-#endif
-
-#if 1
-  pos = 6;
-  while (pos <= genomiclength-4) {
-    lastpos1 = lastAG[pos];
-    lastpos2 = Genome_prev_acceptor_position(pos,/*pos5 (wrong)*/1,chroffset,chrhigh,plusp);
-    /* printf("at pos %d, lastpos1 %d, lastpos2 %d\n",pos,lastpos1,lastpos2); */
-    if (lastpos1 != lastpos2 && lastpos1 != -1) {
-      printf("acceptor plusp %d: at pos %d, lastpos1 %d != lastpos2 %d\n",plusp,pos,lastpos1,lastpos2);
-      abort();
-    }
-    pos++;
-  }
-#endif
-
-#ifndef PMAP
-#if 1
-  pos = 6;
-  while (pos <= genomiclength-4) {
-    lastpos1 = lastAC[pos];
-    lastpos2 = Genome_prev_antidonor_position(pos,/*pos5 (wrong)*/1,chroffset,chrhigh,plusp);
-    /* printf("at pos %d, lastpos1 %d, lastpos2 %d\n",pos,lastpos1,lastpos2); */
-    if (lastpos1 != lastpos2 && lastpos1 != -1) {
-      printf("antidonor plusp %d: at pos %d, lastpos1 %d != lastpos2 %d\n",plusp,pos,lastpos1,lastpos2);
-      abort();
-    }
-    pos++;
-  }
-#endif
-
-#if 1
-  pos = 6;
-  while (pos <= genomiclength-4) {
-    lastpos1 = lastCT[pos];
-    lastpos2 = Genome_prev_antiacceptor_position(pos,/*pos5 (wrong)*/1,chroffset,chrhigh,plusp);
-    /* printf("at pos %d, lastpos1 %d, lastpos2 %d\n",pos,lastpos1,lastpos2); */
-    if (lastpos1 != lastpos2 && lastpos1 != -1) {
-      printf("antiacceptor plusp %d: at pos %d, lastpos1 %d != lastpos2 %d\n",plusp,pos,lastpos1,lastpos2);
-      abort();
-    }
-    pos++;
-  }
-#endif
-#endif
-
-  return;
-}
-#endif
-
-
-/* assert(chrstart < chrend) */
-/* For plus, chrinit = chrstart, chrterm = chrend.  For minus, chrinit = (chrhigh - chroffset) - chrend, chrterm = (chrhigh - chroffset) - chrstart. */
-
-#if 0
-/* Need this procedure because we are skipping some oligomers */
-static bool
-find_shifted_canonical (Chrpos_T leftpos, Chrpos_T rightpos, int querydistance, 
-			Chrpos_T (*genome_left_position)(Chrpos_T, Chrpos_T, Univcoord_T, Univcoord_T, bool),
-			Chrpos_T (*genome_right_position)(Chrpos_T, Chrpos_T, Univcoord_T, Univcoord_T, bool),
-			Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, bool skip_repetitive_p) {
-  Chrpos_T leftdi, rightdi;
-  Chrpos_T last_leftpos, last_rightpos;
-  int shift, leftmiss, rightmiss;
-  Chrpos_T left_chrbound, right_chrbound;
-  
-  /* leftpos = prevposition + querydistance + indexsize_nt - 1; */
-  /* rightpos = position; */
-
-  debug7(printf("Looking for shifted canonical at leftpos %u to rightpos %u, chroffset %u, chrhigh %u\n",
-		leftpos,rightpos,chroffset,chrhigh));
-
-#if 0
-  /* previously checked against genomiclength */
-  if (leftpos > genomiclength || rightpos > genomiclength) {
-    return false;
-  }
-#else
-  /* Checking just before call to genome_right_position */
-#endif
-
-  if (leftpos >= rightpos) {
-    debug7(printf("leftpos %u >= rightpos %u, so returning false\n",leftpos,rightpos));
-    return false;
-  }
-
-  if (leftpos < 103) {
-    left_chrbound = 3;	/* Previously 0, but then can find splice site at beginning of segment */
-  } else {
-    left_chrbound = leftpos - 100;
-  }
-
-  if (rightpos < 103) {
-    right_chrbound = 3;	/* Previously 0, but then can find splice site at beginning of segment */
-  } else {
-    right_chrbound = rightpos - 100;
-  }
-
-#if 0
-  if (skip_repetitive_p == false) {
-
-    last_leftpos = (*genome_left_position)(leftpos,left_chrbound,chroffset,chrhigh,plusp);
-    last_rightpos = (*genome_right_position)(rightpos,right_chrbound,chroffset,chrhigh,plusp);
-    debug7(printf("last_leftpos %u, last_rightpos %u\n",last_leftpos,last_rightpos));
-
-    debug7(printf("skip_repetitive_p == false, so returning %u == %u && %u == %u\n",
-		  leftpos,last_leftpos,rightpos,last_rightpos));
-    return (leftpos == last_leftpos && rightpos == last_rightpos);
-  }
-#endif
-
-  /* Allow canonical to be to right of match */
-  leftpos += SHIFT_EXTRA;
-  if (leftpos > chrhigh - 3) {
-    leftpos = chrhigh - 3;
-  }
-  rightpos += SHIFT_EXTRA;
-  if (rightpos > chrhigh - 3) {
-    rightpos = chrhigh - 3;
-  }
-  debug7(printf("after shift, leftpos = %u, rightpos = %u\n",leftpos,rightpos));
-
-  shift = 0;
-  while (shift <= querydistance + SHIFT_EXTRA + SHIFT_EXTRA) {
-
-#if 0
-    if (leftpos < 0) {
-      return false;
-    } else if (rightpos < 0) {
-      /* Shouldn't need to check if leftpos >= 0 and rightpos >= leftpos, in the other two conditions) */
-      return false;
-    } else if (rightpos >= chrlength) {
-      return false;
-    }
-#endif
-    if (leftpos < 3) {
-      return false;
-    } else if (leftpos > rightpos) {
-      return false;
-    }
-
-    last_leftpos = (*genome_left_position)(leftpos,left_chrbound,chroffset,chrhigh,plusp);
-    debug7(printf("last_leftpos %u\n",last_leftpos));
-    assert(last_leftpos != 0U);
-    if ((leftdi = last_leftpos) == -1) {
-      debug7(printf("\n"));
-      return false;
-    } else {
-      leftmiss = (int) (leftpos - leftdi);
-    }
-
-    last_rightpos = (*genome_right_position)(rightpos,right_chrbound,chroffset,chrhigh,plusp);
-    debug7(printf("last_rightpos %u\n",last_rightpos));
-    assert(last_rightpos != 0U);
-    if ((rightdi = last_rightpos) == -1) {
-      debug7(printf("\n"));
-      return false;
-    } else {
-      rightmiss = (int) (rightpos - rightdi);
-    }
-
-    debug7(printf("shift %d/left %d (miss %d)/right %d (miss %d)\n",shift,leftpos,leftmiss,rightpos,rightmiss));
-    if (leftmiss == rightmiss) {  /* was leftmiss == 0 && rightmiss == 0, which doesn't allow for a shift */
-      debug7(printf(" => Success at %u..%u (fwd) or %u..%u (rev)\n\n",
-		    leftpos-leftmiss+/*onebasedp*/1U,rightpos-rightmiss+/*onebasedp*/1U,
-		    chrhigh-chroffset-(leftpos-leftmiss),chrhigh-chroffset-(rightpos-rightmiss)));
-      return true;
-    } else if (leftmiss >= rightmiss) {
-      shift += leftmiss;
-      leftpos -= leftmiss;
-      rightpos -= leftmiss;
-    } else {
-      shift += rightmiss;
-      leftpos -= rightmiss;
-      rightpos -= rightmiss;
-    }
-  }
-
-  debug7(printf("\n"));
-  return false;
-}
 #endif
 
 
@@ -936,20 +751,22 @@ while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + inde
 
 
 static void
-score_querypos_lookback (
+score_querypos_lookback_one (
 #ifdef DEBUG9
-			 int *fwd_tracei,
+			     int *fwd_tracei,
 #endif
-			 Link_T currlink, int querypos,
-			 int querystart, int queryend, unsigned int position,
-			 struct Link_T **links, Chrpos_T **mappings,
-			 int **active, int *firstactive,
-			 Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-			 int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
-			 bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
-			 bool use_canonical_p, int non_canonical_penalty) {
+			     Link_T currlink, int querypos,
+			     int querystart, int queryend, unsigned int position,
+			     struct Link_T **links, Chrpos_T **mappings,
+			     int **active, int *firstactive,
+			     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
+			     int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+			     bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
+			     bool use_canonical_p, int non_canonical_penalty) {
   Link_T prevlink;
-  Intlist_T p;
+  struct Link_T *prev_links;
+  Chrpos_T *prev_mappings;
+  int *prev_active;
 
   int best_fwd_consecutive = indexsize*NT_PER_MATCH;
   int best_fwd_rootposition = position;
@@ -959,13 +776,11 @@ score_querypos_lookback (
 #ifdef DEBUG9
   int best_fwd_tracei;
   int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
-  int canonicalsgn;
+  int canonicalsgn = 0;
 #endif
-  bool adjacentp = false, donep;
+  bool adjacentp, donep;
   int prev_querypos, prevhit;
   Chrpos_T prevposition, gendistance;
-  Chrpos_T leftpos, last_leftpos, rightpos;
-  Univcoord_T donorpos, acceptorpos;
   Univcoord_T prevpos, currpos;
   int querydistance, diffdistance, lookback, nlookback, nseen, indexsize_nt, indexsize_query;
   /* int querydist_penalty; */
@@ -973,7 +788,6 @@ score_querypos_lookback (
   int enough_consecutive;
   /* bool near_end_p; */
   bool canonicalp;
-  double donor_score, acceptor_score, antidonor_score, antiacceptor_score;
 
 #ifdef PMAP
   indexsize_nt = indexsize*3;	/* Use when evaluating across genomic positions */
@@ -985,415 +799,1155 @@ score_querypos_lookback (
 
   enough_consecutive = 32;
 
-#if 0
-  if (querypos < querystart + NEAR_END_LENGTH) {
-    near_end_p = true;
-  } else if (querypos > queryend - NEAR_END_LENGTH) {
-    near_end_p = true;
-  } else {
-    near_end_p = false;
-  }
-#endif
+  /* Parameters for section D, assuming adjacent is false */
+  adjacentp = false;
+  nlookback = nsufflookback;
+  lookback = sufflookback;
 
   /* A. Evaluate adjacent position (at last one processed) */
   if (processed != NULL) {
     prev_querypos = Intlist_head(processed);
+    prev_links = links[prev_querypos];
+    prev_mappings = mappings[prev_querypos];
+    prev_active = active[prev_querypos];
+
 #ifdef PMAP
     querydistance = (querypos - prev_querypos)*3;
 #else
     querydistance = querypos - prev_querypos;
 #endif
     prevhit = firstactive[prev_querypos];
-    while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + querydistance <= position) {
-      if (prevposition + querydistance == position) {
-	prevlink = &(links[prev_querypos][prevhit]);
-	best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
-	best_fwd_rootposition = prevlink->fwd_rootposition;
-	/* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
-	best_fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH*querydistance;
+    prevposition = position;	/* Prevents prevposition + querydistance == position */
+    while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) + querydistance < position) {
+      prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+    }
+    if (prevposition + querydistance == position) {
+      prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
+      best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+      best_fwd_rootposition = prevlink->fwd_rootposition;
+      /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
+      best_fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH*querydistance;
 
-	best_fwd_prevpos = prev_querypos;
+      best_fwd_prevpos = prev_querypos;
+      best_fwd_prevhit = prevhit;
+#ifdef DEBUG9
+      best_fwd_tracei = prevlink->fwd_tracei;
+      best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+      best_fwd_intronnrev = prevlink->fwd_intronnrev;
+      best_fwd_intronnunk = prevlink->fwd_intronnunk;
+#endif
+      adjacentp = true;
+
+      /* Parameters for section D when adjacent is true, so we don't look so far back */
+      nlookback = 1;
+      lookback = sufflookback/2;
+
+
+      debug9(printf("\tA. Adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d)\n",
+		    prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],prevlink->fwd_score,
+		    best_fwd_score,best_fwd_consecutive,best_fwd_tracei,
+		    best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk));
+    }
+  }
+
+
+  /* Check work list */
+  if (anchoredp && querypos - indexsize_query <= querystart) {
+    /* Allow close prevpositions that overlap with anchor */
+    /* Can give rise to false positives, and increases amount of dynamic programming work */
+  } else if (0 && anchoredp && querypos == queryend) {
+    /* Test first position */
+  } else {
+    while (processed != NULL && (prev_querypos = Intlist_head(processed)) > querypos - indexsize_query) {
+      debug9(printf("Skipping prev_querypos %d, because too close\n",prev_querypos));
+      processed = Intlist_next(processed);
+    }
+  }
+
+  /* D. Evaluate for mismatches (all other previous querypos) */
+  donep = false;
+  nseen = 0;
+  for ( ; processed != NULL && best_fwd_consecutive < enough_consecutive && donep == false;
+	processed = Intlist_next(processed), nseen++) {
+    prev_querypos = Intlist_head(processed);
+
+#ifdef PMAP
+    querydistance = (querypos - prev_querypos)*3;
+#else
+    querydistance = querypos - prev_querypos;
+#endif
+
+    if (nseen > nlookback && querydistance - indexsize_nt > lookback) {
+      donep = true;
+    }
+
+    if ((prevhit = firstactive[prev_querypos]) != -1) {
+      /* querydist_penalty = (querydistance - indexsize_nt)/QUERYDIST_PENALTY_FACTOR; */
+      /* Actually a querydist_penalty */
+      querydist_credit = -querydistance/indexsize_nt;
+
+      prev_mappings = mappings[prev_querypos];
+      prev_links = links[prev_querypos];
+      prev_active = active[prev_querypos];
+
+      /* Range 1: From Infinity to maxintronlen */
+      if (splicingp == true) {
+	/* This is equivalent to diffdistance >= maxintronlen, where
+	   diffdistance = abs(gendistance - querydistance) and
+	   gendistance = (position - prevposition - indexsize_nt) */
+	while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) + maxintronlen + querydistance <= position) {
+	  /* Skip */
+	  /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
+	  prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+	}
+      }
+
+      /* Range 2: From maxintronlen to (prev_querypos + EQUAL_DISTANCE_NOT_SPLICING) */
+      /* This is equivalent to +diffdistance > EQUAL_DISTANCE_NOT_SPLICING */
+      while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) + EQUAL_DISTANCE_NOT_SPLICING + querydistance < position) {
+	/* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
+	prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
+
+	gendistance = position - prevposition;
+	assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
+	diffdistance = gendistance - querydistance; /* No need for abs() */
+
+	fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
+	if (splicingp == true) {
+	  fwd_score -= (diffdistance/TEN_THOUSAND + 1);
+	} else {
+	  fwd_score -= (diffdistance/ONE + 1);
+	}
+
+	if (use_canonical_p == true) {
+
+	  /* prevpos is lower genomic coordinate than currpos */
+	  /* need to subtract from position and prevposition to compensate for greedy matches */
+	  /* need to add to position and prevposition to compensate for missed matches */
+	  if (plusp == true) {
+	    prevpos = chroffset + prevposition + indexsize_nt;
+	    currpos = chroffset + position - querydistance + indexsize_nt;
+	    if (prevpos < GREEDY_ADVANCE || currpos < GREEDY_ADVANCE) {
+	      canonicalp = false;
+	    } else if (Genome_sense_canonicalp(/*donor_rightbound*/prevpos + MISS_BEHIND,
+					       /*donor_leftbound*/prevpos - GREEDY_ADVANCE,
+					       /*acceptor_rightbound*/currpos + MISS_BEHIND,
+					       /*acceptor_leftbound*/currpos - GREEDY_ADVANCE,
+					       chroffset) == true) {
+	      debug9(printf("lookback plus: sense canonical\n"));
+	      canonicalp = true;
+	    } else if (Genome_antisense_canonicalp(/*donor_rightbound*/currpos + MISS_BEHIND,
+						   /*donor_leftbound*/currpos - GREEDY_ADVANCE,
+						   /*acceptor_rightbound*/prevpos + MISS_BEHIND,
+						   /*acceptor_leftbound*/prevpos - GREEDY_ADVANCE,
+						   chroffset) == true) {
+	      debug9(printf("lookback plus: antisense canonical\n"));
+	      canonicalp = true;
+	    } else {
+	      debug9(printf("lookback plus: not canonical\n"));
+	      canonicalp = false;
+	    }
+
+	  } else {
+	    prevpos = chrhigh + 1 - prevposition - indexsize_nt;
+	    currpos = chrhigh + 1 - position + querydistance - indexsize_nt;
+	    if (currpos < MISS_BEHIND || prevpos < MISS_BEHIND) {
+	      canonicalp = false;
+	    } else if (Genome_sense_canonicalp(/*donor_rightbound*/currpos + GREEDY_ADVANCE,
+					       /*donor_leftbound*/currpos - MISS_BEHIND,
+					       /*acceptor_rightbound*/prevpos + GREEDY_ADVANCE,
+					       /*acceptor_leftbound*/prevpos - MISS_BEHIND,
+					       chroffset) == true) {
+	      debug9(printf("lookback minus: sense canonical\n"));
+	      canonicalp = true;
+	    } else if (Genome_antisense_canonicalp(/*donor_rightbound*/prevpos + GREEDY_ADVANCE,
+						   /*donor_leftbound*/prevpos - MISS_BEHIND,
+						   /*acceptor_rightbound*/currpos + GREEDY_ADVANCE,
+						   /*acceptor_leftbound*/currpos - MISS_BEHIND,
+						   chroffset) == true) {
+	      debug9(printf("lookback minus: antisense canonical\n"));
+	      canonicalp = true;
+	    } else {
+	      debug9(printf("lookback minus: not canonical\n"));
+	      canonicalp = false;
+	    }
+	  }
+
+	  if (canonicalp == true) {
+	    debug9(canonicalsgn = +1);
+	  } else {
+	    debug9(canonicalsgn = 0);
+	    fwd_score -= non_canonical_penalty;
+	  }
+
+	}
+
+	debug9(printf("\tD2. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+		      prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+		      prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
+		      best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+		      gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
+	    
+	/* Disallow ties, which should favor adjacent */
+	if (fwd_score > best_fwd_score) {
+	  if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
+	    best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	    /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
+	  } else {
+	    best_fwd_consecutive = 0;
+	    /* best_fwd_rootnlinks = 1; */
+	  }
+	  best_fwd_rootposition = prevlink->fwd_rootposition;
+	  best_fwd_score = fwd_score;
+	  best_fwd_prevpos = prev_querypos;
+	  best_fwd_prevhit = prevhit;
+#ifdef DEBUG9
+	  best_fwd_tracei = ++*fwd_tracei;
+	  best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	  best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	  best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	  switch (canonicalsgn) {
+	  case 1: best_fwd_intronnfwd++; break;
+	  case 0: best_fwd_intronnunk++; break;
+	  }
+#endif
+	  debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
+	} else {
+	  debug9(printf(" => Loses to %d\n",best_fwd_score));
+	}
+
+	prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+      }
+
+      /* Scoring appears to be the same as for range 4, which is rarely called, so including in range 4 */
+      /* Range 3: From (querypos + EQUAL_DISTANCE_NOT_SPLICING) to (querypos - EQUAL_DISTANCE_NOT_SPLICING) */
+      /* This is equivalent to -diffdistance > EQUAL_DISTANCE_NOT_SPLICING && prevposition + indexsize_nt <= position */
+
+      /* Range 4: From (prev_querypos - EQUAL_DISTANCE_NOT_SPLICING) to indexsize_nt */
+      while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) + indexsize_nt <= position) {
+	/* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
+	prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
+
+	gendistance = position - prevposition;
+	diffdistance = abs(gendistance - querydistance);
+
+#ifdef BAD_GMAX
+	fwd_score = prevlink->fwd_score + querydist_credit - (diffdistance/ONE + 1) /*- querydist_penalty*/;
+#else
+	/* diffdistance <= EQUAL_DISTANCE_NOT_SPLICING */
+	/* This is how version 2013-08-14 did it */
+	fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
+#endif
+
+#if 0
+	/* Used in range 4 but not in range 3 */
+	if (/*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
+	  fwd_score -= NINTRON_PENALTY_MISMATCH;
+	}
+#endif
+
+	debug9(printf("\tD4. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+		      prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+		      prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
+		      best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+		      gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
+	    
+	/* Disallow ties, which should favor adjacent */
+	if (fwd_score > best_fwd_score) {
+	  if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
+	    best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	    /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
+	  } else {
+	    best_fwd_consecutive = 0;
+	    /* best_fwd_rootnlinks = 1; */
+	  }
+	  best_fwd_rootposition = prevlink->fwd_rootposition;
+	  best_fwd_score = fwd_score;
+	  best_fwd_prevpos = prev_querypos;
+	  best_fwd_prevhit = prevhit;
+#ifdef DEBUG9
+	  /* best_fwd_tracei = ++*fwd_tracei; */
+	  best_fwd_tracei = prevlink->fwd_tracei; /* Keep previous trace, as in range 3 */
+	  best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	  best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	  best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	  switch (canonicalsgn) {
+	  case 1: best_fwd_intronnfwd++; break;
+	  case 0: best_fwd_intronnunk++; break;
+	  }
+#endif
+	  debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
+	} else {
+	  debug9(printf(" => Loses to %d\n",best_fwd_score));
+	}
+
+	prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+      }
+    }
+  }
+
+  /* Best_score needs to beat something positive to prevent a
+     small local extension from beating a good canonical intron.
+     If querypos is too small, don't insert an intron.  */
+  /* linksconsecutive already assigned above */
+  currlink->fwd_consecutive = best_fwd_consecutive;
+  currlink->fwd_rootposition = best_fwd_rootposition;
+  /* currlink->fwd_rootnlinks = best_fwd_rootnlinks; */
+  currlink->fwd_pos = best_fwd_prevpos;
+  currlink->fwd_hit = best_fwd_prevhit;
+  if (currlink->fwd_pos >= 0) {
+    debug9(currlink->fwd_tracei = best_fwd_tracei);
+    currlink->fwd_score = best_fwd_score;
+  } else if (anchoredp == true) {
+    debug9(currlink->fwd_tracei = -1);
+    currlink->fwd_score = -100000;
+  } else if (localp == true) {
+    debug9(currlink->fwd_tracei = ++*fwd_tracei);
+    currlink->fwd_score = indexsize_nt;
+  } else {
+    debug9(currlink->fwd_tracei = ++*fwd_tracei);
+    currlink->fwd_score = best_fwd_score;
+  }
+
+#ifdef DEBUG9
+  currlink->fwd_intronnfwd = best_fwd_intronnfwd;
+  currlink->fwd_intronnrev = best_fwd_intronnrev;
+  currlink->fwd_intronnunk = best_fwd_intronnunk;
+#endif
+
+  debug9(printf("\tChose %d,%d with score %d (fwd) => trace #%d\n",
+		currlink->fwd_pos,currlink->fwd_hit,currlink->fwd_score,currlink->fwd_tracei));
+  debug3(printf("%d %d  %d %d  1\n",querypos,hit,best_prevpos,best_prevhit));
+
+  return;
+}
+
+
+
+
+static void
+score_querypos_lookback_mult (
+#ifdef DEBUG9
+			      int *fwd_tracei,
+#endif
+			      int low_hit, int high_hit,
+			      int querypos, int querystart, int queryend, unsigned int *positions,
+			      struct Link_T **links, Chrpos_T **mappings,
+			      int **active, int *firstactive,
+			      Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
+			      int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+			      bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
+			      bool use_canonical_p, int non_canonical_penalty) {
+  Link_T prevlink, currlink;
+  Intlist_T last_item, p;
+  int nhits = high_hit - low_hit, nprocessed, hiti;
+
+  struct Link_T *prev_links, *adj_links;
+  Chrpos_T *prev_mappings, *adj_mappings;
+  int *prev_active, *adj_active;
+
+  int best_fwd_consecutive;
+  int best_fwd_rootposition;
+  int best_fwd_score, fwd_score;
+  int best_fwd_prevpos, best_fwd_prevhit;
+  bool donep;
+#ifdef DEBUG9
+  int best_fwd_tracei;
+  int best_fwd_intronnfwd, best_fwd_intronnrev, best_fwd_intronnunk;
+  int canonicalsgn = 0;
+#endif
+  int adj_querypos, adj_querydistance, prev_querypos, prevhit, adj_frontier, *frontier;
+  Chrpos_T prevposition, position, gendistance;
+  Univcoord_T prevpos, currpos;
+  int querydistance, diffdistance, lookback, nlookback, indexsize_nt, indexsize_query;
+  int max_nseen, max_adjacent_nseen, max_nonadjacent_nseen, nseen;
+  int querydist_credit;
+  int enough_consecutive = 32;
+  bool canonicalp;
+
+#ifdef PMAP
+  indexsize_nt = indexsize*3;	/* Use when evaluating across genomic positions */
+#else
+  indexsize_nt = indexsize;
+#endif
+  indexsize_query = indexsize;	/* Use when evaluating across query positions */
+
+
+  /* Determine work load */
+  /* printf("Work load (lookback): %s\n",Intlist_to_string(processed)); */
+  last_item = processed;
+  if (anchoredp && querypos - indexsize_query <= querystart) {
+    /* Allow close prevpositions that overlap with anchor */
+    /* Can give rise to false positives, and increases amount of dynamic programming work */
+    /* debug9(printf("No skipping because close to anchor\n")); */
+  } else if (0 && anchoredp && querypos == queryend) {
+    /* Test first position */
+  } else {
+    while (processed != NULL && (/*prev_querypos =*/ Intlist_head(processed)) > querypos - indexsize_query) {
+      debug9(printf("Skipping prev_querypos %d, because too close\n",Intlist_head(processed)));
+      processed = Intlist_next(processed);
+    }
+  }
+
+  if (last_item == NULL) {
+    for (hiti = 0; hiti < nhits; hiti++) {
+      currlink = &(links[querypos][hiti + low_hit]);
+
+      currlink->fwd_consecutive = /*best_fwd_consecutive =*/ indexsize*NT_PER_MATCH;
+      currlink->fwd_rootposition = /*best_fwd_rootposition =*/ positions[hiti];
+      currlink->fwd_pos = /*best_fwd_prevpos =*/ -1;
+      currlink->fwd_hit = /*best_fwd_prevhit =*/ -1;
+
+      if (anchoredp == true) {
+	debug9(currlink->fwd_tracei = -1);
+	currlink->fwd_score = -100000;
+      } else if (localp == true) {
+	debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	currlink->fwd_score = indexsize_nt;
+      } else {
+	currlink->fwd_score = /*best_fwd_score =*/ 0;
+      }
+    }
+
+  } else if (processed == NULL) {
+    debug9(printf("processed is NULL\n"));
+    /* A. Evaluate adjacent position (at last one processed, if available).  Don't evaluate for mismatches (D). */
+    adj_querypos = Intlist_head(last_item);
+    adj_links = links[adj_querypos];
+    adj_mappings = mappings[adj_querypos];
+    adj_active = active[adj_querypos];
+
+#ifdef PMAP
+    adj_querydistance = (querypos - adj_querypos)*3;
+#else
+    adj_querydistance = querypos - adj_querypos;
+#endif
+
+    /* Process prevhit and hiti in parallel.  Values are asscending along prevhit chain and from 0 to nhits-1. */
+    prevhit = firstactive[adj_querypos];
+    hiti = 0;
+    while (prevhit != -1 && hiti < nhits) {
+      if ((prevposition = /*mappings[adj_querypos]*/adj_mappings[prevhit]) + adj_querydistance < (position =  positions[hiti])) {
+	prevhit = /*active[adj_querypos]*/adj_active[prevhit];
+
+      } else if (prevposition + adj_querydistance > position) {
+	currlink = &(links[querypos][hiti + low_hit]);
+
+	currlink->fwd_consecutive = /*best_fwd_consecutive =*/ indexsize*NT_PER_MATCH;
+	currlink->fwd_rootposition = /*best_fwd_rootposition =*/ positions[hiti];
+	currlink->fwd_pos = /*best_fwd_prevpos =*/ -1;
+	currlink->fwd_hit = /*best_fwd_prevhit =*/ -1;
+
+	if (anchoredp == true) {
+	  debug9(currlink->fwd_tracei = -1);
+	  currlink->fwd_score = -100000;
+	} else if (localp == true) {
+	  debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	  currlink->fwd_score = indexsize_nt;
+	} else {
+	  currlink->fwd_score = /*best_fwd_score =*/ 0;
+	}
+
+	hiti++;
+
+      } else {
+	/* Adjacent position found for hiti */
+	currlink = &(links[querypos][hiti + low_hit]);
+	prevlink = &(/*links[adj_querypos]*/adj_links[prevhit]);
+
+	currlink->fwd_consecutive = /*best_fwd_consecutive =*/ prevlink->fwd_consecutive + adj_querydistance;
+	currlink->fwd_rootposition = /*best_fwd_rootposition =*/ prevlink->fwd_rootposition;
+	currlink->fwd_pos = /*best_fwd_prevpos =*/ adj_querypos;
+	currlink->fwd_hit = /*best_fwd_prevhit =*/ prevhit;
+	currlink->fwd_score = /*best_fwd_score =*/ prevlink->fwd_score + CONSEC_POINTS_PER_MATCH*adj_querydistance;
+
+#ifdef DEBUG9
+	printf("\tA. For hit %d, adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d)\n",
+	       hiti,adj_querypos,prevhit,prevposition,active[adj_querypos][prevhit],prevlink->fwd_score,
+	       currlink->fwd_score,currlink->fwd_consecutive,/*best_fwd_tracei*/prevlink->fwd_tracei,
+	       /*best_fwd_intronnfwd*/prevlink->fwd_intronnfwd,
+	       /*best_fwd_intronnrev*/prevlink->fwd_intronnrev,
+	       /*best_fwd_intronnunk*/prevlink->fwd_intronnunk);
+#endif
+
+	prevhit = /*active[adj_querypos]*/adj_active[prevhit];
+	hiti++;
+      }
+    }
+
+    while (hiti < nhits) {
+      currlink = &(links[querypos][hiti + low_hit]);
+
+      currlink->fwd_consecutive = /*best_fwd_consecutive =*/ indexsize*NT_PER_MATCH;
+      currlink->fwd_rootposition = /*best_fwd_rootposition =*/ positions[hiti];
+      currlink->fwd_pos = /*best_fwd_prevpos =*/ -1;
+      currlink->fwd_hit = /*best_fwd_prevhit =*/ -1;
+
+      if (anchoredp == true) {
+	debug9(currlink->fwd_tracei = -1);
+	currlink->fwd_score = -100000;
+      } else if (localp == true) {
+	debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	currlink->fwd_score = indexsize_nt;
+      } else {
+	currlink->fwd_score = /*best_fwd_score =*/ 0;
+      }
+
+      hiti++;
+    }
+
+  } else {
+    adj_querypos = Intlist_head(last_item);
+    adj_links = links[adj_querypos];
+    adj_mappings = mappings[adj_querypos];
+    adj_active = active[adj_querypos];
+
+#ifdef PMAP
+    adj_querydistance = (querypos - adj_querypos)*3;
+#else
+    adj_querydistance = querypos - adj_querypos;
+#endif
+    adj_frontier = firstactive[adj_querypos];
+
+    nprocessed = Intlist_length(processed);
+    frontier = (int *) MALLOCA(nprocessed * sizeof(int));
+
+    nseen = 0;
+    for (p = processed; p != NULL; p = Intlist_next(p)) {
+      prev_querypos = Intlist_head(p);
+
+      querydistance = querypos - prev_querypos;
+      if (nseen <= /*nlookback*/1 || querydistance - indexsize_nt <= /*lookback*/sufflookback/2) {
+	max_adjacent_nseen = nseen;
+      }
+      if (nseen <= /*nlookback*/nsufflookback || querydistance - indexsize_nt <= /*lookback*/sufflookback) {
+	max_nonadjacent_nseen = nseen;
+      }
+
+      frontier[nseen++] = firstactive[prev_querypos];
+    }
+    
+    for (hiti = 0; hiti < nhits; hiti++) {
+      position = positions[hiti];
+
+      /* A. Evaluate adjacent position (at last one processed) */
+      prevhit = adj_frontier;	/* Get information from last hiti */
+      prevposition = position;	/* Prevents prevposition + adj_querydistance == position */
+      while (prevhit != -1 && (prevposition = /*mappings[adj_querypos]*/adj_mappings[prevhit]) + adj_querydistance < position) {
+	prevhit = /*active[adj_querypos]*/adj_active[prevhit];
+      }
+      adj_frontier = prevhit;	/* Save information for next hiti */
+
+      if (prevposition + adj_querydistance == position) {
+	/* Adjacent found */
+	prevlink = &(/*links[adj_querypos]*/adj_links[prevhit]);
+
+	best_fwd_consecutive = prevlink->fwd_consecutive + adj_querydistance;
+	best_fwd_rootposition = prevlink->fwd_rootposition;
+	best_fwd_prevpos = adj_querypos;
 	best_fwd_prevhit = prevhit;
+	best_fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH*adj_querydistance;
+	max_nseen = max_adjacent_nseen;	/* Look not so far back */
+
 #ifdef DEBUG9
 	best_fwd_tracei = prevlink->fwd_tracei;
 	best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
 	best_fwd_intronnrev = prevlink->fwd_intronnrev;
 	best_fwd_intronnunk = prevlink->fwd_intronnunk;
 #endif
-	adjacentp = true;
-
-	debug9(printf("\tA. Adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d)\n",
-		      prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],prevlink->fwd_score,
-		      best_fwd_score,best_fwd_consecutive,best_fwd_tracei,
+	debug9(printf("\tA. For hit %d, adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d)\n",
+		      hiti,adj_querypos,prevhit,prevposition,active[adj_querypos][prevhit],prevlink->fwd_score,
+		      best_fwd_score,best_fwd_consecutive,/*best_fwd_tracei*/prevlink->fwd_tracei,
 		      best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk));
-	prevhit = -1;		/* Exit loop */
+
       } else {
-	prevhit = active[prev_querypos][prevhit];
+	/* Adjacent not found */
+	best_fwd_consecutive = indexsize*NT_PER_MATCH;
+	best_fwd_rootposition = position;
+	best_fwd_prevpos = -1;
+	best_fwd_prevhit = -1;
+	best_fwd_score = 0;
+	max_nseen = max_nonadjacent_nseen; /* Look farther back */
+
+#ifdef DEBUG9
+	best_fwd_tracei = -1;
+	best_fwd_intronnfwd = 0;
+	best_fwd_intronnrev = 0;
+	best_fwd_intronnunk = 0;
+#endif
       }
-    }
 
-  }
 
-  if (best_fwd_consecutive < enough_consecutive) {
+      /* D. Evaluate for mismatches (all other previous querypos) */
+      nseen = 0;
+      for (p = processed; p != NULL && best_fwd_consecutive < enough_consecutive && nseen <= max_nseen;
+	   p = Intlist_next(p), nseen++) {
 
-    /* D. Evaluate for mismatches (all other previous querypos) */
-    /* Set parameters */
-    if (adjacentp == true) {
-      /* Look not so far back */
-      nlookback = 1;
-      lookback = sufflookback/2;
-    } else {
-      /* Look farther back */
-      nlookback = nsufflookback;
-      lookback = sufflookback;
-    }
-
-    last_leftpos = 0;		/* if use_shifted_canonical_p is true */
-    rightpos = position;	/* if use_shifted_canonical_p is true */
-
-    donep = false;
-    nseen = 0;
-
-    p = processed;
-    if (anchoredp && querypos - indexsize_query <= querystart) {
-      /* Allow close prevpositions that overlap with anchor */
-      /* Can give rise to false positives, and increases amount of dynamic programming work */
-    } else if (0 && anchoredp && querypos == queryend) {
-      /* Test first position */
-    } else {
-      while (p != NULL && (prev_querypos = Intlist_head(p)) > querypos - indexsize_query) {
-	debug9(printf("Skipping prev_querypos %d, because too close\n",prev_querypos));
-	p = Intlist_next(p);
-      }
-    }
-
-    for ( ; p != NULL && best_fwd_consecutive < enough_consecutive && donep == false;
-	 p = Intlist_next(p), nseen++) {
-      prev_querypos = Intlist_head(p);
-
+	/* Making this check helps with efficiency */
+	if ((prevhit = frontier[nseen]) != -1) { /* Retrieve starting point from last hiti */
+	  prev_querypos = Intlist_head(p);
 #ifdef PMAP
-      querydistance = (querypos - prev_querypos)*3;
+	  querydistance = (querypos - prev_querypos)*3;
 #else
-      querydistance = querypos - prev_querypos;
+	  querydistance = querypos - prev_querypos;
 #endif
+	  /* Actually a querydist_penalty */
+	  querydist_credit = -querydistance/indexsize_nt;
 
-#ifdef USE_QUERYDIST_CREDIT
-      if (querydistance <= indexsize_nt) {
-	querydist_credit = CONSEC_POINTS_PER_MATCH*querydistance;
-      } else {
-	querydist_credit = CONSEC_POINTS_PER_MATCH*indexsize_nt - querydistance/QUERYDIST_PENALTY_FACTOR;
-      }
-#else
-      /* Actually a querydist_penalty */
-      querydist_credit = -querydistance/indexsize_nt;
-#endif
+	  prev_mappings = mappings[prev_querypos];
+	  prev_links = links[prev_querypos];
+	  prev_active = active[prev_querypos];
 
-      if (nseen > nlookback && querydistance - indexsize_nt > lookback) {
-	donep = true;
-      }
-
-      if ((prevhit = firstactive[prev_querypos]) != -1) {
-	/* querydist_penalty = (querydistance - indexsize_nt)/QUERYDIST_PENALTY_FACTOR; */
-
-	/* Range 1: From Infinity to maxintronlen */
-	if (splicingp == true) {
-	  /* This is equivalent to diffdistance >= maxintronlen, where
+	  /* Range 1: From Infinity to maxintronlen.  To be skipped.
+	     This is equivalent to diffdistance >= maxintronlen, where
 	     diffdistance = abs(gendistance - querydistance) and
 	     gendistance = (position - prevposition - indexsize_nt) */
-	  while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + maxintronlen + querydistance <= position) {
-	    /* Skip */
-	    /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
-	    prevhit = active[prev_querypos][prevhit];
+	  while (prevhit != -1 && (/*prevposition =*/ /*mappings[prev_querypos]*/prev_mappings[prevhit]) + maxintronlen + querydistance <= position) {
+	    /* Accept within range 1 (ignore) */
+	    prevhit = /*active[prev_querypos]*/prev_active[prevhit];
 	  }
-	}
+	  frontier[nseen] = prevhit;	/* Store as starting point for next hiti */
 
-	/* Range 2: From maxintronlen to (prev_querypos + EQUAL_DISTANCE_NOT_SPLICING) */
-	/* This is equivalent to +diffdistance > EQUAL_DISTANCE_NOT_SPLICING */
-	while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + EQUAL_DISTANCE_NOT_SPLICING + querydistance < position) {
-	  /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
-	  prevlink = &(links[prev_querypos][prevhit]);
 
-	  gendistance = position - prevposition;
-	  assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
-	  diffdistance = gendistance - querydistance; /* No need for abs() */
+	  /* Range 2: From maxintronlen to (prev_querypos + EQUAL_DISTANCE_NOT_SPLICING) */
+	  /* This is equivalent to +diffdistance > EQUAL_DISTANCE_NOT_SPLICING */
+	  while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) + EQUAL_DISTANCE_NOT_SPLICING + querydistance < position) {
+	    prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
 
-	  fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
-	  if (splicingp == true) {
-	    fwd_score -= (diffdistance/TEN_THOUSAND + 1);
-	  } else {
-	    fwd_score -= (diffdistance/ONE + 1);
-	  }
+	    gendistance = position - prevposition;
+	    assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
+	    diffdistance = gendistance - querydistance; /* No need for abs() */
 
-	  if (0 && /*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
-	    /* Misses short exons */
-	    debug9(canonicalsgn = 0);
-	    fwd_score -= NINTRON_PENALTY_MISMATCH;
+	    fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
+	    if (splicingp == true) {
+	      fwd_score -= (diffdistance/TEN_THOUSAND + 1);
+	    } else {
+	      fwd_score -= (diffdistance/ONE + 1);
+	    }
 
-	  } else if (use_canonical_p == true) {
+	    if (use_canonical_p == true) {
+	      /* prevpos is lower genomic coordinate than currpos */
+	      /* need to subtract from position and prevposition to compensate for greedy matches */
+	      /* need to add to position and prevposition to compensate for missed matches */
+	      if (plusp == true) {
+		prevpos = chroffset + prevposition + indexsize_nt;
+		currpos = chroffset + position - querydistance + indexsize_nt;
+		if (prevpos < GREEDY_ADVANCE || currpos < GREEDY_ADVANCE) {
+		  canonicalp = false;
+		} else if (Genome_sense_canonicalp(/*donor_rightbound*/prevpos + MISS_BEHIND,
+						   /*donor_leftbound*/prevpos - GREEDY_ADVANCE,
+						   /*acceptor_rightbound*/currpos + MISS_BEHIND,
+						   /*acceptor_leftbound*/currpos - GREEDY_ADVANCE,
+						   chroffset) == true) {
+		  debug9(printf("lookback plus: sense canonical\n"));
+		  canonicalp = true;
+		} else if (Genome_antisense_canonicalp(/*donor_rightbound*/currpos + MISS_BEHIND,
+						       /*donor_leftbound*/currpos - GREEDY_ADVANCE,
+						       /*acceptor_rightbound*/prevpos + MISS_BEHIND,
+						       /*acceptor_leftbound*/prevpos - GREEDY_ADVANCE,
+						       chroffset) == true) {
+		  debug9(printf("lookback plus: antisense canonical\n"));
+		  canonicalp = true;
+		} else {
+		  debug9(printf("lookback plus: not canonical\n"));
+		  canonicalp = false;
+		}
 
-	    /* prevpos is lower genomic coordinate than currpos */
-	    /* need to subtract from position and prevposition to compensate for greedy matches */
-	    /* need to add to position and prevposition to compensate for missed matches */
-	    if (plusp == true) {
-	      prevpos = chroffset + prevposition + indexsize_nt;
-	      currpos = chroffset + position - querydistance + indexsize_nt;
-#if 0
-	      donor_score = Maxent_hr_donor_prob(prevpos,chroffset);
-	      acceptor_score = Maxent_hr_acceptor_prob(currpos,chroffset);
-	      antidonor_score = Maxent_hr_antidonor_prob(currpos,chroffset);
-	      antiacceptor_score = Maxent_hr_antiacceptor_prob(prevpos,chroffset);
-	      debug9(printf("lookback plus: sense donorpos %u, acceptorpos %u: %f..%f\n",
-			    prevpos-chroffset,currpos-chroffset+1,donor_score,acceptor_score));
-	      debug9(printf("lookback plus: anti donorpos %u, acceptorpos %u: %f..%f\n",
-			    currpos-chroffset+1,prevpos-chroffset,antidonor_score,antiacceptor_score));
-#elif 0
-	      donorpos = Genome_prev_donor_position(/*right*/prevpos + MISS_BEHIND,
-						    /*left*/prevpos - GREEDY_ADVANCE,chroffset);
-	      acceptorpos = Genome_prev_acceptor_position(/*right*/currpos + MISS_BEHIND,
-							  /*left*/currpos - GREEDY_ADVANCE,chroffset);
-	      debug9(printf("lookback plus: sense prev donorpos %u, prev acceptorpos %u\n",donorpos-chroffset,acceptorpos-chroffset));
-
-	      donorpos = Genome_prev_antidonor_position(/*right*/currpos + MISS_BEHIND,
-							/*left*/currpos - GREEDY_ADVANCE,chroffset);
-	      acceptorpos = Genome_prev_antiacceptor_position(/*right*/prevpos + MISS_BEHIND,
-							      /*left*/prevpos - GREEDY_ADVANCE,chroffset);
-	      debug9(printf("lookback plus: anti prev donorpos %u, prev acceptorpos %u\n",donorpos-chroffset,acceptorpos-chroffset));
-#else
-	      if (prevpos < GREEDY_ADVANCE || currpos < GREEDY_ADVANCE) {
-		canonicalp = false;
-	      } else if (Genome_sense_canonicalp(/*donor_rightbound*/prevpos + MISS_BEHIND,
-						 /*donor_leftbound*/prevpos - GREEDY_ADVANCE,
-						 /*acceptor_rightbound*/currpos + MISS_BEHIND,
-						 /*acceptor_leftbound*/currpos - GREEDY_ADVANCE,
-						 chroffset) == true) {
-		debug9(printf("lookback plus: sense canonical\n"));
-		canonicalp = true;
-	      } else if (Genome_antisense_canonicalp(/*donor_rightbound*/currpos + MISS_BEHIND,
-						     /*donor_leftbound*/currpos - GREEDY_ADVANCE,
-						     /*acceptor_rightbound*/prevpos + MISS_BEHIND,
-						     /*acceptor_leftbound*/prevpos - GREEDY_ADVANCE,
-						     chroffset) == true) {
-		debug9(printf("lookback plus: antisense canonical\n"));
-		canonicalp = true;
 	      } else {
-		debug9(printf("lookback plus: not canonical\n"));
-		canonicalp = false;
+		prevpos = chrhigh + 1 - prevposition - indexsize_nt;
+		currpos = chrhigh + 1 - position + querydistance - indexsize_nt;
+		if (currpos < MISS_BEHIND || prevpos < MISS_BEHIND) {
+		  canonicalp = false;
+		} else if (Genome_sense_canonicalp(/*donor_rightbound*/currpos + GREEDY_ADVANCE,
+						   /*donor_leftbound*/currpos - MISS_BEHIND,
+						   /*acceptor_rightbound*/prevpos + GREEDY_ADVANCE,
+						   /*acceptor_leftbound*/prevpos - MISS_BEHIND,
+						   chroffset) == true) {
+		  debug9(printf("lookback minus: sense canonical\n"));
+		  canonicalp = true;
+		} else if (Genome_antisense_canonicalp(/*donor_rightbound*/prevpos + GREEDY_ADVANCE,
+						       /*donor_leftbound*/prevpos - MISS_BEHIND,
+						       /*acceptor_rightbound*/currpos + GREEDY_ADVANCE,
+						       /*acceptor_leftbound*/currpos - MISS_BEHIND,
+						       chroffset) == true) {
+		  debug9(printf("lookback minus: antisense canonical\n"));
+		  canonicalp = true;
+		} else {
+		  debug9(printf("lookback minus: not canonical\n"));
+		  canonicalp = false;
+		}
+	      }
+
+	      if (canonicalp == true) {
+		debug9(canonicalsgn = +1);
+	      } else {
+		debug9(canonicalsgn = 0);
+		fwd_score -= non_canonical_penalty;
+	      }
+	    }
+
+	    debug9(printf("\tD2, hit %d. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+			  hiti,prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			  prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
+			  best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+			  gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
+	    
+	    /* Disallow ties, which should favor adjacent */
+	    if (fwd_score > best_fwd_score) {
+	      if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
+		best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	      } else {
+		best_fwd_consecutive = 0;
+	      }
+	      best_fwd_rootposition = prevlink->fwd_rootposition;
+	      best_fwd_score = fwd_score;
+	      best_fwd_prevpos = prev_querypos;
+	      best_fwd_prevhit = prevhit;
+#ifdef DEBUG9
+	      best_fwd_tracei = ++*fwd_tracei;
+	      best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	      best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	      best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	      switch (canonicalsgn) {
+	      case 1: best_fwd_intronnfwd++; break;
+	      case 0: best_fwd_intronnunk++; break;
 	      }
 #endif
-
+	      debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
 	    } else {
-	      prevpos = chrhigh + 1 - prevposition - indexsize_nt;
-	      currpos = chrhigh + 1 - position + querydistance - indexsize_nt;
-#if 0
-	      donor_score = Maxent_hr_donor_prob(currpos,chroffset);
-	      acceptor_score = Maxent_hr_acceptor_prob(prevpos,chroffset);
-	      antidonor_score = Maxent_hr_antidonor_prob(prevpos,chroffset);
-	      antiacceptor_score = Maxent_hr_antiacceptor_prob(currpos,chroffset);
-	      debug9(printf("lookback minus: sense donorpos %u, acceptorpos %u: %f..%f\n",
-			    currpos-chroffset,prevpos-chroffset+1,donor_score,acceptor_score));
-	      debug9(printf("lookback minus: anti donorpos %u, acceptorpos %u: %f..%f\n",
-			    prevpos-chroffset+1,currpos-chroffset,antidonor_score,antiacceptor_score));
-#elif 0
-	      donorpos = Genome_prev_donor_position(/*right*/currpos + GREEDY_ADVANCE,
-						    /*left*/currpos - MISS_BEHIND,chroffset);
-	      acceptorpos = Genome_prev_acceptor_position(/*right*/prevpos + GREEDY_ADVANCE,
-							  /*left*/prevpos - MISS_BEHIND,chroffset);
-	      debug9(printf("lookback minus: sense prev donorpos %u, prev acceptorpos %u\n",donorpos-chroffset,acceptorpos-chroffset));
-
-	      donorpos = Genome_prev_antidonor_position(/*right*/prevpos + GREEDY_ADVANCE,
-							/*left*/prevpos - MISS_BEHIND,chroffset);
-	      acceptorpos = Genome_prev_antiacceptor_position(/*right*/currpos + GREEDY_ADVANCE,
-							      /*left*/currpos - MISS_BEHIND,chroffset);
-	      debug9(printf("lookback minus: anti prev donorpos %u, prev acceptorpos %u\n",donorpos-chroffset,acceptorpos-chroffset));
-#else
-	      if (currpos < MISS_BEHIND || prevpos < MISS_BEHIND) {
-		canonicalp = false;
-	      } else if (Genome_sense_canonicalp(/*donor_rightbound*/currpos + GREEDY_ADVANCE,
-						 /*donor_leftbound*/currpos - MISS_BEHIND,
-						 /*acceptor_rightbound*/prevpos + GREEDY_ADVANCE,
-						 /*acceptor_leftbound*/prevpos - MISS_BEHIND,
-						 chroffset) == true) {
-		debug9(printf("lookback minus: sense canonical\n"));
-		canonicalp = true;
-	      } else if (Genome_antisense_canonicalp(/*donor_rightbound*/prevpos + GREEDY_ADVANCE,
-						     /*donor_leftbound*/prevpos - MISS_BEHIND,
-						     /*acceptor_rightbound*/currpos + GREEDY_ADVANCE,
-						     /*acceptor_leftbound*/currpos - MISS_BEHIND,
-						     chroffset) == true) {
-		debug9(printf("lookback minus: antisense canonical\n"));
-		canonicalp = true;
-	      } else {
-		debug9(printf("lookback minus: not canonical\n"));
-		canonicalp = false;
-	      }
-#endif
+	      debug9(printf(" => Loses to %d\n",best_fwd_score));
 	    }
 
-	    if (canonicalp == false) {
-	      fwd_score -= non_canonical_penalty;
-	    }
-
+	    prevhit = /*active[prev_querypos]*/prev_active[prevhit];
 	  }
 
-	  debug9(printf("\tD2. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
-			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-			gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
-	    
-	  /* Disallow ties, which should favor adjacent */
-	  if (fwd_score > best_fwd_score) {
-	    if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
-	      best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
-	      /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
-	    } else {
-	      best_fwd_consecutive = 0;
-	      /* best_fwd_rootnlinks = 1; */
-	    }
-	    best_fwd_rootposition = prevlink->fwd_rootposition;
-	    best_fwd_score = fwd_score;
-	    best_fwd_prevpos = prev_querypos;
-	    best_fwd_prevhit = prevhit;
-#ifdef DEBUG9
-	    best_fwd_tracei = ++*fwd_tracei;
-	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
-	    switch (canonicalsgn) {
-	    case 1: best_fwd_intronnfwd++; break;
-	    case 0: best_fwd_intronnunk++; break;
-	    }
-#endif
-	    debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
-	  } else {
-	    debug9(printf(" => Loses to %d\n",best_fwd_score));
-	  }
 
-	  prevhit = active[prev_querypos][prevhit];
-	}
+	  /* Scoring appears to be the same as for range 4, which is rarely called, so including in range 4 */
+	  /* Range 3: From (querypos + EQUAL_DISTANCE_NOT_SPLICING) to (querypos - EQUAL_DISTANCE_NOT_SPLICING) */
+	  /* This is equivalent to -diffdistance > EQUAL_DISTANCE_NOT_SPLICING && prevposition + indexsize_nt <= position */
 
-#if 0
-	/* Scoring appears to be the same as for range 4, which is rarely called */
-	/* Range 3: From (querypos + EQUAL_DISTANCE_NOT_SPLICING) to (querypos - EQUAL_DISTANCE_NOT_SPLICING) */
-	/* This is equivalent to -diffdistance > EQUAL_DISTANCE_NOT_SPLICING && prevposition + indexsize_nt <= position */
-	while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + querydistance < position + EQUAL_DISTANCE_NOT_SPLICING &&
-	       prevposition + indexsize_nt <= position) {
-	  /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
-	  prevlink = &(links[prev_querypos][prevhit]);
 
-	  gendistance = position - prevposition;
-	  diffdistance = abs(gendistance - querydistance);
+	  /* Range 4: From (prev_querypos - EQUAL_DISTANCE_NOT_SPLICING) to indexsize_nt */
+	  while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) + indexsize_nt <= position) {
+	    prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
 
-	  /* canonicalsgn = 9; */
-	  /* ? Add diffdistance as penalty here */
-	  fwd_score = prevlink->fwd_score + querydist_credit - (diffdistance/ONE + 1);
-#ifdef PMAP
-	  if (diffdistance % 3 != 0) {
-	    fwd_score -= NONCODON_INDEL_PENALTY;
-	  }
-#endif
-	  debug9(printf("\tD3. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
-			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-			gendistance-indexsize_nt,querydistance-indexsize_nt,/*canonicalsgn*/9));
-	    
-	  /* Disallow ties, which should favor adjacent */
-	  if (fwd_score > best_fwd_score) {
-	    if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
-	      best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
-	      /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
-	    } else {
-	      best_fwd_consecutive = 0;
-	      /* best_fwd_rootnlinks = 1; */
-	    }
-	    best_fwd_rootposition = prevlink->fwd_rootposition;
-	    best_fwd_score = fwd_score;
-	    best_fwd_prevpos = prev_querypos;
-	    best_fwd_prevhit = prevhit;
-#ifdef DEBUG9
-	    best_fwd_tracei = prevlink->fwd_tracei; /* Keep previous trace */
-	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
-#if 0
-	    switch (canonicalsgn) {
-	    case 1: best_fwd_intronnfwd++; break;
-	    case 0: best_fwd_intronnunk++; break;
-	    }
-#endif
-#endif
-	    debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
-	  } else {
-	    debug9(printf(" => Loses to %d\n",best_fwd_score));
-	  }
-
-	  prevhit = active[prev_querypos][prevhit];
-	}
-#endif
-
-	/* Range 4: From (prev_querypos - EQUAL_DISTANCE_NOT_SPLICING) to indexsize_nt */
-	while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + indexsize_nt <= position) {
-	  /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
-	  prevlink = &(links[prev_querypos][prevhit]);
-
-	  gendistance = position - prevposition;
-	  diffdistance = abs(gendistance - querydistance);
+	    gendistance = position - prevposition;
+	    diffdistance = abs(gendistance - querydistance);
 
 #ifdef BAD_GMAX
-	  fwd_score = prevlink->fwd_score + querydist_credit - (diffdistance/ONE + 1) /*- querydist_penalty*/;
+	    fwd_score = prevlink->fwd_score + querydist_credit - (diffdistance/ONE + 1) /*- querydist_penalty*/;
 #else
-	  /* diffdistance <= EQUAL_DISTANCE_NOT_SPLICING */
-	  /* This is how version 2013-08-14 did it */
-	  fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
+	    /* diffdistance <= EQUAL_DISTANCE_NOT_SPLICING */
+	    /* This is how version 2013-08-14 did it */
+	    fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
 #endif
-
-#if 0
-	  /* Used in range 4 but not in range 3 */
-	  if (/*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
-	    fwd_score -= NINTRON_PENALTY_MISMATCH;
-	  }
-#endif
-
-	  debug9(printf("\tD4. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
-			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-			gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
+	  
+	    debug9(printf("\tD4, hit %d. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+			  hiti,prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			  prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
+			  best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+			  gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
 	    
-	  /* Disallow ties, which should favor adjacent */
-	  if (fwd_score > best_fwd_score) {
-	    if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
-	      best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
-	      /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
-	    } else {
-	      best_fwd_consecutive = 0;
-	      /* best_fwd_rootnlinks = 1; */
-	    }
-	    best_fwd_rootposition = prevlink->fwd_rootposition;
-	    best_fwd_score = fwd_score;
-	    best_fwd_prevpos = prev_querypos;
-	    best_fwd_prevhit = prevhit;
+	    /* Disallow ties, which should favor adjacent */
+	    if (fwd_score > best_fwd_score) {
+	      if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
+		best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	      } else {
+		best_fwd_consecutive = 0;
+	      }
+	      best_fwd_rootposition = prevlink->fwd_rootposition;
+	      best_fwd_score = fwd_score;
+	      best_fwd_prevpos = prev_querypos;
+	      best_fwd_prevhit = prevhit;
 #ifdef DEBUG9
-	    /* best_fwd_tracei = ++*fwd_tracei; */
-	    best_fwd_tracei = prevlink->fwd_tracei; /* Keep previous trace, as in range 3 */
-	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
-	    switch (canonicalsgn) {
-	    case 1: best_fwd_intronnfwd++; break;
-	    case 0: best_fwd_intronnunk++; break;
-	    }
+	      /* best_fwd_tracei = ++*fwd_tracei; */
+	      best_fwd_tracei = prevlink->fwd_tracei; /* Keep previous trace, as in range 3 */
+	      best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	      best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	      best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	      switch (canonicalsgn) {
+	      case 1: best_fwd_intronnfwd++; break;
+	      case 0: best_fwd_intronnunk++; break;
+	      }
 #endif
-	    debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
-	  } else {
-	    debug9(printf(" => Loses to %d\n",best_fwd_score));
-	  }
+	      debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
+	    } else {
+	      debug9(printf(" => Loses to %d\n",best_fwd_score));
+	    }
 
-	  prevhit = active[prev_querypos][prevhit];
+	    prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+	  }
+	}
+      }
+      
+      /* Best_score needs to beat something positive to prevent a
+	 small local extension from beating a good canonical intron.
+	 If querypos is too small, don't insert an intron.  */
+      /* linksconsecutive already assigned above */
+      currlink = &(links[querypos][hiti + low_hit]);
+      currlink->fwd_consecutive = best_fwd_consecutive;
+      currlink->fwd_rootposition = best_fwd_rootposition;
+      currlink->fwd_pos = best_fwd_prevpos;
+      currlink->fwd_hit = best_fwd_prevhit;
+      if (currlink->fwd_pos >= 0) {
+	debug9(currlink->fwd_tracei = best_fwd_tracei);
+	currlink->fwd_score = best_fwd_score;
+      } else if (anchoredp == true) {
+	debug9(currlink->fwd_tracei = -1);
+	currlink->fwd_score = -100000;
+      } else if (localp == true) {
+	debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	currlink->fwd_score = indexsize_nt;
+      } else {
+	debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	currlink->fwd_score = best_fwd_score;
+      }
+
+#ifdef DEBUG9
+      currlink->fwd_intronnfwd = best_fwd_intronnfwd;
+      currlink->fwd_intronnrev = best_fwd_intronnrev;
+      currlink->fwd_intronnunk = best_fwd_intronnunk;
+#endif
+
+      debug9(printf("\tChose %d,%d with score %d (fwd) => trace #%d\n",
+		    currlink->fwd_pos,currlink->fwd_hit,currlink->fwd_score,currlink->fwd_tracei));
+      debug3(printf("%d %d  %d %d  1\n",querypos,hit,best_prevpos,best_prevhit));
+    }
+
+    FREEA(frontier);
+  }
+
+  return;
+}
+
+
+static void
+score_querypos_lookforward_one (
+#ifdef DEBUG9
+				int *fwd_tracei,
+#endif
+				Link_T currlink, int querypos,
+				int querystart, int queryend, unsigned int position,
+				struct Link_T **links, Chrpos_T **mappings,
+				int **active, int *firstactive,
+				Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
+				int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+				bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
+				bool use_canonical_p, int non_canonical_penalty) {
+  Link_T prevlink;
+  struct Link_T *prev_links;
+  Chrpos_T *prev_mappings;
+  int *prev_active;
+
+  int best_fwd_consecutive = indexsize*NT_PER_MATCH;
+  int best_fwd_rootposition = position;
+  int best_fwd_score = 0, fwd_score;
+  int best_fwd_prevpos = -1, best_fwd_prevhit = -1;
+#ifdef DEBUG9
+  int best_fwd_tracei;
+  int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
+  int canonicalsgn = 0;
+#endif
+  bool adjacentp, donep;
+  int prev_querypos, prevhit;
+  Chrpos_T prevposition, gendistance;
+  Univcoord_T prevpos, currpos;
+  int querydistance, diffdistance, lookback, nlookback, nseen, indexsize_nt, indexsize_query;
+  /* int querydist_penalty; */
+  int querydist_credit;
+  int enough_consecutive;
+  /* bool near_end_p; */
+  bool canonicalp;
+
+#ifdef PMAP
+  indexsize_nt = indexsize*3;
+#else
+  indexsize_nt = indexsize;
+#endif
+  indexsize_query = indexsize;	/* Use when evaluating across query positions */
+
+
+  enough_consecutive = 32;
+
+  /* Parameters for section D, assuming adjacent is false */
+  adjacentp = false;
+  nlookback = nsufflookback;
+  lookback = sufflookback;
+
+  /* A. Evaluate adjacent position (at last one processed) */
+  if (processed != NULL) {
+    prev_querypos = Intlist_head(processed);
+    prev_mappings = mappings[prev_querypos];
+    prev_links = links[prev_querypos];
+    prev_active = active[prev_querypos];
+
+#ifdef PMAP
+    querydistance = (prev_querypos - querypos)*3;
+#else
+    querydistance = prev_querypos - querypos;
+#endif
+    prevhit = firstactive[prev_querypos];
+    prevposition = position;	/* Prevents prevposition == position + querydistance */
+    while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) > position + querydistance) {
+      prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+    }
+    if (prevposition == position + querydistance) {
+      prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
+      best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+      /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
+      best_fwd_rootposition = prevlink->fwd_rootposition;
+      best_fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH*querydistance;
+      
+      best_fwd_prevpos = prev_querypos;
+      best_fwd_prevhit = prevhit;
+#ifdef DEBUG9
+      best_fwd_tracei = prevlink->fwd_tracei;
+      best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+      best_fwd_intronnrev = prevlink->fwd_intronnrev;
+      best_fwd_intronnunk = prevlink->fwd_intronnunk;
+#endif
+      adjacentp = true;
+      /* Parameters for section D when adjacent is true */
+      nlookback = 1;
+      lookback = sufflookback/2;
+
+      debug9(printf("\tA. Adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d)\n",
+		    prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],prevlink->fwd_score,
+		    best_fwd_score,best_fwd_consecutive,best_fwd_tracei,
+		    best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk));
+    }
+  }
+
+  /* Check work list */
+  if (anchoredp && querypos + indexsize_query >= queryend) {
+    /* Allow close prevpositions that overlap with anchor */
+    /* Can give rise to false positives, and increases amount of dynamic programming work */
+    debug9(printf("No skipping because close to anchor\n"));
+  } else if (0 && anchoredp && querypos == querystart) {
+    /* Test end position */
+  } else {
+    while (processed != NULL && (prev_querypos = Intlist_head(processed)) < querypos + indexsize_query) {
+      debug9(printf("Skipping prev_querypos %d, because too close\n",prev_querypos));
+      processed = Intlist_next(processed);
+    }
+  }
+
+  /* D. Evaluate for mismatches (all other previous querypos) */
+  donep = false;
+  nseen = 0; 
+  for ( ; processed != NULL && best_fwd_consecutive < enough_consecutive && donep == false;
+	processed = Intlist_next(processed), nseen++) {
+    prev_querypos = Intlist_head(processed);
+
+#ifdef PMAP
+    querydistance = (prev_querypos - querypos)*3;
+#else
+    querydistance = prev_querypos - querypos;
+#endif
+
+    if (nseen > nlookback && querydistance - indexsize_nt > lookback) {
+      donep = true;
+    }
+
+    if ((prevhit = firstactive[prev_querypos]) != -1) {
+      /* querydist_penalty = (querydistance - indexsize_nt)/QUERYDIST_PENALTY_FACTOR; */
+      /* Actually a querydist_penalty */
+      querydist_credit = -querydistance/indexsize_nt;
+
+      prev_mappings = mappings[prev_querypos];
+      prev_links = links[prev_querypos];
+      prev_active = active[prev_querypos];
+
+      /* Range 1: From Infinity to maxintronlen */
+      if (splicingp == true) {
+	/* This is equivalent to diffdistance >= maxintronlen, where
+	   diffdistance = abs(gendistance - querydistance) and
+	   gendistance = (position - prevposition - indexsize_nt) */
+	while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) >= position + maxintronlen + querydistance) {
+	  /* Skip */
+	  /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
+	  prevhit = /*active[prev_querypos]*/prev_active[prevhit];
 	}
       }
 
+      /* Range 2: From maxintronlen to (prev_querypos + EQUAL_DISTANCE_NOT_SPLICING) */
+      /* This is equivalent to +diffdistance > EQUAL_DISTANCE_NOT_SPLICING */
+      while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) > position + EQUAL_DISTANCE_NOT_SPLICING + querydistance) {
+	/* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
+	prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
+
+	gendistance = prevposition - position;
+	assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
+	diffdistance = gendistance - querydistance; /* No need for abs() */
+
+	fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
+	if (splicingp == true) {
+	  fwd_score -= (diffdistance/TEN_THOUSAND + 1);
+	} else {
+	  fwd_score -= (diffdistance/ONE + 1);
+	}
+
+	if (use_canonical_p == true) {
+
+	  /* prevpos is higher genomic coordinate than currpos */
+	  /* need to add to position and prevposition to compensate for greedy matches */
+	  /* need to subtract from position and prevposition to compensate for missed matches */
+	  if (plusp == true) {
+	    prevpos = chroffset + prevposition;
+	    currpos = chroffset + position + querydistance;
+	    if (currpos < MISS_BEHIND || prevpos < MISS_BEHIND) {
+	      canonicalp = false;
+	    } else if (Genome_sense_canonicalp(/*donor_rightbound*/currpos + GREEDY_ADVANCE,
+					       /*donor_leftbound*/currpos - MISS_BEHIND,
+					       /*acceptor_rightbound*/prevpos + GREEDY_ADVANCE,
+					       /*acceptor_leftbound*/prevpos - MISS_BEHIND,
+					       chroffset) == true) {
+	      debug9(printf("lookforward plus: sense canonical\n"));
+	      canonicalp = true;
+	    } else if (Genome_antisense_canonicalp(/*donor_rightbound*/prevpos + GREEDY_ADVANCE,
+						   /*donor_leftbound*/prevpos - MISS_BEHIND,
+						   /*acceptor_rightbound*/currpos + GREEDY_ADVANCE,
+						   /*acceptor_leftbound*/currpos - MISS_BEHIND,
+						   chroffset) == true) {
+	      debug9(printf("lookforward plus: antisense canonical\n"));
+	      canonicalp = true;
+	    } else {
+	      debug9(printf("lookforward plus: not canonical\n"));
+	      canonicalp = false;
+	    }
+	      
+	  } else {
+	    prevpos = chrhigh + 1 - prevposition;
+	    currpos = chrhigh + 1 - position - querydistance;
+	    if (prevpos < GREEDY_ADVANCE || currpos < GREEDY_ADVANCE) {
+	      canonicalp = false;
+	    } else if (Genome_sense_canonicalp(/*donor_rightbound*/prevpos + MISS_BEHIND,
+					       /*donor_leftbound*/prevpos - GREEDY_ADVANCE,
+					       /*acceptor_rightbound*/currpos + MISS_BEHIND,
+					       /*acceptor_leftbound*/currpos - GREEDY_ADVANCE,
+					       chroffset) == true) {
+	      debug9(printf("lookforward minus: sense canonical\n"));
+	      canonicalp = true;
+	    } else if (Genome_antisense_canonicalp(/*donor_rightbound*/currpos + MISS_BEHIND,
+						   /*donor_leftbound*/currpos - GREEDY_ADVANCE,
+						   /*acceptor_rightbound*/prevpos + MISS_BEHIND,
+						   /*acceptor_leftbound*/prevpos - GREEDY_ADVANCE,
+						   chroffset) == true) {
+	      debug9(printf("lookforward minus: antisense canonical\n"));
+	      canonicalp = true;
+	    } else {
+	      debug9(printf("lookforward minus: not canonical\n"));
+	      canonicalp = false;
+	    }
+	  }
+
+	  if (canonicalp == true) {
+	    debug9(canonicalsgn = +1);
+	  } else {
+	    debug9(canonicalsgn = 0);
+	    fwd_score -= non_canonical_penalty;
+	  }
+	}
+
+	debug9(printf("\tD2. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+		      prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+		      prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
+		      best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+		      gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
+	    
+	/* Disallow ties, which should favor adjacent */
+	if (fwd_score > best_fwd_score) {
+	  if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
+	    best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	    /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
+	  } else {
+	    best_fwd_consecutive = 0;
+	    /* best_fwd_rootnlinks = 1; */
+	  }
+	  best_fwd_rootposition = prevlink->fwd_rootposition;
+	  best_fwd_score = fwd_score;
+	  best_fwd_prevpos = prev_querypos;
+	  best_fwd_prevhit = prevhit;
+#ifdef DEBUG9
+	  best_fwd_tracei = ++*fwd_tracei;
+	  best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	  best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	  best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	  switch (canonicalsgn) {
+	  case 1: best_fwd_intronnfwd++; break;
+	  case 0: best_fwd_intronnunk++; break;
+	  }
+#endif
+	  debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
+	} else {
+	  debug9(printf(" => Loses to %d\n",best_fwd_score));
+	}
+
+	prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+      }
+
+      /* Scoring appears to be the same as for range 4, which is rarely called, so including in range 4 */
+      /* Range 3: From (querypos + EQUAL_DISTANCE_NOT_SPLICING) to (querypos - EQUAL_DISTANCE_NOT_SPLICING) */
+      /* This is equivalent to -diffdistance > EQUAL_DISTANCE_NOT_SPLICING && prevposition + indexsize_nt <= position */
+
+      /* Range 4: From (prev_querypos - EQUAL_DISTANCE_NOT_SPLICING) to indexsize_nt */
+      while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) >= position + indexsize_nt) {
+	/* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
+	prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
+
+	gendistance = prevposition - position;
+	diffdistance = abs(gendistance - querydistance);
+
+#ifdef BAD_GMAX
+	fwd_score = prevlink->fwd_score + querydist_credit - (diffdistance/ONE + 1) /*- querydist_penalty*/;
+#else
+	/* diffdistance <= EQUAL_DISTANCE_NOT_SPLICING */
+	/* This is how version 2013-08-14 did it */
+	fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
+#endif
+#if 0
+	if (/*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
+	  fwd_score -= NINTRON_PENALTY_MISMATCH;
+	}
+#endif
+
+	debug9(printf("\tD4. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+		      prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+		      prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
+		      best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+		      gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
+	    
+	/* Disallow ties, which should favor adjacent */
+	if (fwd_score > best_fwd_score) {
+	  if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
+	    best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	    /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
+	  } else {
+	    best_fwd_consecutive = 0;
+	    /* best_fwd_rootnlinks = 1; */
+	  }
+	  best_fwd_rootposition = prevlink->fwd_rootposition;
+	  best_fwd_score = fwd_score;
+	  best_fwd_prevpos = prev_querypos;
+	  best_fwd_prevhit = prevhit;
+#ifdef DEBUG9
+	  /* best_fwd_tracei = ++*fwd_tracei; */
+	  best_fwd_tracei = prevlink->fwd_tracei; /* Keep previous trace, as in range 3 */
+	  best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	  best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	  best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	  switch (canonicalsgn) {
+	  case 1: best_fwd_intronnfwd++; break;
+	  case 0: best_fwd_intronnunk++; break;
+	  }
+#endif
+	  debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
+	} else {
+	  debug9(printf(" => Loses to %d\n",best_fwd_score));
+	}
+
+	prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+      }
     }
   }
 
@@ -1435,44 +1989,44 @@ score_querypos_lookback (
 
 
 static void
-score_querypos_lookforward (
+score_querypos_lookforward_mult (
 #ifdef DEBUG9
-			    int *fwd_tracei,
+				 int *fwd_tracei,
 #endif
-			    Link_T currlink, int querypos,
-			    int querystart, int queryend, unsigned int position,
-			    struct Link_T **links, Chrpos_T **mappings,
-			    int **active, int *firstactive,
-			    Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-			    int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
-			    bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
-			    bool use_canonical_p, int non_canonical_penalty) {
-  Link_T prevlink;
-  Intlist_T p;
+				 int low_hit, int high_hit,
+				 int querypos, int querystart, int queryend, unsigned int *positions,
+				 struct Link_T **links, Chrpos_T **mappings,
+				 int **active, int *firstactive,
+				 Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
+				 int indexsize, Intlist_T processed, int sufflookback, int nsufflookback, int maxintronlen, 
+				 bool anchoredp, bool localp, bool splicingp, bool skip_repetitive_p,
+				 bool use_canonical_p, int non_canonical_penalty) {
+  Link_T prevlink, currlink;
+  Intlist_T last_item, p;
+  int nhits = high_hit - low_hit, nprocessed, hiti;
 
-  int best_fwd_consecutive = indexsize*NT_PER_MATCH;
-  int best_fwd_rootposition = position;
-  /* int best_fwd_rootnlinks = 1; */
-  int best_fwd_score = 0, fwd_score;
-  int best_fwd_prevpos = -1, best_fwd_prevhit = -1;
+  struct Link_T *prev_links, *adj_links;
+  Chrpos_T *prev_mappings, *adj_mappings;
+  int *prev_active, *adj_active;
+
+  int best_fwd_consecutive;
+  int best_fwd_rootposition;
+  int best_fwd_score, fwd_score;
+  int best_fwd_prevpos, best_fwd_prevhit;
+  bool donep;
 #ifdef DEBUG9
   int best_fwd_tracei;
-  int best_fwd_intronnfwd = 0, best_fwd_intronnrev = 0, best_fwd_intronnunk = 0;
-  int canonicalsgn;
+  int best_fwd_intronnfwd, best_fwd_intronnrev, best_fwd_intronnunk;
+  int canonicalsgn = 0;
 #endif
-  bool adjacentp = false, donep;
-  int prev_querypos, prevhit;
-  Chrpos_T prevposition, gendistance;
-  Chrpos_T leftpos, rightpos, last_rightpos;
+  int adj_querypos, adj_querydistance, prev_querypos, prevhit, adj_frontier, *frontier;
+  Chrpos_T prevposition, position, gendistance;
   Univcoord_T prevpos, currpos;
-  Univcoord_T donorpos, acceptorpos;
-  int querydistance, diffdistance, lookback, nlookback, nseen, indexsize_nt, indexsize_query;
-  /* int querydist_penalty; */
+  int querydistance, diffdistance, lookback, nlookback, indexsize_nt, indexsize_query;
+  int max_nseen, max_adjacent_nseen, max_nonadjacent_nseen, nseen;
   int querydist_credit;
-  int enough_consecutive;
-  /* bool near_end_p; */
+  int enough_consecutive = 32;
   bool canonicalp;
-  double donor_score, acceptor_score, antidonor_score, antiacceptor_score;
 
 #ifdef PMAP
   indexsize_nt = indexsize*3;
@@ -1482,451 +2036,448 @@ score_querypos_lookforward (
   indexsize_query = indexsize;	/* Use when evaluating across query positions */
 
 
-  enough_consecutive = 32;
-
-#if 0
-  if (querypos < querystart + NEAR_END_LENGTH) {
-    near_end_p = true;
-  } else if (querypos > queryend - NEAR_END_LENGTH) {
-    near_end_p = true;
+  /* Determine work load */
+  /* printf("Work load (lookforward): %s\n",Intlist_to_string(processed)); */
+  last_item = processed;
+  if (anchoredp && querypos + indexsize_query >= queryend) {
+    /* Allow close prevpositions that overlap with anchor */
+    /* Can give rise to false positives, and increases amount of dynamic programming work */
+    /* debug9(printf("No skipping because close to anchor\n")); */
+  } else if (0 && anchoredp && querypos == querystart) {
+    /* Test end position */
   } else {
-    near_end_p = false;
+    while (processed != NULL && (prev_querypos = Intlist_head(processed)) < querypos + indexsize_query) {
+      debug9(printf("Skipping prev_querypos %d, because too close\n",prev_querypos));
+      processed = Intlist_next(processed);
+    }
   }
-#endif
 
-  /* A. Evaluate adjacent position (at last one processed) */
-  if (processed != NULL) {
-    prev_querypos = Intlist_head(processed);
+  if (last_item == NULL) {
+    for (hiti = nhits - 1; hiti >= 0; hiti--) {
+      currlink = &(links[querypos][hiti + low_hit]);
+
+      currlink->fwd_consecutive = /*best_fwd_consecutive =*/ indexsize*NT_PER_MATCH;
+      currlink->fwd_rootposition = /*best_fwd_rootposition =*/ positions[hiti];
+      currlink->fwd_pos = /*best_fwd_prevpos =*/ -1;
+      currlink->fwd_hit = /*best_fwd_prevhit =*/ -1;
+
+      if (anchoredp == true) {
+	debug9(currlink->fwd_tracei = -1);
+	currlink->fwd_score = -100000;
+      } else if (localp == true) {
+	debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	currlink->fwd_score = indexsize_nt;
+      } else {
+	currlink->fwd_score = /*best_fwd_score =*/ 0;
+      }
+    }
+
+  } else if (processed == NULL) {
+    /* A. Evaluate adjacent position (at last one processed, if available).  Don't evaluate for mismatches (D). */
+    adj_querypos = Intlist_head(last_item);
+    adj_links = links[adj_querypos];
+    adj_mappings = mappings[adj_querypos];
+    adj_active = active[adj_querypos];
+
 #ifdef PMAP
-    querydistance = (prev_querypos - querypos)*3;
+    adj_querydistance = (adj_querypos - querypos)*3;
 #else
-    querydistance = prev_querypos - querypos;
+    adj_querydistance = adj_querypos - querypos;
 #endif
-    prevhit = firstactive[prev_querypos];
-    while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) >= position + querydistance) {
-      if (prevposition == position + querydistance) {
-	prevlink = &(links[prev_querypos][prevhit]);
-	best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
-	/* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
-	best_fwd_rootposition = prevlink->fwd_rootposition;
-	best_fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH*querydistance;
 
-	best_fwd_prevpos = prev_querypos;
+    /* Process prevhit and hiti in parallel.  Values are descending along prevhit chain and from nhits-1 to 0. */
+    prevhit = firstactive[adj_querypos];
+    hiti = nhits - 1;
+    while (prevhit != -1 && hiti >= 0) {
+      if ((prevposition = /*mappings[adj_querypos]*/adj_mappings[prevhit]) > (position = positions[hiti]) + adj_querydistance) {
+	prevhit = /*active[adj_querypos]*/adj_active[prevhit];
+
+      } else if (prevposition < position + adj_querydistance) {
+	/* Adjacent position not found for hiti */
+	currlink = &(links[querypos][hiti + low_hit]);
+
+	currlink->fwd_consecutive = /*best_fwd_consecutive =*/ indexsize*NT_PER_MATCH;
+	currlink->fwd_rootposition = /*best_fwd_rootposition =*/ positions[hiti];
+	currlink->fwd_pos = /*best_fwd_prevpos =*/ -1;
+	currlink->fwd_hit = /*best_fwd_prevhit =*/ -1;
+
+	if (anchoredp == true) {
+	  debug9(currlink->fwd_tracei = -1);
+	  currlink->fwd_score = -100000;
+	} else if (localp == true) {
+	  debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	  currlink->fwd_score = indexsize_nt;
+	} else {
+	  currlink->fwd_score = /*best_fwd_score =*/ 0;
+	}
+
+	hiti--;
+	
+      } else {
+	/* Adjacent position found for hiti */
+	currlink = &(links[querypos][hiti + low_hit]);
+	prevlink = &(/*links[adj_querypos]*/adj_links[prevhit]);
+
+	currlink->fwd_consecutive = /*best_fwd_consecutive =*/ prevlink->fwd_consecutive + adj_querydistance;
+	currlink->fwd_rootposition = /*best_fwd_rootposition =*/ prevlink->fwd_rootposition;
+	currlink->fwd_pos = /*best_fwd_prevpos =*/ adj_querypos;
+	currlink->fwd_hit = /*best_fwd_prevhit =*/ prevhit;
+	currlink->fwd_score = /*best_fwd_score =*/ prevlink->fwd_score + CONSEC_POINTS_PER_MATCH*adj_querydistance;
+
+#ifdef DEBUG9
+	printf("\tA. For hit %d, adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d)\n",
+	       hiti,adj_querypos,prevhit,prevposition,active[adj_querypos][prevhit],prevlink->fwd_score,
+	       currlink->fwd_score,currlink->fwd_consecutive,/*best_fwd_tracei*/prevlink->fwd_tracei,
+	       /*best_fwd_intronnfwd*/prevlink->fwd_intronnfwd,
+	       /*best_fwd_intronnrev*/prevlink->fwd_intronnrev,
+	       /*best_fwd_intronnunk*/prevlink->fwd_intronnunk);
+#endif
+
+	prevhit = /*active[adj_querypos]*/adj_active[prevhit];
+	hiti--;
+      }
+    }
+
+    while (hiti < nhits) {
+      /* Adjacent position not found for hiti */
+      currlink = &(links[querypos][hiti + low_hit]);
+
+      currlink->fwd_consecutive = /*best_fwd_consecutive =*/ indexsize*NT_PER_MATCH;
+      currlink->fwd_rootposition = /*best_fwd_rootposition =*/ positions[hiti];
+      currlink->fwd_pos = /*best_fwd_prevpos =*/ -1;
+      currlink->fwd_hit = /*best_fwd_prevhit =*/ -1;
+
+      if (anchoredp == true) {
+	debug9(currlink->fwd_tracei = -1);
+	currlink->fwd_score = -100000;
+      } else if (localp == true) {
+	debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	currlink->fwd_score = indexsize_nt;
+      } else {
+	currlink->fwd_score = /*best_fwd_score =*/ 0;
+      }
+
+      hiti--;
+    }
+
+  } else {
+    adj_querypos = Intlist_head(last_item);
+    adj_links = links[adj_querypos];
+    adj_mappings = mappings[adj_querypos];
+    adj_active = active[adj_querypos];
+
+#ifdef PMAP
+    adj_querydistance = (adj_querypos - querypos)*3;
+#else
+    adj_querydistance = adj_querypos - querypos;
+#endif
+    adj_frontier = firstactive[adj_querypos];
+
+    nprocessed = Intlist_length(processed);
+    frontier = (int *) MALLOCA(nprocessed * sizeof(int));
+
+    nseen = 0;
+    for (p = processed; p != NULL; p = Intlist_next(p)) {
+      prev_querypos = Intlist_head(p);
+
+      querydistance = prev_querypos - querypos;
+      if (nseen <= /*nlookback*/1 || querydistance - indexsize_nt <= /*lookback*/sufflookback/2) {
+	max_adjacent_nseen = nseen;
+      }
+      if (nseen <= /*nlookback*/nsufflookback || querydistance - indexsize_nt <= /*lookback*/sufflookback) {
+	max_nonadjacent_nseen = nseen;
+      }
+
+      frontier[nseen++] = firstactive[prev_querypos];
+    }
+
+    for (hiti = nhits - 1; hiti >= 0; hiti--) {
+      position = positions[hiti];
+
+      /* A. Evaluate adjacent position (at last one processed) */
+      prevhit = adj_frontier;	/* Get information from last hiti */
+      prevposition = position;	/* Prevents prevposition == position + adj_querydistance */
+      while (prevhit != -1 && (prevposition = /*mappings[adj_querypos]*/adj_mappings[prevhit]) > position + adj_querydistance) {
+	prevhit = /*active[adj_querypos]*/adj_active[prevhit];
+      }
+      adj_frontier = prevhit;	/* Save information for next hiti */
+
+      if (prevposition == position + adj_querydistance) {
+	/* Adjacent found */
+	prevlink = &(/*links[adj_querypos]*/adj_links[prevhit]);
+
+	best_fwd_consecutive = prevlink->fwd_consecutive + adj_querydistance;
+	best_fwd_rootposition = prevlink->fwd_rootposition;
+	best_fwd_prevpos = adj_querypos;
 	best_fwd_prevhit = prevhit;
+	best_fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH*adj_querydistance;
+	max_nseen = max_adjacent_nseen;	/* Look not so far back */
+
 #ifdef DEBUG9
 	best_fwd_tracei = prevlink->fwd_tracei;
 	best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
 	best_fwd_intronnrev = prevlink->fwd_intronnrev;
 	best_fwd_intronnunk = prevlink->fwd_intronnunk;
 #endif
-	adjacentp = true;
-
-	debug9(printf("\tA. Adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d)\n",
-		      prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],prevlink->fwd_score,
-		      best_fwd_score,best_fwd_consecutive,best_fwd_tracei,
+	debug9(printf("\tA. For hit %d, adjacent qpos %d,%d at %ux%d (scores = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d)\n",
+		      hiti,adj_querypos,prevhit,prevposition,active[adj_querypos][prevhit],prevlink->fwd_score,
+		      best_fwd_score,best_fwd_consecutive,/*best_fwd_tracei*/prevlink->fwd_tracei,
 		      best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk));
-	prevhit = -1;		/* Exit loop */
       } else {
-	prevhit = active[prev_querypos][prevhit];
+	/* Adjacent not found */
+	best_fwd_consecutive = indexsize*NT_PER_MATCH;
+	best_fwd_rootposition = position;
+	best_fwd_prevpos = -1;
+	best_fwd_prevhit = -1;
+	best_fwd_score = 0;
+	max_nseen = max_nonadjacent_nseen; /* Look farther back */
+
+#ifdef DEBUG9
+	best_fwd_tracei = -1;
+	best_fwd_intronnfwd = 0;
+	best_fwd_intronnrev = 0;
+	best_fwd_intronnunk = 0;
+#endif
       }
-    }
 
-  }
 
-  if (best_fwd_consecutive < enough_consecutive) {
-
-    /* D. Evaluate for mismatches (all other previous querypos) */
-    /* Set parameters */
-    if (adjacentp == true) {
-      /* Look not so far forward */
-      nlookback = 1;
-      lookback = sufflookback/2;
-    } else {
-      /* Look farther forward */
-      nlookback = nsufflookback;
-      lookback = sufflookback;
-    }
-
-    last_rightpos = 0;		/* if use_shifted_canonical_p is true */
-    leftpos = position;	      /* if use_shifted_canonical_p is true */
-
-    donep = false;
-    nseen = 0; 
-
-    p = processed;
-    if (anchoredp && querypos + indexsize_query >= queryend) {
-      /* Allow close prevpositions that overlap with anchor */
-      /* Can give rise to false positives, and increases amount of dynamic programming work */
-      debug9(printf("No skipping because close to anchor\n"));
-    } else if (0 && anchoredp && querypos == querystart) {
-      /* Test end position */
-    } else {
-      while (p != NULL && (prev_querypos = Intlist_head(p)) < querypos + indexsize_query) {
-	debug9(printf("Skipping prev_querypos %d, because too close\n",prev_querypos));
-	p = Intlist_next(p);
-      }
-    }
-
-    for ( ; p != NULL && best_fwd_consecutive < enough_consecutive && donep == false;
-	  p = Intlist_next(p), nseen++) {
-      prev_querypos = Intlist_head(p);
-				  
+      /* D. Evaluate for mismatches (all other previous querypos) */
+      nseen = 0;
+      for (p = processed; p != NULL && best_fwd_consecutive < enough_consecutive && nseen <= max_nseen;
+	   p = Intlist_next(p), nseen++) {
+	/* Making this check helps with efficiency */
+	if ((prevhit = frontier[nseen]) != -1) {	/* Retrieve starting point from last hiti */
+	  prev_querypos = Intlist_head(p);
 #ifdef PMAP
-      querydistance = (prev_querypos - querypos)*3;
+	  querydistance = (prev_querypos - querypos)*3;
 #else
-      querydistance = prev_querypos - querypos;
+	  querydistance = prev_querypos - querypos;
 #endif
+	  /* Actually a querydist_penalty */
+	  querydist_credit = -querydistance/indexsize_nt;
 
-#ifdef USE_QUERYDIST_CREDIT
-      /* Allow close prevpositions at beginning of path, to overlap with anchor */
-      if (querydistance <= indexsize_nt) {
-	querydist_credit = CONSEC_POINTS_PER_MATCH*querydistance;
-      } else {
-	querydist_credit = CONSEC_POINTS_PER_MATCH*indexsize_nt - querydistance/QUERYDIST_PENALTY_FACTOR;
-      }
-#else
-      /* Actually a querydist_penalty */
-      querydist_credit = -querydistance/indexsize_nt;
-#endif
+	  prev_mappings = mappings[prev_querypos];
+	  prev_links = links[prev_querypos];
+	  prev_active = active[prev_querypos];
 
-      if (nseen > nlookback && querydistance - indexsize_nt > lookback) {
-	donep = true;
-      }
-
-      if ((prevhit = firstactive[prev_querypos]) != -1) {
-	/* querydist_penalty = (querydistance - indexsize_nt)/QUERYDIST_PENALTY_FACTOR; */
-
-	/* Range 1: From Infinity to maxintronlen */
-	if (splicingp == true) {
-	  /* This is equivalent to diffdistance >= maxintronlen, where
+	  /* Range 1: From Infinity to maxintronlen.  To be skipped.
+	     This is equivalent to diffdistance >= maxintronlen, where
 	     diffdistance = abs(gendistance - querydistance) and
 	     gendistance = (position - prevposition - indexsize_nt) */
-	  while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) >= position + maxintronlen + querydistance) {
-	    /* Skip */
-	    /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
-	    prevhit = active[prev_querypos][prevhit];
+	  while (prevhit != -1 && (/*prevposition =*/ /*mappings[prev_querypos]*/prev_mappings[prevhit]) >= position + maxintronlen + querydistance) {
+	    /* Accept within range 1 (ignore) */
+	    prevhit = /*active[prev_querypos]*/prev_active[prevhit];
 	  }
-	}
+	  frontier[nseen] = prevhit;	/* Store as starting point for next hiti */
+    
 
-	/* Range 2: From maxintronlen to (prev_querypos + EQUAL_DISTANCE_NOT_SPLICING) */
-	/* This is equivalent to +diffdistance > EQUAL_DISTANCE_NOT_SPLICING */
-	while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) > position + EQUAL_DISTANCE_NOT_SPLICING + querydistance) {
-	  /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
-	  prevlink = &(links[prev_querypos][prevhit]);
+	  /* Range 2: From maxintronlen to (prev_querypos + EQUAL_DISTANCE_NOT_SPLICING) */
+	  /* This is equivalent to +diffdistance > EQUAL_DISTANCE_NOT_SPLICING */
+	  while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) > position + EQUAL_DISTANCE_NOT_SPLICING + querydistance) {
+	    prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
 
-	  gendistance = prevposition - position;
-	  assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
-	  diffdistance = gendistance - querydistance; /* No need for abs() */
+	    gendistance = prevposition - position;
+	    assert(gendistance > querydistance); /* True because gendistance > EQUAL_DISTANCE_NOT_SPLICING + querydistance */
+	    diffdistance = gendistance - querydistance; /* No need for abs() */
 
-	  fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
-	  if (splicingp == true) {
-	    fwd_score -= (diffdistance/TEN_THOUSAND + 1);
-	  } else {
-	    fwd_score -= (diffdistance/ONE + 1);
-	  }
+	    fwd_score = prevlink->fwd_score + querydist_credit /*- querydist_penalty*/;
+	    if (splicingp == true) {
+	      fwd_score -= (diffdistance/TEN_THOUSAND + 1);
+	    } else {
+	      fwd_score -= (diffdistance/ONE + 1);
+	    }
 
-	  if (0 && /*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
-	    /* Misses short exons */
-	    debug9(canonicalsgn = 0);
-	    fwd_score -= NINTRON_PENALTY_MISMATCH;
-
-	  } else if (use_canonical_p == true) {
-
-	    /* prevpos is higher genomic coordinate than currpos */
-	    /* need to add to position and prevposition to compensate for greedy matches */
-	    /* need to subtract from position and prevposition to compensate for missed matches */
-	    if (plusp == true) {
-	      prevpos = chroffset + prevposition;
-	      currpos = chroffset + position + querydistance;
-#if 0
-	      donor_score = Maxent_hr_donor_prob(currpos,chroffset);
-	      acceptor_score = Maxent_hr_acceptor_prob(prevpos,chroffset);
-	      antidonor_score = Maxent_hr_antidonor_prob(prevpos,chroffset);
-	      antiacceptor_score = Maxent_hr_antiacceptor_prob(currpos,chroffset);
-	      debug9(printf("lookforward plus: sense donorpos %u, acceptorpos %u: %f..%f\n",
-			    currpos-chroffset,prevpos-chroffset+1,donor_score,acceptor_score));
-	      debug9(printf("lookforward plus: anti donorpos %u, acceptorpos %u: %f..%f\n",
-			    prevpos-chroffset+1,currpos-chroffset,antidonor_score,antiacceptor_score));
-#elif 0
-	      donorpos = Genome_prev_donor_position(/*right*/currpos + GREEDY_ADVANCE,
-						    /*left*/currpos - MISS_BEHIND,chroffset);
-	      acceptorpos = Genome_prev_acceptor_position(/*right*/prevpos + GREEDY_ADVANCE,
-							  /*left*/prevpos - MISS_BEHIND,chroffset);
-	      debug9(printf("lookforward plus: sense prev donorpos %u, prev acceptorpos %u\n",donorpos-chroffset,acceptorpos-chroffset));
-
-	      donorpos = Genome_prev_antidonor_position(/*right*/prevpos + GREEDY_ADVANCE,
-							/*left*/prevpos - MISS_BEHIND,chroffset);
-	      acceptorpos = Genome_prev_antiacceptor_position(/*right*/currpos + GREEDY_ADVANCE,
-							      /*left*/currpos - MISS_BEHIND,chroffset);
-	      debug9(printf("lookforward plus: anti prev donorpos %u, prev acceptorpos %u\n",donorpos-chroffset,acceptorpos-chroffset));
-#else
-	      if (currpos < MISS_BEHIND || prevpos < MISS_BEHIND) {
-		canonicalp = false;
-	      } else if (Genome_sense_canonicalp(/*donor_rightbound*/currpos + GREEDY_ADVANCE,
-						 /*donor_leftbound*/currpos - MISS_BEHIND,
-						 /*acceptor_rightbound*/prevpos + GREEDY_ADVANCE,
-						 /*acceptor_leftbound*/prevpos - MISS_BEHIND,
-						 chroffset) == true) {
-		debug9(printf("lookforward plus: sense canonical\n"));
-		canonicalp = true;
-	      } else if (Genome_antisense_canonicalp(/*donor_rightbound*/prevpos + GREEDY_ADVANCE,
-						     /*donor_leftbound*/prevpos - MISS_BEHIND,
-						     /*acceptor_rightbound*/currpos + GREEDY_ADVANCE,
-						     /*acceptor_leftbound*/currpos - MISS_BEHIND,
-						     chroffset) == true) {
-		debug9(printf("lookforward plus: antisense canonical\n"));
-		canonicalp = true;
-	      } else {
-		debug9(printf("lookforward plus: not canonical\n"));
-		canonicalp = false;
-	      }
-#endif
+	    if (use_canonical_p == true) {
+	      /* prevpos is higher genomic coordinate than currpos */
+	      /* need to add to position and prevposition to compensate for greedy matches */
+	      /* need to subtract from position and prevposition to compensate for missed matches */
+	      if (plusp == true) {
+		prevpos = chroffset + prevposition;
+		currpos = chroffset + position + querydistance;
+		if (currpos < MISS_BEHIND || prevpos < MISS_BEHIND) {
+		  canonicalp = false;
+		} else if (Genome_sense_canonicalp(/*donor_rightbound*/currpos + GREEDY_ADVANCE,
+						   /*donor_leftbound*/currpos - MISS_BEHIND,
+						   /*acceptor_rightbound*/prevpos + GREEDY_ADVANCE,
+						   /*acceptor_leftbound*/prevpos - MISS_BEHIND,
+						   chroffset) == true) {
+		  debug9(printf("lookforward plus: sense canonical\n"));
+		  canonicalp = true;
+		} else if (Genome_antisense_canonicalp(/*donor_rightbound*/prevpos + GREEDY_ADVANCE,
+						       /*donor_leftbound*/prevpos - MISS_BEHIND,
+						       /*acceptor_rightbound*/currpos + GREEDY_ADVANCE,
+						       /*acceptor_leftbound*/currpos - MISS_BEHIND,
+						       chroffset) == true) {
+		  debug9(printf("lookforward plus: antisense canonical\n"));
+		  canonicalp = true;
+		} else {
+		  debug9(printf("lookforward plus: not canonical\n"));
+		  canonicalp = false;
+		}
 	      
-	    } else {
-	      prevpos = chrhigh + 1 - prevposition;
-	      currpos = chrhigh + 1 - position - querydistance;
-#if 0
-	      donor_score = Maxent_hr_donor_prob(prevpos,chroffset);
-	      acceptor_score = Maxent_hr_acceptor_prob(currpos,chroffset);
-	      antidonor_score = Maxent_hr_antidonor_prob(currpos,chroffset);
-	      antiacceptor_score = Maxent_hr_antiacceptor_prob(prevpos,chroffset);
-	      debug9(printf("lookforward minus: sense donorpos %u, acceptorpos %u: %f..%f\n",
-			    prevpos-chroffset,currpos-chroffset+1,donor_score,acceptor_score));
-	      debug9(printf("lookforward minus: anti donorpos %u, acceptorpos %u: %f..%f\n",
-			    currpos-chroffset+1,prevpos-chroffset,antidonor_score,antiacceptor_score)); 
-#elif 0
-	      donorpos = Genome_prev_donor_position(/*right*/prevpos + MISS_BEHIND,
-						    /*left*/prevpos - GREEDY_ADVANCE,chroffset);
-	      acceptorpos = Genome_prev_acceptor_position(/*right*/currpos + MISS_BEHIND,
-							  /*left*/currpos - GREEDY_ADVANCE,chroffset);
-	      debug9(printf("lookforward minus: sense prev donorpos %u, prev acceptorpos %u\n",donorpos-chroffset,acceptorpos-chroffset));
-
-	      donorpos = Genome_prev_antidonor_position(/*right*/currpos + MISS_BEHIND,
-							/*left*/currpos - GREEDY_ADVANCE,chroffset);
-	      acceptorpos = Genome_prev_antiacceptor_position(/*right*/prevpos + MISS_BEHIND,
-							      /*left*/prevpos - GREEDY_ADVANCE,chroffset);
-	      debug9(printf("lookforward minus: anti prev donorpos %u, prev acceptorpos %u\n",donorpos-chroffset,acceptorpos-chroffset));
-#else
-	      if (prevpos < GREEDY_ADVANCE || currpos < GREEDY_ADVANCE) {
-		canonicalp = false;
-	      } else if (Genome_sense_canonicalp(/*donor_rightbound*/prevpos + MISS_BEHIND,
-						 /*donor_leftbound*/prevpos - GREEDY_ADVANCE,
-						 /*acceptor_rightbound*/currpos + MISS_BEHIND,
-						 /*acceptor_leftbound*/currpos - GREEDY_ADVANCE,
-						 chroffset) == true) {
-		debug9(printf("lookforward minus: sense canonical\n"));
-		canonicalp = true;
-	      } else if (Genome_antisense_canonicalp(/*donor_rightbound*/currpos + MISS_BEHIND,
-						     /*donor_leftbound*/currpos - GREEDY_ADVANCE,
-						     /*acceptor_rightbound*/prevpos + MISS_BEHIND,
-						     /*acceptor_leftbound*/prevpos - GREEDY_ADVANCE,
-						     chroffset) == true) {
-		debug9(printf("lookforward minus: antisense canonical\n"));
-		canonicalp = true;
 	      } else {
-		debug9(printf("lookforward minus: not canonical\n"));
-		canonicalp = false;
+		prevpos = chrhigh + 1 - prevposition;
+		currpos = chrhigh + 1 - position - querydistance;
+		if (prevpos < GREEDY_ADVANCE || currpos < GREEDY_ADVANCE) {
+		  canonicalp = false;
+		} else if (Genome_sense_canonicalp(/*donor_rightbound*/prevpos + MISS_BEHIND,
+						   /*donor_leftbound*/prevpos - GREEDY_ADVANCE,
+						   /*acceptor_rightbound*/currpos + MISS_BEHIND,
+						   /*acceptor_leftbound*/currpos - GREEDY_ADVANCE,
+						   chroffset) == true) {
+		  debug9(printf("lookforward minus: sense canonical\n"));
+		  canonicalp = true;
+		} else if (Genome_antisense_canonicalp(/*donor_rightbound*/currpos + MISS_BEHIND,
+						       /*donor_leftbound*/currpos - GREEDY_ADVANCE,
+						       /*acceptor_rightbound*/prevpos + MISS_BEHIND,
+						       /*acceptor_leftbound*/prevpos - GREEDY_ADVANCE,
+						       chroffset) == true) {
+		  debug9(printf("lookforward minus: antisense canonical\n"));
+		  canonicalp = true;
+		} else {
+		  debug9(printf("lookforward minus: not canonical\n"));
+		  canonicalp = false;
+		}
+	      }
+
+	      if (canonicalp == true) {
+		debug9(canonicalsgn = +1);
+	      } else {
+		debug9(canonicalsgn = 0);
+		fwd_score -= non_canonical_penalty;
+	      }
+	    }
+
+	    debug9(printf("\tD2, hit %d. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+			  hiti,prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			  prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
+			  best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+			  gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
+	    
+	    /* Disallow ties, which should favor adjacent */
+	    if (fwd_score > best_fwd_score) {
+	      if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
+		best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	      } else {
+		best_fwd_consecutive = 0;
+	      }
+	      best_fwd_rootposition = prevlink->fwd_rootposition;
+	      best_fwd_score = fwd_score;
+	      best_fwd_prevpos = prev_querypos;
+	      best_fwd_prevhit = prevhit;
+#ifdef DEBUG9
+	      best_fwd_tracei = ++*fwd_tracei;
+	      best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	      best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	      best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	      switch (canonicalsgn) {
+	      case 1: best_fwd_intronnfwd++; break;
+	      case 0: best_fwd_intronnunk++; break;
 	      }
 #endif
-	    }
-
-	    if (canonicalp == false) {
-	      fwd_score -= non_canonical_penalty;
-	    }
-	  }
-
-	  debug9(printf("\tD2. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
-			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-			gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
-	    
-	  /* Disallow ties, which should favor adjacent */
-	  if (fwd_score > best_fwd_score) {
-	    if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
-	      best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
-	      /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
+	      debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
 	    } else {
-	      best_fwd_consecutive = 0;
-	      /* best_fwd_rootnlinks = 1; */
+	      debug9(printf(" => Loses to %d\n",best_fwd_score));
 	    }
-	    best_fwd_rootposition = prevlink->fwd_rootposition;
-	    best_fwd_score = fwd_score;
-	    best_fwd_prevpos = prev_querypos;
-	    best_fwd_prevhit = prevhit;
-#ifdef DEBUG9
-	    best_fwd_tracei = ++*fwd_tracei;
-	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
-	    switch (canonicalsgn) {
-	    case 1: best_fwd_intronnfwd++; break;
-	    case 0: best_fwd_intronnunk++; break;
-	    }
-#endif
-	    debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
-	  } else {
-	    debug9(printf(" => Loses to %d\n",best_fwd_score));
+
+	    prevhit = /*active[prev_querypos]*/prev_active[prevhit];
 	  }
 
-	  prevhit = active[prev_querypos][prevhit];
-	}
 
-#if 0
-	/* Scoring appears to be the same as for range 4, which is rarely called */
-	/* Range 3: From (querypos + EQUAL_DISTANCE_NOT_SPLICING) to (querypos - EQUAL_DISTANCE_NOT_SPLICING) */
-	/* This is equivalent to -diffdistance > EQUAL_DISTANCE_NOT_SPLICING && prevposition + indexsize_nt <= position */
-	while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) + EQUAL_DISTANCE_NOT_SPLICING > position + querydistance &&
-	       prevposition >= position + indexsize_nt) {
-	  /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
-	  prevlink = &(links[prev_querypos][prevhit]);
+	  /* Scoring appears to be the same as for range 4, which is rarely called, so including in range 4 */
+	  /* Range 3: From (querypos + EQUAL_DISTANCE_NOT_SPLICING) to (querypos - EQUAL_DISTANCE_NOT_SPLICING) */
+	  /* This is equivalent to -diffdistance > EQUAL_DISTANCE_NOT_SPLICING && prevposition + indexsize_nt <= position */
 
-	  gendistance = prevposition - position;
-	  diffdistance = abs(gendistance - querydistance);
 
-	  /* canonicalsgn = 9; */
-	  /* ? Add diffdistance as penalty here */
-	  fwd_score = prevlink->fwd_score + querydist_credit - (diffdistance/ONE + 1);
-#ifdef PMAP
-	  if (diffdistance % 3 != 0) {
-	    fwd_score -= NONCODON_INDEL_PENALTY;
-	  }
-#endif
-	  debug9(printf("\tD3. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
-			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-			gendistance-indexsize_nt,querydistance-indexsize_nt,/*canonicalsgn*/9));
-	    
-	  /* Disallow ties, which should favor adjacent */
-	  if (fwd_score > best_fwd_score) {
-	    if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
-	      best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
-	      /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
-	    } else {
-	      best_fwd_consecutive = 0;
-	      /* best_fwd_rootnlinks = 1; */
-	    }
-	    best_fwd_rootposition = prevlink->fwd_rootposition;
-	    best_fwd_score = fwd_score;
-	    best_fwd_prevpos = prev_querypos;
-	    best_fwd_prevhit = prevhit;
-#ifdef DEBUG9
-	    best_fwd_tracei = prevlink->fwd_tracei; /* Keep previous trace */
-	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
-#if 0
-	    switch (canonicalsgn) {
-	    case 1: best_fwd_intronnfwd++; break;
-	    case 0: best_fwd_intronnunk++; break;
-	    }
-#endif
-#endif
-	    debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
-	  } else {
-	    debug9(printf(" => Loses to %d\n",best_fwd_score));
-	  }
+	  /* Range 4: From (prev_querypos - EQUAL_DISTANCE_NOT_SPLICING) to indexsize_nt */
+	  while (prevhit != -1 && (prevposition = /*mappings[prev_querypos]*/prev_mappings[prevhit]) >= position + indexsize_nt) {
+	    prevlink = &(/*links[prev_querypos]*/prev_links[prevhit]);
 
-	  prevhit = active[prev_querypos][prevhit];
-	}
-#endif
-
-	/* Range 4: From (prev_querypos - EQUAL_DISTANCE_NOT_SPLICING) to indexsize_nt */
-	while (prevhit != -1 && (prevposition = mappings[prev_querypos][prevhit]) >= position + indexsize_nt) {
-	  /* printf("fwd: prevposition %u, prevhit %d\n",prevposition,prevhit); */
-	  prevlink = &(links[prev_querypos][prevhit]);
-
-	  gendistance = prevposition - position;
-	  diffdistance = abs(gendistance - querydistance);
+	    gendistance = prevposition - position;
+	    diffdistance = abs(gendistance - querydistance);
 
 #ifdef BAD_GMAX
-	  fwd_score = prevlink->fwd_score + querydist_credit - (diffdistance/ONE + 1) /*- querydist_penalty*/;
+	    fwd_score = prevlink->fwd_score + querydist_credit - (diffdistance/ONE + 1) /*- querydist_penalty*/;
 #else
-	  /* diffdistance <= EQUAL_DISTANCE_NOT_SPLICING */
-	  /* This is how version 2013-08-14 did it */
-	  fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
-#endif
-#if 0
-	  if (/*near_end_p == false &&*/ prevlink->fwd_consecutive < EXON_DEFN) {
-	    fwd_score -= NINTRON_PENALTY_MISMATCH;
-	  }
+	    /* diffdistance <= EQUAL_DISTANCE_NOT_SPLICING */
+	    /* This is how version 2013-08-14 did it */
+	    fwd_score = prevlink->fwd_score + CONSEC_POINTS_PER_MATCH;
 #endif
 
-	  debug9(printf("\tD4. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
-			prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
-			prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
-			best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
-			gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
+	    debug9(printf("\tD4, hit %d. Fwd mismatch qpos %d,%d at %ux%d (score = %d -> %d, consec = %d (from #%d), intr = %d-%d-%d, gendist %u, querydist %d, canonicalsgn %d)",
+			  hiti,prev_querypos,prevhit,prevposition,active[prev_querypos][prevhit],
+			  prevlink->fwd_score,fwd_score,prevlink->fwd_consecutive,prevlink->fwd_tracei,
+			  best_fwd_intronnfwd,best_fwd_intronnrev,best_fwd_intronnunk,
+			  gendistance-indexsize_nt,querydistance-indexsize_nt,canonicalsgn));
 	    
-	  /* Disallow ties, which should favor adjacent */
-	  if (fwd_score > best_fwd_score) {
-	    if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
-	      best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
-	      /* best_fwd_rootnlinks = prevlink->fwd_rootnlinks + 1; */
-	    } else {
-	      best_fwd_consecutive = 0;
-	      /* best_fwd_rootnlinks = 1; */
-	    }
-	    best_fwd_rootposition = prevlink->fwd_rootposition;
-	    best_fwd_score = fwd_score;
-	    best_fwd_prevpos = prev_querypos;
-	    best_fwd_prevhit = prevhit;
+	    /* Disallow ties, which should favor adjacent */
+	    if (fwd_score > best_fwd_score) {
+	      if (diffdistance <= EQUAL_DISTANCE_FOR_CONSECUTIVE) {
+		best_fwd_consecutive = prevlink->fwd_consecutive + querydistance;
+	      } else {
+		best_fwd_consecutive = 0;
+	      }
+	      best_fwd_rootposition = prevlink->fwd_rootposition;
+	      best_fwd_score = fwd_score;
+	      best_fwd_prevpos = prev_querypos;
+	      best_fwd_prevhit = prevhit;
 #ifdef DEBUG9
-	    /* best_fwd_tracei = ++*fwd_tracei; */
-	    best_fwd_tracei = prevlink->fwd_tracei; /* Keep previous trace, as in range 3 */
-	    best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
-	    best_fwd_intronnrev = prevlink->fwd_intronnrev;
-	    best_fwd_intronnunk = prevlink->fwd_intronnunk;
-	    switch (canonicalsgn) {
-	    case 1: best_fwd_intronnfwd++; break;
-	    case 0: best_fwd_intronnunk++; break;
-	    }
+	      /* best_fwd_tracei = ++*fwd_tracei; */
+	      best_fwd_tracei = prevlink->fwd_tracei; /* Keep previous trace, as in range 3 */
+	      best_fwd_intronnfwd = prevlink->fwd_intronnfwd;
+	      best_fwd_intronnrev = prevlink->fwd_intronnrev;
+	      best_fwd_intronnunk = prevlink->fwd_intronnunk;
+	      switch (canonicalsgn) {
+	      case 1: best_fwd_intronnfwd++; break;
+	      case 0: best_fwd_intronnunk++; break;
+	      }
 #endif
-	    debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
-	  } else {
-	    debug9(printf(" => Loses to %d\n",best_fwd_score));
-	  }
+	      debug9(printf(" => Best fwd at %d (consec = %d)\n",fwd_score,best_fwd_consecutive));
+	    } else {
+	      debug9(printf(" => Loses to %d\n",best_fwd_score));
+	    }
 
-	  prevhit = active[prev_querypos][prevhit];
+	    prevhit = /*active[prev_querypos]*/prev_active[prevhit];
+	  }
 	}
       }
 
-    }
-  }
-
-  /* Best_score needs to beat something positive to prevent a
-     small local extension from beating a good canonical intron.
-     If querypos is too small, don't insert an intron.  */
-  /* linksconsecutive already assigned above */
-  currlink->fwd_consecutive = best_fwd_consecutive;
-  currlink->fwd_rootposition = best_fwd_rootposition;
-  /* currlink->fwd_rootnlinks = best_fwd_rootnlinks; */
-  currlink->fwd_pos = best_fwd_prevpos;
-  currlink->fwd_hit = best_fwd_prevhit;
-  if (currlink->fwd_pos >= 0) {
-    debug9(currlink->fwd_tracei = best_fwd_tracei);
-    currlink->fwd_score = best_fwd_score;
-  } else if (anchoredp == true) {
-    debug9(currlink->fwd_tracei = -1);
-    currlink->fwd_score = -100000;
-  } else if (localp == true) {
-    debug9(currlink->fwd_tracei = ++*fwd_tracei);
-    currlink->fwd_score = indexsize_nt;
-  } else {
-    debug9(currlink->fwd_tracei = ++*fwd_tracei);
-    currlink->fwd_score = best_fwd_score;
-  }
+      /* Best_score needs to beat something positive to prevent a
+	 small local extension from beating a good canonical intron.
+	 If querypos is too small, don't insert an intron.  */
+      /* linksconsecutive already assigned above */
+      currlink = &(links[querypos][hiti + low_hit]);
+      currlink->fwd_consecutive = best_fwd_consecutive;
+      currlink->fwd_rootposition = best_fwd_rootposition;
+      currlink->fwd_pos = best_fwd_prevpos;
+      currlink->fwd_hit = best_fwd_prevhit;
+      if (currlink->fwd_pos >= 0) {
+	debug9(currlink->fwd_tracei = best_fwd_tracei);
+	currlink->fwd_score = best_fwd_score;
+      } else if (anchoredp == true) {
+	debug9(currlink->fwd_tracei = -1);
+	currlink->fwd_score = -100000;
+      } else if (localp == true) {
+	debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	currlink->fwd_score = indexsize_nt;
+      } else {
+	debug9(currlink->fwd_tracei = ++*fwd_tracei);
+	currlink->fwd_score = best_fwd_score;
+      }
 
 #ifdef DEBUG9
-  currlink->fwd_intronnfwd = best_fwd_intronnfwd;
-  currlink->fwd_intronnrev = best_fwd_intronnrev;
-  currlink->fwd_intronnunk = best_fwd_intronnunk;
+      currlink->fwd_intronnfwd = best_fwd_intronnfwd;
+      currlink->fwd_intronnrev = best_fwd_intronnrev;
+      currlink->fwd_intronnunk = best_fwd_intronnunk;
 #endif
 
-  debug9(printf("\tChose %d,%d with score %d (fwd) => trace #%d\n",
-		currlink->fwd_pos,currlink->fwd_hit,currlink->fwd_score,currlink->fwd_tracei));
-  debug3(printf("%d %d  %d %d  1\n",querypos,hit,best_prevpos,best_prevhit));
+      debug9(printf("\tChose %d,%d with score %d (fwd) => trace #%d\n",
+		    currlink->fwd_pos,currlink->fwd_hit,currlink->fwd_score,currlink->fwd_tracei));
+      debug3(printf("%d %d  %d %d  1\n",querypos,hit,best_prevpos,best_prevhit));
+    }
+
+    FREEA(frontier);
+  }
 
   return;
 }
@@ -2314,6 +2865,7 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
 
   } else {
     /* Take best result for each tracei */
+    /* Using alloca can give a stack overflow */
     cells = (Cell_T *) List_to_array(celllist,NULL);
     /* List_free(&celllist); -- No need with cellpool */
 
@@ -2323,7 +2875,7 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
       qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_left_cmp);
     }
 
-    sorted = (Cell_T *) CALLOC(ncells,sizeof(Cell_T));
+    sorted = (Cell_T *) MALLOC(ncells * sizeof(Cell_T)); /* Return value */
     k = 0;
 
     last_rootposition = -1;
@@ -2390,6 +2942,7 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
 
   } else {
     /* Take best result for each tracei */
+    /* Using alloca can give a stack overflow */
     cells = (Cell_T *) List_to_array(celllist,NULL);
     /* List_free(&celllist); -- No need with cellpool */
 
@@ -2399,7 +2952,7 @@ Linkmatrix_get_cells_fwd (int *nunique, struct Link_T **links, int querystart, i
       qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_left_cmp);
     }
 
-    sorted = (Cell_T *) CALLOC(ncells,sizeof(Cell_T));
+    sorted = (Cell_T *) MALLOC(ncells * sizeof(Cell_T)); /* Return value */
     k = 0;
 
     last_rootposition = -1;
@@ -2501,6 +3054,7 @@ Linkmatrix_get_cells_both (int *nunique, struct Link_T **links, int querystart, 
 
   } else {
     /* Take best result for each tracei */
+    /* Using alloca can give a stack overflow */
     cells = (Cell_T *) List_to_array(celllist,NULL);
     /* List_free(&celllist); -- no need with cellpool */
 
@@ -2510,7 +3064,7 @@ Linkmatrix_get_cells_both (int *nunique, struct Link_T **links, int querystart, 
       qsort(cells,ncells,sizeof(Cell_T),Cell_rootposition_left_cmp);
     }
 
-    sorted = (Cell_T *) CALLOC(ncells,sizeof(Cell_T));
+    sorted = (Cell_T *) MALLOC(ncells * sizeof(Cell_T)); /* Return value */
     k = 0;
 
     last_rootposition = -1;
@@ -2581,7 +3135,8 @@ binary_search (int lowi, int highi, Chrpos_T *mappings, Chrpos_T goal) {
 /* For PMAP, indexsize is in aa. */
 static Cell_T *
 align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **mappings, int *npositions, int totalpositions,
-			       bool oned_matrix_p, Chrpos_T *minactive, Chrpos_T *maxactive, Cellpool_T cellpool,
+			       bool oned_matrix_p, Chrpos_T *minactive, Chrpos_T *maxactive,
+			       int *firstactive, int *nactive, Cellpool_T cellpool,
 			       int querystart, int queryend, int querylength,
 
 			       Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
@@ -2595,7 +3150,7 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 			       bool use_canonical_p, int non_canonical_penalty, bool debug_graphic_p, bool favor_right_p) {
   Cell_T *cells;
   Link_T currlink, prevlink;
-  int querypos, indexsize_nt, indexsize_query, hit, low_hit, high_hit;
+  int querypos, indexsize_nt, indexsize_query, hit, nhits, low_hit, high_hit;
   int nskipped, min_hits, specific_querypos, specific_low_hit, specific_high_hit, next_querypos;
   Intlist_T processed = NULL;
   int best_overall_score = 0;
@@ -2604,7 +3159,7 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
   int grand_rev_score, grand_rev_querypos, grand_rev_hit, best_rev_hit, best_rev_score;
   debug9(int rev_tracei = 0);
 #endif
-  int **active, *firstactive, *nactive;
+  int **active;
   Chrpos_T position, prevposition;
 #if 0
   int *lastGT, *lastAG;
@@ -2639,8 +3194,10 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
     active = intmatrix_2d_new(querylength,npositions);
   }
 
+#if 0
   firstactive = (int *) MALLOC(querylength * sizeof(int));
   nactive = (int *) MALLOC(querylength * sizeof(int));
+#endif
 
   /* Initialize */
   for (querypos = 0; querypos < querystart; querypos++) {
@@ -2779,59 +3336,86 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 	next_querypos = querypos + 1;
       }
 
-      for (hit = low_hit; hit < high_hit; hit++) {
-	currlink = &(links[querypos][hit]);
-	position = mappings[querypos][hit];
+      if ((nhits = high_hit - low_hit) > 0) {
+	if (nhits == 1) {
+	  currlink = &(links[querypos][low_hit]);
+	  position = mappings[querypos][low_hit];
+
+	  debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
+	  debug9(printf("Finding link looking back at querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
+			querypos,low_hit,position,active[querypos][low_hit],oligo,processed ? Intlist_head(processed) : -1));
 	  
-	debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
-	debug9(printf("Finding link looking back at querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
-		      querypos,hit,position,active[querypos][hit],oligo,processed ? Intlist_head(processed) : -1));
-
-	score_querypos_lookback(
+	  score_querypos_lookback_one(
 #ifdef DEBUG9
-				&fwd_tracei,
+				      &fwd_tracei,
 #endif
-				currlink,querypos,querystart,queryend,position,
-				links,mappings,active,firstactive,
-				chroffset,chrhigh,plusp,
-				indexsize,processed,sufflookback,nsufflookback,maxintronlen,
-				anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
-				non_canonical_penalty);
+				      currlink,querypos,querystart,queryend,position,
+				      links,mappings,active,firstactive,chroffset,chrhigh,plusp,
+				      indexsize,processed,sufflookback,nsufflookback,maxintronlen,
+				      anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
+				      non_canonical_penalty);
 
-	if (currlink->fwd_score > best_fwd_score) {
-	  best_fwd_score = currlink->fwd_score;
-	  best_fwd_hit = hit;
+	  if (currlink->fwd_score > 0) {
+	    debug9(printf("Single hit at low_hit %d has score %d\n",low_hit,currlink->fwd_score));
+	    best_fwd_score = currlink->fwd_score;
+	    best_fwd_hit = low_hit;
+	  }
+
+	} else {
+	  debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
+	  debug9(printf("Finding links looking back at querypos %d,%d..%d at (%u..%u) (%s).  prev_querypos was %d\n",
+			querypos,low_hit,high_hit-1,mappings[querypos][low_hit],mappings[querypos][high_hit-1],
+			oligo,processed ? Intlist_head(processed) : -1));
+
+	  score_querypos_lookback_mult(
+#ifdef DEBUG9
+				       &fwd_tracei,
+#endif
+				       low_hit,high_hit,querypos,querystart,queryend,
+				       /*positions*/&(mappings[querypos][low_hit]),
+				       links,mappings,active,firstactive,chroffset,chrhigh,plusp,
+				       indexsize,processed,sufflookback,nsufflookback,maxintronlen,
+				       anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
+				       non_canonical_penalty);
+
+	  debug9(printf("Checking hits from low_hit %d to high_hit %d\n",low_hit,high_hit));
+	  for (hit = low_hit; hit < high_hit; hit++) {
+	    currlink = &(links[querypos][hit]);
+	    debug9(printf("Hit %d has score %d\n",hit,currlink->fwd_score));
+	    if (currlink->fwd_score > best_fwd_score) {
+	      best_fwd_score = currlink->fwd_score;
+	      best_fwd_hit = hit;
+	    }
+	  }
 	}
-      }
 
-      if (best_fwd_score > best_overall_score) {
-	best_overall_score = best_fwd_score;
-      }
+	if (best_fwd_score > best_overall_score) {
+	  best_overall_score = best_fwd_score;
+	}
 
-      nskipped = 0;
-      min_hits = 1000000;
-      specific_querypos = -1;
+	nskipped = 0;
+	min_hits = 1000000;
+	specific_querypos = -1;
       
 #ifndef SEPARATE_FWD_REV
-      debug9(printf("Overall result at querypos %d yields best_fwd_hit %d\n",
-		    querypos,best_fwd_hit));
+	debug9(printf("Overall result at querypos %d yields best_fwd_hit %d\n",
+		      querypos,best_fwd_hit));
 #else
-      debug9(printf("Overall result at querypos %d yields best_fwd_hit %d and best_rev_hit %d\n",
-		    querypos,best_fwd_hit,best_rev_hit));
+	debug9(printf("Overall result at querypos %d yields best_fwd_hit %d and best_rev_hit %d\n",
+		      querypos,best_fwd_hit,best_rev_hit));
 #endif
 
-      if (splicingp == true && best_fwd_hit >= 0 && links[querypos][best_fwd_hit].fwd_hit < 0 && 
-	  grand_fwd_querypos >= 0 && querypos >= grand_fwd_querypos + indexsize_query) {
-	prevlink = &(links[grand_fwd_querypos][grand_fwd_hit]);
-	if ((best_fwd_score = prevlink->fwd_score - (querypos - grand_fwd_querypos)) > 0) {
-	  prevposition = mappings[grand_fwd_querypos][grand_fwd_hit];
-	  debug12(printf("Considering prevposition %u to position %u as a grand fwd lookback\n",prevposition,position));
-	  if (position > prevposition + maxintronlen) {
-	    debug12(printf("  => Too long\n"));
-	  } else {
+	if (splicingp == true && best_fwd_hit >= 0 && links[querypos][best_fwd_hit].fwd_hit < 0 && 
+	    grand_fwd_querypos >= 0 && querypos >= grand_fwd_querypos + indexsize_query) {
+	  prevlink = &(links[grand_fwd_querypos][grand_fwd_hit]);
+	  if ((best_fwd_score = prevlink->fwd_score - (querypos - grand_fwd_querypos)) > 0) {
+	    prevposition = mappings[grand_fwd_querypos][grand_fwd_hit];
+	    debug12(printf("Considering prevposition %u to position %u as a grand fwd lookback\n",prevposition,position));
 	    for (hit = low_hit; hit < high_hit; hit++) {
-	      currlink = &(links[querypos][hit]);
-	      if ((position = mappings[querypos][hit]) >= prevposition + indexsize_nt) {
+	      if ((position = mappings[querypos][hit]) > prevposition + maxintronlen) {
+		debug12(printf("  => Too long\n"));
+	      } else if (position >= prevposition + indexsize_nt) {
+		currlink = &(links[querypos][hit]);
 		currlink->fwd_consecutive = indexsize_nt;
 		/* currlink->fwd_rootnlinks = 1; */
 		currlink->fwd_pos = grand_fwd_querypos;
@@ -2846,42 +3430,40 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 	      }
 	    }
 	    debug12(printf("At querypos %d, setting all fwd hits to point back to grand_fwd %d,%d with a score of %d\n",
-			 querypos,grand_fwd_querypos,grand_fwd_hit,prevlink->fwd_score));
+			   querypos,grand_fwd_querypos,grand_fwd_hit,prevlink->fwd_score));
 	  }
 	}
-      }
 
-      /* Use >= to favor longer path in case of ties */
-      if (best_fwd_hit >= 0 && best_fwd_score >= grand_fwd_score && 
-	  links[querypos][best_fwd_hit].fwd_consecutive > EXON_DEFN) {
-	grand_fwd_score = best_fwd_score;
-	grand_fwd_querypos = querypos;
-	grand_fwd_hit = best_fwd_hit;
-	debug12(termlink = &(links[querypos][best_fwd_hit]));
-	debug12(printf("At querypos %d, revising grand fwd to be hit %d with score of %d (pointing back to %d,%d)\n",
-		       querypos,best_fwd_hit,best_fwd_score,termlink->fwd_pos,termlink->fwd_hit));
-      }
+	/* Use >= to favor longer path in case of ties */
+	if (best_fwd_hit >= 0 && best_fwd_score >= grand_fwd_score && 
+	    links[querypos][best_fwd_hit].fwd_consecutive > EXON_DEFN) {
+	  grand_fwd_score = best_fwd_score;
+	  grand_fwd_querypos = querypos;
+	  grand_fwd_hit = best_fwd_hit;
+	  debug12(termlink = &(links[querypos][best_fwd_hit]));
+	  debug12(printf("At querypos %d, revising grand fwd to be hit %d with score of %d (pointing back to %d,%d)\n",
+			 querypos,best_fwd_hit,best_fwd_score,termlink->fwd_pos,termlink->fwd_hit));
+	}
 
 #ifdef SEPARATE_FWD_REV
-      if (best_rev_score > best_overall_score) {
-	best_overall_score = best_rev_score;
-      }
+	if (best_rev_score > best_overall_score) {
+	  best_overall_score = best_rev_score;
+	}
 
-      if (splicingp == false || use_canonical_p == false) {
-	/* rev scores should be the same as the fwd scores */
-      } else {
-	if (best_rev_hit >= 0 && links[querypos][best_rev_hit].rev_hit < 0 && 
-	    grand_rev_querypos >= 0 && querypos >= grand_rev_querypos + indexsize_query) {
-	  prevlink = &(links[grand_rev_querypos][grand_rev_hit]);
-	  if ((best_rev_score = prevlink->rev_score - (querypos - grand_rev_querypos)) > 0) {
-	    prevposition = mappings[grand_rev_querypos][grand_rev_hit];
-	    debug12(printf("Considering prevposition %u to position %u as a grand rev lookback\n",prevposition,position));
-	    if (position > prevposition + maxintronlen) {
-	      debug12(printf("  => Too long\n"));
-	    } else {
+	if (splicingp == false || use_canonical_p == false) {
+	  /* rev scores should be the same as the fwd scores */
+	} else {
+	  if (best_rev_hit >= 0 && links[querypos][best_rev_hit].rev_hit < 0 && 
+	      grand_rev_querypos >= 0 && querypos >= grand_rev_querypos + indexsize_query) {
+	    prevlink = &(links[grand_rev_querypos][grand_rev_hit]);
+	    if ((best_rev_score = prevlink->rev_score - (querypos - grand_rev_querypos)) > 0) {
+	      prevposition = mappings[grand_rev_querypos][grand_rev_hit];
+	      debug12(printf("Considering prevposition %u to position %u as a grand rev lookback\n",prevposition,position));
 	      for (hit = low_hit; hit < high_hit; hit++) {
-		currlink = &(links[querypos][hit]);
-		if ((position = mappings[querypos][hit]) >= prevposition + indexsize_nt) {
+		if ((position = mappings[querypos][hit]) > prevposition + maxintronlen) {
+		  debug12(printf("  => Too long\n"));
+		} else if (position >= prevposition + indexsize_nt) {
+		  currlink = &(links[querypos][hit]);
 		  currlink->rev_consecutive = indexsize_nt;
 		  /* currlink->rev_rootnlinks = 1; */
 		  currlink->rev_pos = grand_rev_querypos;
@@ -2899,19 +3481,20 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
 			     querypos,grand_rev_querypos,grand_rev_hit,prevlink->rev_score));
 	    }
 	  }
-	}
 
-	/* Use >= to favor longer path in case of ties */
-	if (best_rev_hit >= 0 && best_rev_score >= grand_rev_score &&
-	    links[querypos][best_rev_hit].rev_consecutive > EXON_DEFN) {
-	  grand_rev_score = best_rev_score;
-	  grand_rev_querypos = querypos;
-	  grand_rev_hit = best_rev_hit;
+	  /* Use >= to favor longer path in case of ties */
+	  if (best_rev_hit >= 0 && best_rev_score >= grand_rev_score &&
+	      links[querypos][best_rev_hit].rev_consecutive > EXON_DEFN) {
+	    grand_rev_score = best_rev_score;
+	    grand_rev_querypos = querypos;
+	    grand_rev_hit = best_rev_hit;
+	  }
 	}
-      }
 #endif
+      }
 
       revise_active_lookback(active,firstactive,nactive,low_hit,high_hit,links,querypos,mappings);
+
       /* Need to push querypos, even if firstactive[querypos] == -1 */
       debug6(printf("Pushing querypos %d onto processed\n",querypos));
       processed = Intlist_push(processed,querypos);
@@ -2926,8 +3509,10 @@ align_compute_scores_lookback (int *ncells, struct Link_T **links, Chrpos_T **ma
     mappings_dump_R(mappings,npositions,querylength,active,firstactive,indexsize,"active.mers");
   }
 
+#if 0
   FREE(nactive);
   FREE(firstactive);
+#endif
 
   if (oned_matrix_p == true) {
     intmatrix_1d_free(&active);
@@ -3171,7 +3756,8 @@ traceback_one_snps (int querypos, int hit, struct Link_T **links, Chrpos_T **map
 /* Performs dynamic programming.  For PMAP, indexsize is in aa. */
 static List_T
 align_compute_lookback (Chrpos_T **mappings, int *npositions, int totalpositions,
-			bool oned_matrix_p, Chrpos_T *minactive, Chrpos_T *maxactive, Cellpool_T cellpool,
+			bool oned_matrix_p, Chrpos_T *minactive, Chrpos_T *maxactive,
+			int *firstactive, int *nactive, Cellpool_T cellpool,
 			char *queryseq_ptr, char *queryuc_ptr, int querylength, int querystart, int queryend,
 			Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 			int indexsize, int sufflookback, int nsufflookback, int maxintronlen, Pairpool_T pairpool,
@@ -3201,7 +3787,7 @@ align_compute_lookback (Chrpos_T **mappings, int *npositions, int totalpositions
   }
   
   cells = align_compute_scores_lookback(&ncells,links,mappings,npositions,totalpositions,
-					oned_matrix_p,minactive,maxactive,cellpool,
+					oned_matrix_p,minactive,maxactive,firstactive,nactive,cellpool,
 					querystart,queryend,querylength,
 			       
 					chroffset,chrhigh,plusp,
@@ -3229,33 +3815,46 @@ align_compute_lookback (Chrpos_T **mappings, int *npositions, int totalpositions
     debug11(printf("Looping on %d cells, allowing up to %d alignments, plus any with best score %d\n",
 		   ncells,max_nalignments,bestscore));
 
-    for (i = 0; i < ncells && (i < max_nalignments || cells[i]->score == bestscore)
-	   && cells[i]->score > bestscore - FINAL_SCORE_TOLERANCE; i++) {
-      cell = cells[i];
-      querypos = cell->querypos;
-      hit = cell->hit;
-      fwdp = cell->fwdp;
-      debug11(printf("Starting subpath %d for rootposition %d with score %d, querypos %d, hit %d, position %u\n",
-		     i,cell->rootposition,cell->score,querypos,hit,mappings[querypos][hit]));
+    if (snps_p == true) {
+      for (i = 0; i < ncells && (i < max_nalignments || cells[i]->score == bestscore)
+	     && cells[i]->score > bestscore - FINAL_SCORE_TOLERANCE; i++) {
+	cell = cells[i];
+	querypos = cell->querypos;
+	hit = cell->hit;
+	fwdp = cell->fwdp;
+	debug11(printf("Starting subpath %d for rootposition %d with score %d, querypos %d, hit %d, position %u\n",
+		       i,cell->rootposition,cell->score,querypos,hit,mappings[querypos][hit]));
 
-
-      if (debug_graphic_p == true) {
-	best_path_dump_R(links,mappings,querypos,hit,fwdp,"best.path");
-	printf("plot(all.mers,col=\"black\",pch=\".\",xlab=\"Query\",ylab=\"Genomic\")\n");
-	printf("points(active.mers,col=\"red\",pch=\".\")\n");
-	printf("points(best.path,col=\"green\",pch=\".\")\n");
-	printf("lines(querypos,minactive,col=\"blue\")\n");
-	printf("lines(querypos,maxactive,col=\"blue\")\n");
-      }
-
-      if (snps_p == true) {
 	all_paths = List_push(all_paths,(void *) traceback_one_snps(querypos,hit,links,mappings,queryseq_ptr,queryuc_ptr,	
 								    chroffset,chrhigh,/*watsonp*/plusp,
 #ifdef DEBUG0
 								    indexsize,
 #endif
 								    pairpool,fwdp));
-      } else {
+      }
+
+    } else {
+      for (i = 0; i < ncells && (i < max_nalignments || cells[i]->score == bestscore)
+	     && cells[i]->score > bestscore - FINAL_SCORE_TOLERANCE; i++) {
+
+	cell = cells[i];
+	querypos = cell->querypos;
+	hit = cell->hit;
+	fwdp = cell->fwdp;
+	debug11(printf("Starting subpath %d for rootposition %d with score %d, querypos %d, hit %d, position %u\n",
+		       i,cell->rootposition,cell->score,querypos,hit,mappings[querypos][hit]));
+
+#if 0
+	if (debug_graphic_p == true) {
+	  best_path_dump_R(links,mappings,querypos,hit,fwdp,"best.path");
+	  printf("plot(all.mers,col=\"black\",pch=\".\",xlab=\"Query\",ylab=\"Genomic\")\n");
+	  printf("points(active.mers,col=\"red\",pch=\".\")\n");
+	  printf("points(best.path,col=\"green\",pch=\".\")\n");
+	  printf("lines(querypos,minactive,col=\"blue\")\n");
+	  printf("lines(querypos,maxactive,col=\"blue\")\n");
+	}
+#endif
+
 	all_paths = List_push(all_paths,(void *) traceback_one(querypos,hit,links,mappings,queryseq_ptr,queryuc_ptr,	
 #ifdef PMAP
 							       chroffset,chrhigh,/*watsonp*/plusp,/*lookbackp*/true,
@@ -3302,7 +3901,8 @@ align_compute_lookback (Chrpos_T **mappings, int *npositions, int totalpositions
 /* For PMAP, indexsize is in aa. */
 static Cell_T *
 align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T **mappings, int *npositions, int totalpositions,
-				  bool oned_matrix_p, Chrpos_T *minactive, Chrpos_T *maxactive, Cellpool_T cellpool,
+				  bool oned_matrix_p, Chrpos_T *minactive, Chrpos_T *maxactive,
+				  int *firstactive, int *nactive, Cellpool_T cellpool,
 				  int querystart, int queryend, int querylength,
 				  Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
 				  int indexsize, int sufflookback, int nsufflookback, int maxintronlen,
@@ -3315,7 +3915,7 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 				  bool debug_graphic_p, bool favor_right_p) {
   Cell_T *cells;
   Link_T currlink, prevlink;
-  int querypos, indexsize_nt, indexsize_query, hit, low_hit, high_hit;
+  int querypos, indexsize_nt, indexsize_query, hit, nhits, low_hit, high_hit;
   int nskipped, min_hits, specific_querypos, specific_low_hit, specific_high_hit, next_querypos;
   Intlist_T processed = NULL;
   int best_overall_score = 0;
@@ -3324,7 +3924,7 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
   int grand_rev_score, grand_rev_querypos, grand_rev_hit, best_rev_hit, best_rev_score;
   debug9(int rev_tracei = 0);
 #endif
-  int **active, *firstactive, *nactive;
+  int **active;
   Chrpos_T position, prevposition;
 #if 0
   int *lastGT, *lastAG;
@@ -3359,8 +3959,10 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
     active = intmatrix_2d_new(querylength,npositions);
   }
 
+#if 0
   firstactive = (int *) MALLOC(querylength * sizeof(int));
   nactive = (int *) MALLOC(querylength * sizeof(int));
+#endif
 
   /* Initialize */
   for (querypos = querylength - 1; querypos > queryend; querypos--) {
@@ -3499,59 +4101,86 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 	next_querypos = querypos - 1;
       }
 
-      for (hit = high_hit - 1; hit >= low_hit; --hit) {
-	currlink = &(links[querypos][hit]);
-	position = mappings[querypos][hit];
-	
-	debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
-	debug9(printf("Finding link looking forward at querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
-		      querypos,hit,position,active[querypos][hit],oligo,processed ? Intlist_head(processed) : -1));
-	
-	score_querypos_lookforward(
+      if ((nhits = high_hit - low_hit) > 0) {
+	if (nhits == 1) {
+	  currlink = &(links[querypos][low_hit]);
+	  position = mappings[querypos][low_hit];
+
+	  debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
+	  debug9(printf("Finding link looking forward at querypos %d,%d at %ux%d (%s).  prev_querypos was %d\n",
+			querypos,low_hit,position,active[querypos][low_hit],oligo,processed ? Intlist_head(processed) : -1));
+	  score_querypos_lookforward_one(
 #ifdef DEBUG9
-				   &fwd_tracei,
+					 &fwd_tracei,
 #endif
-				   currlink,querypos,querystart,queryend,position,
-				   links,mappings,active,firstactive,
-				   chroffset,chrhigh,plusp,
-				   indexsize,processed,sufflookback,nsufflookback,maxintronlen,
-				   anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
-				   non_canonical_penalty);
+					 currlink,querypos,querystart,queryend,position,
+					 links,mappings,active,firstactive,
+					 chroffset,chrhigh,plusp,
+					 indexsize,processed,sufflookback,nsufflookback,maxintronlen,
+					 anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
+					 non_canonical_penalty);
 
-	if (currlink->fwd_score > best_fwd_score) {
-	  best_fwd_score = currlink->fwd_score;
-	  best_fwd_hit = hit;
+	  if (currlink->fwd_score > 0) {
+	    debug9(printf("Single hit at low_hit %d has score %d\n",low_hit,currlink->fwd_score));
+	    best_fwd_score = currlink->fwd_score;
+	    best_fwd_hit = low_hit;
+	  }
+
+	} else {
+	  debug9(strncpy(oligo,&(queryseq_ptr[querypos]),indexsize));
+	  debug9(printf("Finding links looking forward at querypos %d,%d..%d at (%u..%u) (%s).  prev_querypos was %d\n",
+			querypos,high_hit-1,low_hit,mappings[querypos][high_hit-1],mappings[querypos][low_hit],
+			oligo,processed ? Intlist_head(processed) : -1));
+	
+	  score_querypos_lookforward_mult(
+#ifdef DEBUG9
+					  &fwd_tracei,
+#endif
+					  low_hit,high_hit,querypos,querystart,queryend,
+					  /*positions*/&(mappings[querypos][low_hit]),
+					  links,mappings,active,firstactive,chroffset,chrhigh,plusp,
+					  indexsize,processed,sufflookback,nsufflookback,maxintronlen,
+					  anchoredp,localp,splicingp,skip_repetitive_p,use_canonical_p,
+					  non_canonical_penalty);
+
+	  debug9(printf("Checking hits from high_hit %d to low_hit %d\n",high_hit,low_hit));
+	  for (hit = high_hit - 1; hit >= low_hit; hit--) {
+	    currlink = &(links[querypos][hit]);
+	    debug9(printf("Hit %d has score %d\n",hit,currlink->fwd_score));
+	    if (currlink->fwd_score > best_fwd_score) {
+	      best_fwd_score = currlink->fwd_score;
+	      best_fwd_hit = hit;
+	    }
+	  }
 	}
-      }
 
-      if (best_fwd_score > best_overall_score) {
-	best_overall_score = best_fwd_score;
-      }
+	if (best_fwd_score > best_overall_score) {
+	  best_overall_score = best_fwd_score;
+	}
 
-      nskipped = 0;
-      min_hits = 1000000;
-      specific_querypos = -1;
+	nskipped = 0;
+	min_hits = 1000000;
+	specific_querypos = -1;
       
 #ifndef SEPARATE_FWD_REV
-      debug9(printf("Overall result at querypos %d yields best_fwd_hit %d\n",
-		   querypos,best_fwd_hit));
+	debug9(printf("Overall result at querypos %d yields best_fwd_hit %d\n",
+		      querypos,best_fwd_hit));
 #else
-      debug9(printf("Overall result at querypos %d yields best_fwd_hit %d and best_rev_hit %d\n",
-		   querypos,best_fwd_hit,best_rev_hit));
+	debug9(printf("Overall result at querypos %d yields best_fwd_hit %d and best_rev_hit %d\n",
+		      querypos,best_fwd_hit,best_rev_hit));
 #endif
 
-      if (splicingp == true && best_fwd_hit >= 0 && links[querypos][best_fwd_hit].fwd_hit < 0 && 
-	  grand_fwd_querypos <= querylength - indexsize_query && querypos + indexsize_query <= grand_fwd_querypos) {
-	prevlink = &(links[grand_fwd_querypos][grand_fwd_hit]);
-	if ((best_fwd_score = prevlink->fwd_score - (grand_fwd_querypos - querypos)) > 0) {
-	  prevposition = mappings[grand_fwd_querypos][grand_fwd_hit];
-	  debug12(printf("Considering prevposition %u to position %u as a grand fwd lookback\n",prevposition,position));
-	  if (position > prevposition + maxintronlen) {
-	    debug12(printf("  => Too long\n"));
-	  } else {
+	if (splicingp == true && best_fwd_hit >= 0 && links[querypos][best_fwd_hit].fwd_hit < 0 && 
+	    grand_fwd_querypos <= querylength - indexsize_query && querypos + indexsize_query <= grand_fwd_querypos) {
+	  prevlink = &(links[grand_fwd_querypos][grand_fwd_hit]);
+	  if ((best_fwd_score = prevlink->fwd_score - (grand_fwd_querypos - querypos)) > 0) {
+	    prevposition = mappings[grand_fwd_querypos][grand_fwd_hit];
+	    debug12(printf("Considering prevposition %u to position %u as a grand fwd lookforward\n",prevposition,position));
 	    for (hit = high_hit - 1; hit >= low_hit; --hit) {
-	      currlink = &(links[querypos][hit]);
-	      if ((position = mappings[querypos][hit]) + indexsize_nt <= prevposition) {
+	      if ((position = mappings[querypos][hit]) + maxintronlen < prevposition) {
+		debug12(printf("  => Too long\n"));
+	      } else if (position + indexsize_nt <= prevposition) {
+		currlink = &(links[querypos][hit]);
 		currlink->fwd_consecutive = indexsize_nt;
 		/* currlink->fwd_rootnlinks = 1; */
 		currlink->fwd_pos = grand_fwd_querypos;
@@ -3569,39 +4198,37 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 			   querypos,grand_fwd_querypos,grand_fwd_hit,prevlink->fwd_score));
 	  }
 	}
-      }
 
-      /* Use >= to favor longer path in case of ties */
-      if (best_fwd_hit >= 0 && best_fwd_score >= grand_fwd_score && 
-	  links[querypos][best_fwd_hit].fwd_consecutive > EXON_DEFN) {
-	grand_fwd_score = best_fwd_score;
-	grand_fwd_querypos = querypos;
-	grand_fwd_hit = best_fwd_hit;
-	debug12(termlink = &(links[querypos][best_fwd_hit]));
-	debug12(printf("At querypos %d, revising grand fwd to be hit %d with score of %d (pointing back to %d,%d)\n",
-		     querypos,best_fwd_hit,best_fwd_score,termlink->fwd_pos,termlink->fwd_hit));
-      }
+	/* Use >= to favor longer path in case of ties */
+	if (best_fwd_hit >= 0 && best_fwd_score >= grand_fwd_score && 
+	    links[querypos][best_fwd_hit].fwd_consecutive > EXON_DEFN) {
+	  grand_fwd_score = best_fwd_score;
+	  grand_fwd_querypos = querypos;
+	  grand_fwd_hit = best_fwd_hit;
+	  debug12(termlink = &(links[querypos][best_fwd_hit]));
+	  debug12(printf("At querypos %d, revising grand fwd to be hit %d with score of %d (pointing back to %d,%d)\n",
+			 querypos,best_fwd_hit,best_fwd_score,termlink->fwd_pos,termlink->fwd_hit));
+	}
 
 #ifdef SEPARATE_FWD_REV
-      if (best_rev_score > best_overall_score) {
-	best_overall_score = best_rev_score;
-      }
+	if (best_rev_score > best_overall_score) {
+	  best_overall_score = best_rev_score;
+	}
 
-      if (splicingp == false || use_canonical_p == false) {
-	/* rev scores should be the same as the fwd scores */
-      } else {
-	if (best_rev_hit >= 0 && links[querypos][best_rev_hit].rev_hit < 0 && 
-	    grand_rev_querypos <= querylength - indexsize_query && querypos + indexsize_query <= grand_rev_querypos) {
-	  prevlink = &(links[grand_rev_querypos][grand_rev_hit]);
-	  if ((best_rev_score = prevlink->rev_score - (grand_rev_querypos - querypos)) > 0) {
-	    prevposition = mappings[grand_rev_querypos][grand_rev_hit];
-	    debug12(printf("Considering prevposition %u to position %u as a grand rev lookback\n",prevposition,position));
-	    if (position > prevposition + maxintronlen) {
-	      debug12(printf("  => Too long\n"));
-	    } else {
+	if (splicingp == false || use_canonical_p == false) {
+	  /* rev scores should be the same as the fwd scores */
+	} else {
+	  if (best_rev_hit >= 0 && links[querypos][best_rev_hit].rev_hit < 0 && 
+	      grand_rev_querypos <= querylength - indexsize_query && querypos + indexsize_query <= grand_rev_querypos) {
+	    prevlink = &(links[grand_rev_querypos][grand_rev_hit]);
+	    if ((best_rev_score = prevlink->rev_score - (grand_rev_querypos - querypos)) > 0) {
+	      prevposition = mappings[grand_rev_querypos][grand_rev_hit];
+	      debug12(printf("Considering prevposition %u to position %u as a grand rev lookforward\n",prevposition,position));
 	      for (hit = high_hit - 1; hit >= low_hit; --hit) {
-		currlink = &(links[querypos][hit]);
-		if ((position = mappings[querypos][hit]) + indexsize_nt <= prevposition) {
+		if ((position = mappings[querypos][hit]) + maxintronlen < prevposition) {
+		  debug12(printf("  => Too long\n"));
+		} else if (position + indexsize_nt <= prevposition) {
+		  currlink = &(links[querypos][hit]);
 		  currlink->rev_consecutive = indexsize_nt;
 		  /* currlink->rev_rootnlinks = 1; */
 		  currlink->rev_pos = grand_rev_querypos;
@@ -3619,19 +4246,20 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 			     querypos,grand_rev_querypos,grand_rev_hit,prevlink->rev_score));
 	    }
 	  }
-	}
 
-	/* Use >= to favor longer path in case of ties */
-	if (best_rev_hit >= 0 && best_rev_score >= grand_rev_score &&
-	    links[querypos][best_rev_hit].rev_consecutive > EXON_DEFN) {
-	  grand_rev_score = best_rev_score;
-	  grand_rev_querypos = querypos;
-	  grand_rev_hit = best_rev_hit;
+	  /* Use >= to favor longer path in case of ties */
+	  if (best_rev_hit >= 0 && best_rev_score >= grand_rev_score &&
+	      links[querypos][best_rev_hit].rev_consecutive > EXON_DEFN) {
+	    grand_rev_score = best_rev_score;
+	    grand_rev_querypos = querypos;
+	    grand_rev_hit = best_rev_hit;
+	  }
 	}
-      }
 #endif
+      }
 
       revise_active_lookforward(active,firstactive,nactive,low_hit,high_hit,links,querypos,mappings);
+
       /* Need to push querypos, even if firstactive[querypos] == -1 */
       debug6(printf("Pushing querypos %d onto processed\n",querypos));
       processed = Intlist_push(processed,querypos);
@@ -3646,8 +4274,10 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
     mappings_dump_R(mappings,npositions,querylength,active,firstactive,indexsize,"active.mers");
   }
 
+#if 0
   FREE(nactive);
   FREE(firstactive);
+#endif
 
   if (oned_matrix_p == true) {
     intmatrix_1d_free(&active);
@@ -3680,7 +4310,8 @@ align_compute_scores_lookforward (int *ncells, struct Link_T **links, Chrpos_T *
 /* Performs dynamic programming.  For PMAP, indexsize is in aa. */
 static List_T
 align_compute_lookforward (Chrpos_T **mappings, int *npositions, int totalpositions,
-			   bool oned_matrix_p, Chrpos_T *minactive, Chrpos_T *maxactive, Cellpool_T cellpool,
+			   bool oned_matrix_p, Chrpos_T *minactive, Chrpos_T *maxactive,
+			   int *firstactive, int *nactive, Cellpool_T cellpool,
 			   char *queryseq_ptr, char *queryuc_ptr, int querylength, int querystart, int queryend,
 
 			   Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
@@ -3710,7 +4341,7 @@ align_compute_lookforward (Chrpos_T **mappings, int *npositions, int totalpositi
   }
   
   cells = align_compute_scores_lookforward(&ncells,links,mappings,npositions,totalpositions,
-					   oned_matrix_p,minactive,maxactive,cellpool,
+					   oned_matrix_p,minactive,maxactive,firstactive,nactive,cellpool,
 					   querystart,queryend,querylength,
 					   
 					   chroffset,chrhigh,plusp,
@@ -4411,7 +5042,7 @@ int
 Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 	     Chrpos_T chrstart, Chrpos_T chrend,
 	     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-	     int genestrand, Oligoindex_array_T oligoindices,
+	     int genestrand, Stage2_alloc_T stage2_alloc, Oligoindex_array_T oligoindices,
 	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp) {
   int ncovered;
   int source;
@@ -4438,9 +5069,19 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
     printf("layout(matrix(c(1,2),1,2),widths=c(0.5,0.5),heights=c(1))\n");
   }
 
-  coveredp = (bool *) CALLOC(querylength,sizeof(bool));
-  mappings = (Chrpos_T **) CALLOC(querylength,sizeof(Chrpos_T *));
-  npositions = (int *) CALLOC(querylength,sizeof(int));
+  if (querylength > stage2_alloc->max_querylength_alloc) {
+    coveredp = (bool *) CALLOC(querylength,sizeof(bool));
+    mappings = (Chrpos_T **) MALLOC(querylength * sizeof(Chrpos_T *));
+    npositions = (int *) CALLOC(querylength,sizeof(int));
+  } else {
+    coveredp = stage2_alloc->coveredp;
+    mappings = stage2_alloc->mappings;
+    npositions = stage2_alloc->npositions;
+
+    memset(coveredp,0,querylength * sizeof(bool));
+    memset(npositions,0,querylength * sizeof(int));
+  }
+
   totalpositions = 0;
   maxnconsecutive = 0;
 
@@ -4503,16 +5144,18 @@ Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 #ifdef USE_DIAGPOOL
   /* No need to free diagonals */
 #else
-    for (p = diagonals; p != NULL; p = List_next(p)) {
-      diag = (Diag_T) List_head(p);
-      Diag_free(&diag);
-    }
-    List_free(&diagonals);
+  for (p = diagonals; p != NULL; p = List_next(p)) {
+    diag = (Diag_T) List_head(p);
+    Diag_free(&diag);
+  }
+  List_free(&diagonals);
 #endif
 
-  FREE(npositions);
-  FREE(coveredp);
-  FREE(mappings);		/* Don't need to free contents of mappings */
+  if (querylength > stage2_alloc->max_querylength_alloc) {
+    FREE(npositions);
+    FREE(coveredp);
+    FREE(mappings);		/* Don't need to free contents of mappings */
+  }
 
 #if 1
   for (source = 0; source < Oligoindex_array_length(oligoindices); source++) {
@@ -4530,6 +5173,9 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 		char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,	
 		Chrpos_T chrstart, Chrpos_T chrend,
 		Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
+#ifndef GSNAP
+		Stage2_alloc_T stage2_alloc,
+#endif
 		Oligoindex_array_T oligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		int sufflookback, int nsufflookback, int maxintronlen, bool localp, bool skip_repetitive_p,
@@ -4546,6 +5192,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
   int source;
   int *npositions, totalpositions;
   Chrpos_T *minactive, *maxactive;
+  int *firstactive, *nactive;
   int ncovered;
   double pct_coverage;
   int maxnconsecutive;
@@ -4579,9 +5226,37 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
     printf("layout(matrix(c(1,2),1,2),widths=c(0.5,0.5),heights=c(1))\n");
   }
 
-  coveredp = (bool *) CALLOC(querylength,sizeof(bool));
-  mappings = (Chrpos_T **) CALLOC(querylength,sizeof(Chrpos_T *));
-  npositions = (int *) CALLOC(querylength,sizeof(int));
+#ifdef GSNAP
+  coveredp = (bool *) CALLOCA(querylength,sizeof(bool));
+  mappings = (Chrpos_T **) MALLOCA(querylength * sizeof(Chrpos_T *));
+  npositions = (int *) CALLOCA(querylength,sizeof(int));
+  minactive = (unsigned int *) MALLOCA(querylength * sizeof(unsigned int));
+  maxactive = (unsigned int *) MALLOCA(querylength * sizeof(unsigned int));
+  firstactive = (int *) MALLOCA(querylength * sizeof(int));
+  nactive = (int *) MALLOCA(querylength * sizeof(int));
+#else
+  if (querylength > stage2_alloc->max_querylength_alloc) {
+    coveredp = (bool *) CALLOC(querylength,sizeof(bool));
+    mappings = (Chrpos_T **) MALLOC(querylength * sizeof(Chrpos_T *));
+    npositions = (int *) CALLOC(querylength,sizeof(int));
+    minactive = (unsigned int *) MALLOC(querylength * sizeof(unsigned int));
+    maxactive = (unsigned int *) MALLOC(querylength * sizeof(unsigned int));
+    firstactive = (int *) MALLOC(querylength * sizeof(int));
+    nactive = (int *) MALLOC(querylength * sizeof(int));
+  } else {
+    coveredp = stage2_alloc->coveredp;
+    mappings = stage2_alloc->mappings;
+    npositions = stage2_alloc->npositions;
+    minactive = stage2_alloc->minactive;
+    maxactive = stage2_alloc->maxactive;
+    firstactive = stage2_alloc->firstactive;
+    nactive = stage2_alloc->nactive;
+
+    memset(coveredp,0,querylength * sizeof(bool));
+    memset(npositions,0,querylength * sizeof(int));
+  }
+#endif
+
   totalpositions = 0;
   maxnconsecutive = 0;
 
@@ -4665,9 +5340,6 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 
   /* diag_runtime = */ Stopwatch_stop(stopwatch);
 
-  minactive = (unsigned int *) CALLOC(querylength,sizeof(unsigned int));
-  maxactive = (unsigned int *) CALLOC(querylength,sizeof(unsigned int));
-
   Stopwatch_start(stopwatch);
 
   if (diag_debug == true) {
@@ -4706,7 +5378,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
     }
 
     all_paths = align_compute_lookback(mappings,npositions,totalpositions,
-				       oned_matrix_p,minactive,maxactive,cellpool,
+				       oned_matrix_p,minactive,maxactive,firstactive,nactive,cellpool,
 				       queryseq_ptr,queryuc_ptr,querylength,
 				       /*querystart*/diag_querystart,/*queryend*/diag_queryend,
 				       chroffset,chrhigh,plusp,
@@ -4752,7 +5424,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 
       all_ends = (List_T) NULL;
       end_paths = align_compute_lookback(mappings,npositions,totalpositions,
-					 oned_matrix_p,minactive,maxactive,cellpool,
+					 oned_matrix_p,minactive,maxactive,firstactive,nactive,cellpool,
 					 queryseq_ptr,queryuc_ptr,querylength,querystart,queryend,
 					 chroffset,chrhigh,plusp,
 					 indexsize,sufflookback,nsufflookback,maxintronlen,pairpool,
@@ -4831,7 +5503,7 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 
       all_starts = (List_T) NULL;
       start_paths = align_compute_lookforward(mappings,npositions,totalpositions,
-					      oned_matrix_p,minactive,maxactive,cellpool,
+					      oned_matrix_p,minactive,maxactive,firstactive,nactive,cellpool,
 					      queryseq_ptr,queryuc_ptr,querylength,querystart,queryend,
 					      chroffset,chrhigh,plusp,
 					      indexsize,sufflookback,nsufflookback,maxintronlen,pairpool,
@@ -4902,12 +5574,25 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
     List_free(&all_paths);
   }
 
-
-  FREE(maxactive);
-  FREE(minactive);
-  FREE(npositions);
-  FREE(coveredp);
-  FREE(mappings);		/* Don't need to free contents of mappings */
+#ifdef GSNAP
+  FREEA(nactive);
+  FREEA(firstactive);
+  FREEA(maxactive);
+  FREEA(minactive);
+  FREEA(npositions);
+  FREEA(coveredp);
+  FREEA(mappings);		/* Don't need to free contents of mappings */
+#else
+  if (querylength > stage2_alloc->max_querylength_alloc) {
+    FREE(nactive);
+    FREE(firstactive);
+    FREE(maxactive);
+    FREE(minactive);
+    FREE(npositions);
+    FREE(coveredp);
+    FREE(mappings);		/* Don't need to free contents of mappings */
+  }
+#endif
 
 #if 1
   for (source = 0; source < Oligoindex_array_length(oligoindices); source++) {
@@ -4938,12 +5623,13 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 
 
 
+/* Since this stage2 is called from stage3 with a small segment of the
+   query, we can use alloca instead of stage2_alloc */
 List_T
 Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 		    char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,	
 		    Chrpos_T chrstart, Chrpos_T chrend,
 		    Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
-
 		    Oligoindex_array_T oligoindices, double proceed_pctcoverage,
 		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		    int sufflookback, int nsufflookback,  int maxintronlen, bool localp,
@@ -4958,6 +5644,7 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
   int source;
   int *npositions, totalpositions;
   Chrpos_T *minactive, *maxactive;
+  int *firstactive, *nactive;
   int ncovered;
   double pct_coverage;
   int maxnconsecutive;
@@ -4967,9 +5654,14 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 
   debug(printf("Entered Stage2_compute_one with chrstart %u and chrend %u\n",chrstart,chrend));
 
-  coveredp = (bool *) CALLOC(querylength,sizeof(bool));
-  mappings = (Chrpos_T **) CALLOC(querylength,sizeof(Chrpos_T *));
-  npositions = (int *) CALLOC(querylength,sizeof(int));
+  coveredp = (bool *) CALLOCA(querylength,sizeof(bool));
+  mappings = (Chrpos_T **) MALLOCA(querylength * sizeof(Chrpos_T *));
+  npositions = (int *) CALLOCA(querylength,sizeof(int));
+  minactive = (unsigned int *) MALLOCA(querylength * sizeof(unsigned int));
+  maxactive = (unsigned int *) MALLOCA(querylength * sizeof(unsigned int));
+  firstactive = (int *) MALLOCA(querylength * sizeof(int));
+  nactive = (int *) MALLOCA(querylength * sizeof(int));
+
   totalpositions = 0;
   maxnconsecutive = 0;
 
@@ -5026,9 +5718,6 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 #endif
 
 
-  minactive = (unsigned int *) CALLOC(querylength,sizeof(unsigned int));
-  maxactive = (unsigned int *) CALLOC(querylength,sizeof(unsigned int));
-
   if (totalpositions == 0) {
     debug(printf("Quitting because totalpositions is zero\n"));
     middle = (List_T) NULL;
@@ -5041,7 +5730,7 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
     Diag_max_bounds(minactive,maxactive,querylength,chrstart,chrend,chroffset,chrhigh,plusp);
     
     if ((all_paths = align_compute_lookback(mappings,npositions,totalpositions,
-					    oned_matrix_p,minactive,maxactive,cellpool,
+					    oned_matrix_p,minactive,maxactive,firstactive,nactive,cellpool,
 					    queryseq_ptr,queryuc_ptr,querylength,
 					    /*querystart*/0,/*queryend*/querylength-1,
 					    chroffset,chrhigh,plusp,
@@ -5075,12 +5764,13 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
     List_free(&all_paths);
   }
 
-
-  FREE(maxactive);
-  FREE(minactive);
-  FREE(npositions);
-  FREE(coveredp);
-  FREE(mappings);		/* Don't need to free contents of mappings */
+  FREEA(nactive);
+  FREEA(firstactive);
+  FREEA(maxactive);
+  FREEA(minactive);
+  FREEA(npositions);
+  FREEA(coveredp);
+  FREEA(mappings);		/* Don't need to free contents of mappings */
 
 #if 1
   for (source = 0; source < Oligoindex_array_length(oligoindices); source++) {

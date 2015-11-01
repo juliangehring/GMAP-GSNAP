@@ -1,4 +1,4 @@
-/* $Id: genomicpos.h 101488 2013-07-15 16:52:36Z twu $ */
+/* $Id: genomicpos.h 145990 2014-08-25 21:47:32Z twu $ */
 #ifndef GENOMICPOS_INCLUDED
 #define GENOMICPOS_INCLUDED
 #include <stdlib.h>
@@ -10,12 +10,16 @@
 typedef Uint8list_T Genomicposlist_T;
 #define Genomicposlist_length(x) Uint8list_length(x)
 #define Genomicposlist_to_array(x,y) Uint8list_to_array(x,y)
+#define Genomicposlist_fill_array(x,y) Uint8list_fill_array(x,y)
+#define Genomicposlist_fill_array_and_free(x,y) Uint8list_fill_array_and_free(x,y)
 #define Genomicposlist_free(x) Uint8list_free(x)
 #else
 #include "uintlist.h"
 typedef Uintlist_T Genomicposlist_T;
 #define Genomicposlist_length(x) Uintlist_length(x)
 #define Genomicposlist_to_array(x,y) Uintlist_to_array(x,y)
+#define Genomicposlist_fill_array(x,y) Uintlist_fill_array(x,y)
+#define Genomicposlist_fill_array_and_free(x,y) Uintlist_fill_array_and_free(x,y)
 #define Genomicposlist_free(x) Uintlist_free(x)
 #endif
 

@@ -1,4 +1,4 @@
-/* $Id: stage3hr.h 145604 2014-08-20 17:43:03Z twu $ */
+/* $Id: stage3hr.h 148359 2014-09-19 22:09:34Z twu $ */
 #ifndef STAGE3HR_INCLUDED
 #define STAGE3HR_INCLUDED
 
@@ -42,7 +42,8 @@ Stage3hr_setup (bool invert_first_p_in, bool invert_second_p_in,
 		int antistranded_penalty_in, bool favor_multiexon_p_in,
 		int gmap_min_nconsecutive_in, int index1part, int index1interval,
 		bool novelsplicingp_in, bool merge_samechr_p_in,
-		bool *circularp_in, char *failedinput_root_in, bool fastq_format_p_in);
+		bool *circularp_in, char *failedinput_root_in, bool fastq_format_p_in,
+		bool print_m8_p_in, bool want_random_p_in);
 
 extern void
 Stage3hr_file_setup_single (FILE *fp_failedinput_in, FILE *fp_nomapping_in,
@@ -399,7 +400,8 @@ Stage3_determine_pairtype (T hit5, T hit3);
 /* If hit5 and hit3 are not NULL, then we know this is part of a pair */
 extern void
 Stage3end_print (FILE *fp, T this, int score, Univ_IIT_T chromosome_iit, Shortread_T queryseq,
-		 bool invertp, T hit5, T hit3, int pairedlength, int pairscore,
+		 Shortread_T headerseq, char *acc_suffix, bool invertp,
+		 T hit5, T hit3, int pairedlength, int pairscore,
 		 Pairtype_T pairtype, int mapq_score);
 
 extern Pairtype_T
@@ -419,6 +421,12 @@ Stage3pair_new (T hit5, T hit3, Univcoord_T *splicesites,
 		Compress_T query3_compress_fwd, Compress_T query3_compress_rev,
 		int genestrand, Pairtype_T pairtype, int splicing_penalty,
 		bool private5p, bool private3p, bool expect_concordant_p);
+
+struct Pair_T *
+Stage3pair_merge (int *npairs, int *querylength_merged, char **queryseq_merged, char **quality_merged,
+		  Stage3pair_T this, Shortread_T queryseq5, Shortread_T queryseq3,
+		  int querylength5, int querylength3, int clipdir, int hardclip5, int hardclip3);
+
 extern void
 Stage3pair_privatize (Stage3pair_T *array, int npairs);
 

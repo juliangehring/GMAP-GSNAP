@@ -31,6 +31,10 @@
 /* Define to 1 if you support AVX (Advanced Vector Extensions) instructions */
 #undef HAVE_AVX
 
+/* Define to 1 if you support AVX2 (Advanced Vector Extensions 2) instructions
+   */
+#undef HAVE_AVX2
+
 /* Define to 1 if you support BMI1 (Bit Manipulation Instruction set 1) */
 #undef HAVE_BMI1
 
@@ -134,8 +138,12 @@
 /* Define to 1 if MAP_VARIABLE available for mmap. */
 #undef HAVE_MMAP_MAP_VARIABLE
 
-/* Define to 1 if you support mmx instructions */
+/* Define to 1 if you support MMX instructions */
 #undef HAVE_MMX
+
+/* Define to 1 if you support Intel intrinsic _mm_popcnt_u32/64 instructions
+   */
+#undef HAVE_MM_POPCNT
 
 /* Define to 1 if you have the `munmap' function. */
 #undef HAVE_MUNMAP

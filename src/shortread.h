@@ -1,4 +1,4 @@
-/* $Id: shortread.h 145605 2014-08-20 18:02:31Z twu $ */
+/* $Id: shortread.h 149319 2014-09-30 02:15:42Z twu $ */
 #ifndef SHORTREAD_INCLUDED
 #define SHORTREAD_INCLUDED
 #include <stdio.h>
@@ -69,6 +69,11 @@ Shortread_fulllength (T this);
 
 extern void
 Shortread_free (T *old);
+extern T
+Shortread_new (char *acc, char *restofheader, bool filterp,
+	       char *short_sequence, char *long_sequence, int sequence_length,
+	       char *short_quality, char *long_quality, int quality_length,
+	       int barcode_length, bool invertp, bool copy_acc_p, bool skipp);
 
 extern bool
 Shortread_chop_primers (T queryseq1, T queryseq2);
@@ -140,6 +145,11 @@ extern void
 Shortread_print_chopped (FILE *fp, T this, int hardclip_low, int hardclip_high);
 extern void
 Shortread_print_chopped_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high);
+extern void
+Shortread_print_chopped_end (FILE *fp, T this, int hardclip_low, int hardclip_high);
+extern void
+Shortread_print_chopped_end_revcomp (FILE *fp, T this, int hardclip_low, int hardclip_high);
+
 
 extern void
 Shortread_print_barcode (FILE *fp, T this);

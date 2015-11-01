@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splicetrie.c 140652 2014-07-04 01:16:50Z twu $";
+static char rcsid[] = "$Id: splicetrie.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -873,7 +873,7 @@ Splicetrie_solve_end5 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
   if ((size = splicetrie_size(triestart)) == 0) {
     return best_pairs;
   } else {
-    coordsptr = coords = (Univcoord_T *) CALLOC(size,sizeof(Univcoord_T));
+    coordsptr = coords = (Univcoord_T *) MALLOCA(size * sizeof(Univcoord_T));
 
     best_pairs = solve_end5_aux(&coordsptr,coords,best_pairs,triestart,
 				knownsplice_limit_low,knownsplice_limit_high,
@@ -901,7 +901,7 @@ Splicetrie_solve_end5 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
       }
     }
     
-    FREE(coords);
+    FREEA(coords);
     return best_pairs;
   }
 }
@@ -938,7 +938,7 @@ Splicetrie_solve_end3 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
   if ((size = splicetrie_size(triestart)) == 0) {
     return best_pairs;
   } else {
-    coordsptr = coords = (Univcoord_T *) CALLOC(size,sizeof(Univcoord_T));
+    coordsptr = coords = (Univcoord_T *) MALLOCA(size * sizeof(Univcoord_T));
 
     best_pairs = solve_end3_aux(&coordsptr,coords,best_pairs,triestart,
 				knownsplice_limit_low,knownsplice_limit_high,
@@ -966,7 +966,7 @@ Splicetrie_solve_end3 (List_T best_pairs, Triecontent_T *triecontents, Trieoffse
       }
     }
 
-    FREE(coords);
+    FREEA(coords);
     return best_pairs;
   }
 }
@@ -1167,10 +1167,10 @@ Splicetrie_dump_coords_left (int *best_nmismatches, Triecontent_T *triestart, in
 
   assert(*best_nmismatches >= 0);
 
-  if (Genomicposlist_length(coords) > 1 && snpp == true) {
-    array = Genomicposlist_to_array(&n,coords);
+  if ((n = Genomicposlist_length(coords)) > 1 && snpp == true) {
+    array = (Univcoord_T *) MALLOCA(n * sizeof(Univcoord_T));
+    Genomicposlist_fill_array_and_free(array,&coords);
     qsort(array,n,sizeof(Univcoord_T),Univcoord_compare);
-    Genomicposlist_free(&coords);
 
     coords = (Genomicposlist_T) NULL;
     coords = Genomicposlist_push(coords,array[0]);
@@ -1183,7 +1183,7 @@ Splicetrie_dump_coords_left (int *best_nmismatches, Triecontent_T *triestart, in
 	lastvalue = array[k];
       }
     }
-    FREE(array);
+    FREEA(array);
   }
 
   debug3(printf("Splicetrie_dump_left returning %s\n",Genomicposlist_to_string(coords)));
@@ -1384,10 +1384,10 @@ Splicetrie_dump_coords_right (int *best_nmismatches, Triecontent_T *triestart, i
 
   assert(*best_nmismatches >= 0);
 
-  if (Genomicposlist_length(coords) > 1 && snpp == true) {
-    array = Genomicposlist_to_array(&n,coords);
+  if ((n = Genomicposlist_length(coords)) > 1 && snpp == true) {
+    array = (Univcoord_T *) MALLOCA(n * sizeof(Univcoord_T));
+    Genomicposlist_fill_array_and_free(array,&coords);
     qsort(array,n,sizeof(Univcoord_T),Univcoord_compare);
-    Genomicposlist_free(&coords);
 
     coords = (Genomicposlist_T) NULL;
     coords = Genomicposlist_push(coords,array[0]);
@@ -1400,7 +1400,7 @@ Splicetrie_dump_coords_right (int *best_nmismatches, Triecontent_T *triestart, i
 	lastvalue = array[k];
       }
     }
-    FREE(array);
+    FREEA(array);
   }
 
   debug3(printf("Splicetrie_dump_right returning %s\n",Genomicposlist_to_string(coords)));
@@ -1987,9 +1987,11 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 #endif
 
   debug2(printf("Final number of splices: %d\n",Intlist_length(splicesites_i)));
-  if (Intlist_length(splicesites_i) > 1) {
+  if ((n = Intlist_length(splicesites_i)) > 1) {
     if (snpp == true) {
-      array_mm = Intlist_array_dual_ascending_by_key(&n,&array_i,*nmismatches_list,splicesites_i);
+      array_mm = (int *) MALLOCA(n * sizeof(int)); /* elts */
+      array_i = (int *) MALLOCA(n * sizeof(int)); /* keyvalues */
+      Intlist_array_dual_ascending_by_key(array_mm,array_i,n,*nmismatches_list,splicesites_i);
       Intlist_free(&splicesites_i);
       Intlist_free(&(*nmismatches_list));
 
@@ -2008,8 +2010,8 @@ Splicetrie_find_left (int *best_nmismatches, Intlist_T *nmismatches_list, int i,
 	  lastvalue = array_i[k];
 	}
       }
-      FREE(array_mm);
-      FREE(array_i);
+      FREEA(array_mm);
+      FREEA(array_i);
     }
 
     if (amb_closest_p == true) {
@@ -2184,9 +2186,11 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
 #endif
 
   debug2(printf("Final number of splices: %d\n",Intlist_length(splicesites_i)));
-  if (Intlist_length(splicesites_i) > 1) {
+  if ((n = Intlist_length(splicesites_i)) > 1) {
     if (snpp == true) {
-      array_mm = Intlist_array_dual_ascending_by_key(&n,&array_i,*nmismatches_list,splicesites_i);
+      array_mm = (int *) MALLOCA(n * sizeof(int)); /* elts */
+      array_i = (int *) MALLOCA(n * sizeof(int)); /* keyvalues */
+      Intlist_array_dual_ascending_by_key(array_mm,array_i,n,*nmismatches_list,splicesites_i);
       Intlist_free(&splicesites_i);
       Intlist_free(&(*nmismatches_list));
 
@@ -2205,8 +2209,8 @@ Splicetrie_find_right (int *best_nmismatches, Intlist_T *nmismatches_list, int i
 	  lastvalue = array_i[k];
 	}
       }
-      FREE(array_mm);
-      FREE(array_i);
+      FREEA(array_mm);
+      FREEA(array_i);
     }
 
     if (amb_closest_p == true) {

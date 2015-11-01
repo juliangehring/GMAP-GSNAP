@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: sarray-read.c 145604 2014-08-20 17:43:03Z twu $";
+static char rcsid[] = "$Id: sarray-read.c 151053 2014-10-16 19:57:23Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -32,12 +32,23 @@ static char rcsid[] = "$Id: sarray-read.c 145604 2014-08-20 17:43:03Z twu $";
 #ifdef HAVE_SSE2
 #include <emmintrin.h>
 #endif
+#ifdef HAVE_SSSE3
+#include <tmmintrin.h>
+#endif
+#ifdef HAVE_POPCNT
+#include <immintrin.h>
+#elif defined(HAVE_MM_POPCNT)
+#include <nmmintrin.h>
+#endif
 
 
 /* A value of 10000 misses various splices, although they are caught by GSNAP algorithm */
 #define EXCESS_SARRAY_HITS 100000
-#define GUESS_ALLOCATION 10
 #define LOCALSPLICING_SLOP 0.05
+
+#define USE_SHUFFLE_MASK 1	/* Alternative requires AVX, and that part of the code isn't called much */
+
+#define GUESS_ALLOCATION 10
 
 /* #define USE_SEPARATE_BUCKETS 1 */
 
@@ -69,6 +80,7 @@ static char rcsid[] = "$Id: sarray-read.c 145604 2014-08-20 17:43:03Z twu $";
 #define debug2(x)
 #endif
 
+
 /* known splicing */
 #ifdef DEBUG4S
 #define debug4s(x) x
@@ -89,6 +101,14 @@ static char rcsid[] = "$Id: sarray-read.c 145604 2014-08-20 17:43:03Z twu $";
 #else
 #define debug7a(x)
 #endif
+
+/* SIMD new filtering */
+#ifdef DEBUG7B
+#define debug7b(x) x
+#else
+#define debug7b(x)
+#endif
+
 
 /* Comparing SIMD with non-SIMD */
 #ifdef DEBUG8
@@ -117,6 +137,28 @@ static char rcsid[] = "$Id: sarray-read.c 145604 2014-08-20 17:43:03Z twu $";
 #else
 #define debug15(x)
 #endif
+
+
+#ifdef DEBUG7B
+static void
+print_vector_hex (__m128i x) {
+  UINT4 *s = (UINT4 *) &x;
+
+  /* printf("%08X %08X %08X %08X\n",s[0],s[1],s[2],s[3]); */
+  printf("%08X %08X %08X %08X\n",s[3],s[2],s[1],s[0]);
+  return;
+}
+
+static void
+print_vector_uint (__m128i x) {
+  UINT4 *s = (UINT4 *) &x;
+
+  /* printf("%d %d %d %d\n",s[0],s[1],s[2],s[3]); */
+  printf("%u %u %u %u\n",s[3],s[2],s[1],s[0]);
+  return;
+}
+#endif
+
 
 
 #define T Sarray_T
@@ -209,6 +251,10 @@ static Univcoord_T *splicesites;
 static Splicetype_T *splicetypes;
 static Chrpos_T *splicedists;
 static int nsplicesites;
+
+#if defined(HAVE_SSE2) && defined(USE_SHUFFLE_MASK)
+static __m128i shuffle_mask16[16];
+#endif
 
 
 #if 0
@@ -338,6 +384,26 @@ Sarray_setup (T sarray_fwd_in, T sarray_rev_in, Genome_T genome_in, Mode_T mode,
   printf("T => %u %u\n",sarray->initindexi[3],sarray->initindexj[3]);
 #endif
 
+#if defined(HAVE_SSE2) && defined(USE_SHUFFLE_MASK)
+  /* Used by Elt_fill_positions_filtered */
+  shuffle_mask16[0] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1);
+  shuffle_mask16[1] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,  3, 2, 1, 0);
+  shuffle_mask16[2] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,  7, 6, 5, 4);
+  shuffle_mask16[3] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1,  7, 6, 5, 4,  3, 2, 1, 0);
+  shuffle_mask16[4] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, 11,10, 9, 8);
+  shuffle_mask16[5] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, 11,10, 9, 8,  3, 2, 1, 0);
+  shuffle_mask16[6] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, 11,10, 9, 8,  7, 6, 5, 4);
+  shuffle_mask16[7] =  _mm_set_epi8(-1,-1,-1,-1, 11,10, 9, 8,  7, 6, 5, 4,  3, 2, 1, 0);
+  shuffle_mask16[8] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, 15,14,13,12);
+  shuffle_mask16[9] =  _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, 15,14,13,12,  3, 2, 1, 0);
+  shuffle_mask16[10] = _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, 15,14,13,12,  7, 6, 5, 4);
+  shuffle_mask16[11] = _mm_set_epi8(-1,-1,-1,-1, 15,14,13,12,  7, 6, 5, 4,  3, 2, 1, 0);
+  shuffle_mask16[12] = _mm_set_epi8(-1,-1,-1,-1, -1,-1,-1,-1, 15,14,13,12, 11,10, 9, 8);
+  shuffle_mask16[13] = _mm_set_epi8(-1,-1,-1,-1, 15,14,13,12, 11,10, 9, 8,  3, 2, 1, 0);
+  shuffle_mask16[14] = _mm_set_epi8(-1,-1,-1,-1, 15,14,13,12, 11,10, 9, 8,  7, 6, 5, 4);
+  shuffle_mask16[15] = _mm_set_epi8(15,14,13,12, 11,10, 9, 8,  7, 6, 5, 4,  3, 2, 1, 0);
+#endif
+  
   return;
 }
 
@@ -1433,8 +1499,14 @@ Elt_fill_positions_all (Elt_T this, T sarray) {
   Univcoord_T pos;
   int i;
 
-  if (this->positions_allocated == NULL) {
+  debug(printf("Entering Elt_fill_positions_all on %p\n",this));
+  if (this->positions_allocated != NULL) {
+    debug(printf("  positions_allocated is already non-NULL, so skipping\n"));
+
+  } else {
     this->npositions = this->finalptr - this->initptr + 1;
+    debug(printf("  filling %d positions\n",this->npositions));
+
     if (this->nmatches == 0 || this->npositions > EXCESS_SARRAY_HITS) {
       this->positions_allocated = this->positions = (Univcoord_T *) NULL;
       this->npositions = 0;
@@ -1493,11 +1565,23 @@ positions_compare (Univcoord_T *positions, int npositions,
 
   if (npositions != npositions_std) {
     fprintf(stderr,"npositions %d != npositions_std %d\n",npositions,npositions_std);
+    for (i = 0; i < npositions; i++) {
+      printf("%u\n",positions[i]);
+    }
+    printf("\n");
+
+    for (i = 0; i < npositions_std; i++) {
+      printf("%u\n",positions_std[i]);
+    }
+    printf("\n");
     abort();
+
   } else {
+    qsort(positions,npositions,sizeof(Univcoord_T),Univcoord_compare);
+    qsort(positions_std,npositions,sizeof(Univcoord_T),Univcoord_compare);
     for (i = 0; i < npositions; i++) {
       if (positions[i] != positions_std[i]) {
-	fprintf(stderr,"At %d, positions %d != positions_std %d\n",i,positions[i],positions_std[i]);
+	fprintf(stderr,"At %d, positions %u != positions_std %u\n",i,positions[i],positions_std[i]);
 	abort();
       }
     }
@@ -1505,7 +1589,10 @@ positions_compare (Univcoord_T *positions, int npositions,
 
   return;
 }
+#endif
 
+
+#ifdef DEBUG8
 static Univcoord_T *
 fill_positions_std (int *npositions, Univcoord_T low_adj, Univcoord_T high_adj,
 		    Sarrayptr_T initptr, Sarrayptr_T finalptr,
@@ -1515,7 +1602,7 @@ fill_positions_std (int *npositions, Univcoord_T low_adj, Univcoord_T high_adj,
   Sarrayptr_T ptr, lastptr;
   int i;
 
-  positions = (Univcoord_T *) CALLOC(GUESS_ALLOCATION,sizeof(Univcoord_T));
+  positions = (Univcoord_T *) MALLOC(GUESS_ALLOCATION * sizeof(Univcoord_T)); /* Return value, so cannot use alloca */
 
   *npositions = 0;
   ptr = initptr;      
@@ -1563,6 +1650,415 @@ fill_positions_std (int *npositions, Univcoord_T low_adj, Univcoord_T high_adj,
 #endif
 
 
+
+#ifdef HAVE_ALLOCA
+
+#if defined(HAVE_SSSE3) && defined(HAVE_SSE2)
+/* SSSE3 needed for _mm_shuffle_epi8 */
+static void
+Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T low, Univcoord_T high,
+			     Compress_T query_compress, bool plusp, int genestrand, bool first_read_p) {
+  int nmatches;
+  int i;
+  Univcoord_T *array = sarray->array, low_adj, high_adj, value;
+  Univcoord_T *positions_temp;
+#ifdef HAVE_64_BIT
+  UINT8 pointer;
+#else
+  UINT4 pointer;
+#endif
+  Sarrayptr_T *array_stop, *array_end, *array_ptr;
+  Univcoord_T *out;
+  __m128i converted, adjusted, match;
+  __m128i base, floor, ceiling, values, adj, p;
+  int matchbits;
+#ifdef REQUIRE_ALIGNMENT
+  int n_prealign, k;
+#endif
+#ifndef USE_SHUFFLE_MASK
+  __m128i MASTER_CONTROL;
+#endif
+#ifdef DEBUG8
+  Univcoord_T *positions_std;
+  int npositions_std;
+#endif
+
+
+  debug7(printf("Entered Elt_fill_positions_filtered with goal %u, low %u and high %u, initptr %u and finalptr %u (n = %d), nmatches %d\n",
+		goal,low,high,this->initptr,this->finalptr,this->finalptr - this->initptr + 1,this->nmatches));
+  
+  if (this->positions_allocated != NULL) {
+    /* Filled from a previous call */
+    FREE(this->positions_allocated);
+  }
+
+  if (this->nmatches == 0 || this->finalptr - this->initptr + 1 > EXCESS_SARRAY_HITS) {
+    nmatches = Genome_consecutive_matches_rightward(query_compress,/*left*/goal,/*pos5*/this->querystart,
+						    /*pos3*/this->queryend + 1,plusp,genestrand,first_read_p);
+    debug7(printf("rightward at goal %u from %d to %d shows %d matches (want %d)\n",goal,this->querystart,this->queryend,
+		  nmatches,this->queryend - this->querystart + 1));
+    if (nmatches == this->queryend - this->querystart + 1) {
+      /* Create a position that works */
+      this->positions_allocated = this->positions = (Univcoord_T *) CALLOC(1,sizeof(Univcoord_T));
+      this->positions[0] = goal;
+      this->npositions = 1;
+    } else {
+      this->positions_allocated = this->positions = (Univcoord_T *) NULL;
+      this->npositions = 0;
+    }
+
+  } else {
+
+#ifdef DEBUG8
+    positions_std = fill_positions_std(&npositions_std,/*low_adj*/low + this->querystart,
+				       /*high_adj*/high + this->querystart,
+				       this->initptr,this->finalptr,this->querystart,array);
+#endif
+
+
+    positions_temp = out = (Univcoord_T *) MALLOCA((this->finalptr - this->initptr + 1) * sizeof(Univcoord_T));
+
+    low_adj = low + this->querystart;
+    high_adj = high + this->querystart;
+
+    base = _mm_set1_epi32(2147483648); /* 2^31 */
+    floor = _mm_set1_epi32(low_adj - 1 - 2147483648);
+    ceiling = _mm_set1_epi32(high_adj + 1 - 2147483648);
+    adj = _mm_set1_epi32(this->querystart);
+
+    this->npositions = 0;
+    array_ptr = &(array[this->initptr]);
+    
+#ifdef REQUIRE_ALIGNMENT
+    /* Initial part */
+#ifdef HAVE_64_BIT
+    n_prealign = ((16 - ((UINT8) array_ptr & 0xF))/4) & 0x3;
+#else
+    n_prealign = ((16 - ((UINT4) array_ptr & 0xF))/4) & 0x3;
+#endif
+    debug7(printf("Initial ptr is at location %p.  Need %d to get to 128-bit boundary\n",pointer,n_prealign));
+
+    debug7(printf("Initial part:\n"));
+    if (n_prealign > this->finalptr - this->initptr + 1) {
+      n_prealign = this->finalptr - this->initptr + 1;
+    }
+    for (k = 0; k < n_prealign; k++) {
+      debug7a(printf("Looking at value %u, relative to low %u and high %u\n",array[ptr],low_adj,high_adj));
+      if ((value = *array_ptr++) >= low_adj && value <= high_adj) {
+	*out++ = value - this->querystart;
+      }
+    }
+#endif
+
+    /* Aligned part */
+    if (this->finalptr < 4) {
+      array_stop = &(array[0]);
+    } else {
+      array_stop = &(array[this->finalptr - 4]);
+    }
+    array_end = &(array[this->finalptr]);
+
+#ifndef USE_SHUFFLE_MASK
+    MASTER_CONTROL = _mm_setr_epi8(0x10, 0x12, 0x13, 0x12, 0x40, 0x68, 0x7C, 0x6B,
+                                   0x00, 0x80, 0xC0, 0xBC, 0x00, 0x00, 0x00, 0xC0);
+#endif
+
+    while (array_ptr < array_stop) {
+#ifdef REQUIRE_ALIGNMENT
+      values = _mm_load_si128((__m128i *) array_ptr);
+#else
+      /* It looks like loadu is just as fast as load */
+      values = _mm_loadu_si128((__m128i *) array_ptr);
+#endif
+      debug7b(print_vector_uint(values));
+
+      converted = _mm_sub_epi32(values,base);
+      /* match = _mm_andnot_si128(_mm_cmpgt_epi32(floor,converted),_mm_cmpgt_epi32(ceiling,converted)); -- This is off by 1 at floor */
+      match = _mm_and_si128(_mm_cmpgt_epi32(converted,floor),_mm_cmplt_epi32(converted,ceiling));
+      debug7b(print_vector_hex(match));
+
+      matchbits = _mm_movemask_ps(_mm_castsi128_ps(match));
+      if (matchbits) {
+	adjusted = _mm_sub_epi32(values,adj);
+#ifdef USE_SHUFFLE_MASK
+	p = _mm_shuffle_epi8(adjusted, shuffle_mask16[matchbits]);
+#else
+	p = _mm_castps_si128(_mm_permutevar_ps(_mm_castsi128_ps(adjusted),_mm_srli_epi32(MASTER_CONTROL,matchbits*2)));
+#endif
+	_mm_storeu_si128((__m128i *) out, p);
+
+#ifdef HAVE_POPCNT
+	out += _popcnt32(matchbits);
+	debug7b(printf("matchbits: %08X (%d ones)\n",matchbits,_popcnt32(matchbits)));
+#elif defined HAVE_MM_POPCNT
+	out += _mm_popcnt_u32(matchbits);
+	debug7b(printf("matchbits: %08X (%d ones)\n",matchbits,_popcnt32(matchbits)));
+#else
+	out += __builtin_popcount(matchbits);
+	debug7b(printf("matchbits: %08X (%d ones)\n",matchbits,__builtin_popcount(matchbits)));
+#endif
+      }
+
+      array_ptr += 4;
+    }
+
+    /* Partial block at end; do scalar */
+    debug7(printf("\nFinal part:\n"));
+    while (array_ptr <= array_end) {
+      if ((value = *array_ptr++) >= low_adj && value <= high_adj) {
+	*out++ = value - this->querystart;
+      }
+    }
+
+    this->npositions = out - positions_temp;
+
+    debug7(printf("SIMD method found %d positions\n",this->npositions));
+#ifdef DEBUG8
+    positions_compare(positions_temp,this->npositions,positions_std,npositions_std);
+    FREE(positions_std);
+#endif
+
+    /* Copy the positions from temp */
+    if (this->npositions == 0) {
+      this->positions_allocated = this->positions = (Univcoord_T *) NULL;
+    } else {
+      debug7(printf("Sorting %d positions\n",this->npositions));
+      qsort(positions_temp,this->npositions,sizeof(Univcoord_T),Univcoord_compare);
+
+      /* Need to copy positions before the goal */
+      this->positions_allocated = this->positions = MALLOC(this->npositions * sizeof(Univcoord_T));
+      memcpy(this->positions,positions_temp,this->npositions * sizeof(Univcoord_T));
+
+      /* Advance pointer to goal (note: do not want goal_adj, since we have already subtracted this->querystart) */
+      /* Have tested positions[i] <= goal, but want positions[-1] to be < goal, or positions[0] >= goal */
+      /* ? Replace with a binary search */
+      i = 0;
+      while (i < this->npositions && positions_temp[i] < goal) {
+	debug7(printf("Skipping position %u < goal %u\n",positions_temp[i],goal));
+	i++;
+      }
+      this->positions += i;
+      this->npositions -= i;
+      debug7(printf("Remaining: %d positions\n",this->npositions));
+    }
+    
+    FREEA(positions_temp);
+  }
+
+  this->filledp = true;
+
+  return;
+}
+
+#else
+
+static void
+Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T low, Univcoord_T high,
+			     Compress_T query_compress, bool plusp, int genestrand, bool first_read_p) {
+  Sarrayptr_T ptr, lastptr;
+  int nmatches;
+  int i;
+  Univcoord_T *array = sarray->array, low_adj, high_adj, value;
+  Univcoord_T *positions_temp;
+#ifdef HAVE_SSE2
+#ifdef HAVE_64_BIT
+  UINT8 pointer;
+#else
+  UINT4 pointer;
+#endif
+  __m128i base, floor, ceiling, values, compare;
+  int n_prealign, k;
+#endif
+#ifdef DEBUG8
+  Univcoord_T *positions_std;
+  int npositions_std;
+#endif
+
+
+  debug7(printf("Entered Elt_fill_positions_filtered with goal %u, low %u and high %u, initptr %u and finalptr %u (n = %d), nmatches %d\n",
+		goal,low,high,this->initptr,this->finalptr,this->finalptr - this->initptr + 1,this->nmatches));
+  
+  if (this->positions_allocated != NULL) {
+    /* Filled from a previous call */
+    FREE(this->positions_allocated);
+  }
+
+  if (this->nmatches == 0 || this->finalptr - this->initptr + 1 > EXCESS_SARRAY_HITS) {
+    nmatches = Genome_consecutive_matches_rightward(query_compress,/*left*/goal,/*pos5*/this->querystart,
+						    /*pos3*/this->queryend + 1,plusp,genestrand,first_read_p);
+    debug7(printf("rightward at goal %u from %d to %d shows %d matches (want %d)\n",goal,this->querystart,this->queryend,
+		  nmatches,this->queryend - this->querystart + 1));
+    if (nmatches == this->queryend - this->querystart + 1) {
+      /* Create a position that works */
+      this->positions_allocated = this->positions = (Univcoord_T *) CALLOC(1,sizeof(Univcoord_T));
+      this->positions[0] = goal;
+      this->npositions = 1;
+    } else {
+      this->positions_allocated = this->positions = (Univcoord_T *) NULL;
+      this->npositions = 0;
+    }
+
+  } else {
+
+#ifdef DEBUG8
+    positions_std = fill_positions_std(&npositions_std,/*low_adj*/low + this->querystart,
+				       /*high_adj*/high + this->querystart,
+				       this->initptr,this->finalptr,this->querystart,array);
+#endif
+
+
+#ifdef HAVE_SSE2
+    base = _mm_set1_epi32(2147483648); /* 2^31 */
+#endif
+
+    positions_temp = (Univcoord_T *) MALLOCA((this->finalptr - this->initptr + 1) * sizeof(Univcoord_T));
+
+    low_adj = low + this->querystart;
+    high_adj = high + this->querystart;
+
+    this->npositions = 0;
+    ptr = this->initptr;
+#ifdef HAVE_SSE2
+    if (ptr + 3 > this->finalptr) { /* ptr + 4 > (this->finalptr + 1) */
+      /* Handle in normal manner */
+      debug7(printf("Small batch, because %u + 3 <= %u\n",ptr,this->finalptr));
+      while (ptr <= this->finalptr) {
+	debug7a(printf("Looking at value %u, relative to low %u and high %u\n",array[ptr],low_adj,high_adj));
+	if ((value = array[ptr++]) < low_adj) {
+	  /* Skip */
+	} else if (value > high_adj) {
+	  /* Skip */
+	} else {
+	  debug7(printf("Found position %u between low %u and high %u, and within allocation\n",value,low_adj,high_adj));
+	  positions_temp[this->npositions++] = value - this->querystart;
+	}
+      }
+
+    } else {
+#ifdef HAVE_64_BIT
+      pointer = (UINT8) &(array[ptr]);
+#else
+      pointer = (UINT4) &(array[ptr]);
+#endif
+      n_prealign = ((16 - (pointer & 0xF))/4) & 0x3;
+      debug7(printf("Initial ptr is at location %p.  Need %d to get to 128-bit boundary\n",
+		    &(array[ptr]),n_prealign));
+
+      /* Initial part */
+      debug7(printf("Initial part:\n"));
+      for (k = 0; k < n_prealign; k++) {
+	debug7a(printf("Looking at value %u, relative to low %u and high %u\n",array[ptr],low_adj,high_adj));
+	if ((value = array[ptr++]) < low_adj) {
+	  /* Skip */
+	} else if (value > high_adj) {
+	  /* Skip */
+	} else {
+	  debug7(printf("Found position %u between low %u and high %u, and within allocation\n",value,low_adj,high_adj));
+	  positions_temp[this->npositions++] = value - this->querystart;
+	}
+      }
+
+      /* Aligned part */
+      debug7(printf("\nAligned part:\n"));
+      /* Since compare operations not available for unsigned ints, using the fact that
+	 unsigned_gt(a,b) is equivalent to signed_gt(a - 2^31, b - 2^31) */
+      floor = _mm_set1_epi32(low_adj - 1 - 2147483648);
+      ceiling = _mm_set1_epi32(high_adj + 1 - 2147483648);
+      while (ptr + 3 <= this->finalptr) { /* ptr + 4 < this->finalptr + 1 */
+	values = _mm_load_si128((__m128i *) &(array[ptr]));
+	debug7a(print_vector_looking(values,low_adj,high_adj));
+	values = _mm_sub_epi32(values,base);
+	compare = _mm_and_si128(_mm_cmpgt_epi32(values,floor),_mm_cmplt_epi32(values,ceiling));
+	if (/*cmp*/_mm_movemask_epi8(compare) == 0x0000) {
+	  /* All results are false, indicating no values between low_adj and high_adj (most common case) */
+	  ptr += 4;
+	} else {
+	  for (k = 0; k < 4; k++) {
+	    if ((value = array[ptr++]) < low_adj) {
+	      /* Skip */
+	      debug7(printf("Skipping position %u < low %u\n",value,low_adj));
+	    } else if (value > high_adj) {
+	      /* Skip */
+	      debug7(printf("Skipping position %u > high %u\n",value,high_adj));
+	    } else {
+	      debug7(printf("Found position %u between low %u and high %u, and within allocation\n",value,low_adj,high_adj));
+	      positions_temp[this->npositions++] = value - this->querystart;
+	    }
+	  }
+	}
+      }
+
+      /* Final part */
+      debug7(printf("\nFinal part:\n"));
+      while (ptr <= this->finalptr) {
+	debug7a(printf("Looking at value %u, relative to low %u and high %u\n",array[ptr],low_adj,high_adj));
+	if ((value = array[ptr++]) < low_adj) {
+	  /* Skip */
+	} else if (value > high_adj) {
+	  /* Skip */
+	} else {
+	  debug7(printf("Found position %u between low %u and high %u, and within allocation\n",value,low_adj,high_adj));
+	  positions_temp[this->npositions++] = value - this->querystart;
+	}
+      }
+    }
+
+#else
+
+    while (ptr <= this->finalptr) {
+      debug7a(printf("Looking at value %u, relative to low %u and high %u\n",array[ptr],low_adj,high_adj));
+      if ((value = array[ptr++]) < low_adj) {
+	/* Skip */
+      } else if (value > high_adj) {
+	/* Skip */
+      } else {
+	debug7(printf("Found position %u between low %u and high %u, and within allocation\n",value,low_adj,high_adj));
+	positions_temp[this->npositions++] = value - this->querystart;
+      }
+    }
+#endif
+
+    debug7(printf("SIMD method found %d positions\n",this->npositions));
+#ifdef DEBUG8
+    positions_compare(positions_temp,this->npositions,positions_std,npositions_std);
+    FREE(positions_std);
+#endif
+
+    /* Copy the positions from temp */
+    if (this->npositions == 0) {
+      this->positions_allocated = this->positions = (Univcoord_T *) NULL;
+    } else {
+      debug7(printf("Sorting %d positions\n",this->npositions));
+      qsort(positions_temp,this->npositions,sizeof(Univcoord_T),Univcoord_compare);
+
+      /* Need to copy positions before the goal */
+      this->positions_allocated = this->positions = MALLOC(this->npositions * sizeof(Univcoord_T));
+      memcpy(this->positions,positions_temp,this->npositions * sizeof(Univcoord_T));
+
+      /* Advance pointer to goal (note: do not want goal_adj, since we have already subtracted this->querystart) */
+      /* Have tested positions[i] <= goal, but want positions[-1] to be < goal, or positions[0] >= goal */
+      /* ? Replace with a binary search */
+      i = 0;
+      while (i < this->npositions && positions_temp[i] < goal) {
+	debug7(printf("Skipping position %u < goal %u\n",positions_temp[i],goal));
+	i++;
+      }
+      this->positions += i;
+      this->npositions -= i;
+      debug7(printf("Remaining: %d positions\n",this->npositions));
+    }
+    
+    FREEA(positions_temp);
+  }
+
+  this->filledp = true;
+
+  return;
+}
+#endif
+
+
+#else
 
 static void
 Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T low, Univcoord_T high,
@@ -1867,6 +2363,9 @@ Elt_fill_positions_filtered (Elt_T this, T sarray, Univcoord_T goal, Univcoord_T
   return;
 }
   
+#endif
+
+
 
 static void
 Elt_dump_list (List_T list) {
@@ -1901,8 +2400,9 @@ static void
 Elt_dump (Elt_T elt) {
   int k;
 
+  printf("Elt with %d positions:\n",elt->npositions);
   for (k = 0; k < elt->npositions; k++) {
-    printf("%d..%d:%u\n",elt->querystart,elt->queryend,elt->positions[k]);
+    printf("  %d..%d:%u\n",elt->querystart,elt->queryend,elt->positions[k]);
   }
   printf("\n");
 
@@ -2242,14 +2742,14 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
   bool foundp;
 
 #ifdef HAVE_ALLOCA
-  int *segmenti_donor_knownpos = (int *) alloca((querylength+1)*sizeof(int));
-  int *segmentj_acceptor_knownpos = (int *) alloca((querylength+1)*sizeof(int));
-  int *segmentj_antidonor_knownpos = (int *) alloca((querylength+1)*sizeof(int));
-  int *segmenti_antiacceptor_knownpos = (int *) alloca((querylength+1)*sizeof(int));
-  int *segmenti_donor_knowni = (int *) alloca((querylength+1)*sizeof(int));
-  int *segmentj_acceptor_knowni = (int *) alloca((querylength+1)*sizeof(int));
-  int *segmentj_antidonor_knowni = (int *) alloca((querylength+1)*sizeof(int));
-  int *segmenti_antiacceptor_knowni = (int *) alloca((querylength+1)*sizeof(int));
+  int *segmenti_donor_knownpos = (int *) ALLOCA((querylength+1)*sizeof(int));
+  int *segmentj_acceptor_knownpos = (int *) ALLOCA((querylength+1)*sizeof(int));
+  int *segmentj_antidonor_knownpos = (int *) ALLOCA((querylength+1)*sizeof(int));
+  int *segmenti_antiacceptor_knownpos = (int *) ALLOCA((querylength+1)*sizeof(int));
+  int *segmenti_donor_knowni = (int *) ALLOCA((querylength+1)*sizeof(int));
+  int *segmentj_acceptor_knowni = (int *) ALLOCA((querylength+1)*sizeof(int));
+  int *segmentj_antidonor_knowni = (int *) ALLOCA((querylength+1)*sizeof(int));
+  int *segmenti_antiacceptor_knowni = (int *) ALLOCA((querylength+1)*sizeof(int));
 #else
   int segmenti_donor_knownpos[MAX_READLENGTH+1], segmentj_acceptor_knownpos[MAX_READLENGTH+1],
     segmentj_antidonor_knownpos[MAX_READLENGTH+1], segmenti_antiacceptor_knownpos[MAX_READLENGTH+1];
@@ -2367,9 +2867,10 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
     indel_pos = queryend_same + 1;
     debug7(printf("same is at %u from %d to %d\n",left,querystart_same,queryend_same));
 
-    array = Uintlist_to_array(&n,difflist);
+    n = Uintlist_length(difflist);
+    array = (UINT4 *) MALLOCA(n * sizeof(UINT4));
+    Uintlist_fill_array_and_free(array,&difflist);
     qsort(array,n,sizeof(Univcoord_T),Univcoord_compare);
-    Uintlist_free(&difflist);
     debug7(printf("Have %d matching diffs\n",n));
 
     spliceends_sense = spliceends_antisense = (List_T) NULL;
@@ -2797,16 +3298,17 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
     }
     List_free(&lowprob);
 
-    FREE(array);
+    FREEA(array);
 
   } else if (querystart_diff == 0 && queryend_same == querylength - 1) {
     left2 = left;
     indel_pos = querystart_same;
     debug7(printf("same is at %u from %d to %d\n",left,querystart_same,queryend_same));
     
-    array = Uintlist_to_array(&n,difflist);
+    n = Uintlist_length(difflist);
+    array = (UINT4 *) MALLOCA(n * sizeof(UINT4));
+    Uintlist_fill_array_and_free(array,&difflist);
     qsort(array,n,sizeof(Univcoord_T),Univcoord_compare);
-    Uintlist_free(&difflist);
     debug7(printf("Have %d matching diffs\n",n));
 
     spliceends_sense = spliceends_antisense = (List_T) NULL;
@@ -3235,7 +3737,7 @@ collect_elt_matches (int *found_score, List_T *subs, List_T *indels, List_T *amb
     }
     List_free(&lowprob);
 
-    FREE(array);
+    FREEA(array);
 
   } else {
     Uintlist_free(&difflist);
@@ -3341,7 +3843,8 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
     sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryuc_ptr[halfwaypos]),
 		  querylength - halfwaypos,/*queryoffset*/halfwaypos,
 		  query_compress_fwd,plus_sarray,/*plusp*/true,genestrand,first_read_p,plus_conversion);
-    if (nmatches >= querylength - halfwaypos) {
+    /* Don't want to limit based on nmatches */
+    if (1 || nmatches >= querylength - halfwaypos) {
       elt = Elt_new(halfwaypos,nmatches,initptr,finalptr);
       Elt_fill_positions_all(elt,plus_sarray);
       for (i = 0; i < elt->npositions; i++) {
@@ -3399,7 +3902,8 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
     sarray_search(&initptr,&finalptr,&successp,&nmatches,&(queryrc[halfwaypos]),
 		  querylength - halfwaypos,/*queryoffset*/halfwaypos,
 		  query_compress_rev,minus_sarray,/*plusp*/false,genestrand,first_read_p,minus_conversion);
-    if (nmatches >= querylength - halfwaypos) {
+    /* Don't want to limit based on nmatches */
+    if (1 || nmatches >= querylength - halfwaypos) {
       elt = Elt_new(halfwaypos,nmatches,initptr,finalptr);
       Elt_fill_positions_all(elt,minus_sarray);
       for (i = 0; i < elt->npositions; i++) {
@@ -3451,11 +3955,12 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
     debug(printf("plus_querypos %d vs querylength %d\n",plus_querypos,querylength));
     if (nmatches <= best_plus_nmatches) {
       /* Initial (left) elt was best */
-      debug(printf("Initial elt was best\n"));
+      debug(printf("Initial elt %p was best:\n",best_plus_elt));
       plus_set = List_push(NULL,elt);
       if (plus_querypos >= querylength) {
 	chrhigh = 0U;
 	Elt_fill_positions_all(best_plus_elt,plus_sarray);
+	debug(Elt_dump(best_plus_elt));
 	for (i = 0; i < best_plus_elt->npositions; i++) {
 	  left = best_plus_elt->positions[i];
 	  if (left > chrhigh) {
@@ -3477,13 +3982,14 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
       }
     } else {
       /* Second (right) elt is best */
-      debug(printf("Second elt is best\n"));
+      debug(printf("Second elt %p is best:\n",elt));
       plus_set = List_push(NULL,best_plus_elt);
       best_plus_elt = elt;
       best_plus_nmatches = nmatches;
       if (plus_querypos >= querylength) {
 	chrhigh = 0U;
 	Elt_fill_positions_all(best_plus_elt,plus_sarray);
+	debug(Elt_dump(best_plus_elt));
 	for (i = 0; i < best_plus_elt->npositions; i++) {
 	  left = best_plus_elt->positions[i];
 	  if (left > chrhigh) {
@@ -3527,11 +4033,12 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
     debug(printf("minus_querypos %d vs querylength %d\n",minus_querypos,querylength));
     if (nmatches <= best_minus_nmatches) {
       /* Initial (left) elt was best */
-      debug(printf("Initial elt was best\n"));
+      debug(printf("Initial elt %p was best:\n",best_minus_elt));
       minus_set = List_push(NULL,elt);
       if (minus_querypos >= querylength) {
 	chrhigh = 0U;
 	Elt_fill_positions_all(best_minus_elt,minus_sarray);
+	debug(Elt_dump(best_minus_elt));
 	for (i = 0; i < best_minus_elt->npositions; i++) {
 	  left = best_minus_elt->positions[i];
 	  if (left > chrhigh) {
@@ -3553,13 +4060,14 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
       }
     } else {
       /* Second (right) elt is best */
-      debug(printf("Second elt is best\n"));
+      debug(printf("Second elt %p is best:\n",elt));
       minus_set = List_push(NULL,best_minus_elt);
       best_minus_elt = elt;
       best_minus_nmatches = nmatches;
       if (minus_querypos >= querylength) {
 	chrhigh = 0U;
 	Elt_fill_positions_all(best_minus_elt,minus_sarray);
+	debug(Elt_dump(best_minus_elt));
 	for (i = 0; i < best_minus_elt->npositions; i++) {
 	  left = best_minus_elt->positions[i];
 	  if (left > chrhigh) {
@@ -3747,27 +4255,27 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
     }
 
     if ((nelts = List_length(rightward_set)) > 0) {
-      array = (Elt_T *) List_to_array(rightward_set,NULL);
-      List_free(&rightward_set);
+      array = (Elt_T *) MALLOCA(nelts * sizeof(Elt_T));
+      List_fill_array_and_free((void **) array,&rightward_set);
       rightward_set = (List_T) NULL;
     
       qsort(array,nelts,sizeof(Elt_T),Elt_querypos_ascending_cmp);
       for (i = nelts-1; i >= 0; --i) {
 	rightward_set = List_push(rightward_set,(void *) array[i]);
       }
-      FREE(array);
+      FREEA(array);
     }
 
     if ((nelts = List_length(leftward_set)) > 0) {
-      array = (Elt_T *) List_to_array(leftward_set,NULL);
-      List_free(&leftward_set);
+      array = (Elt_T *) MALLOCA(nelts * sizeof(Elt_T));
+      List_fill_array_and_free((void **) array,&leftward_set);
       leftward_set = (List_T) NULL;
     
       qsort(array,nelts,sizeof(Elt_T),Elt_querypos_descending_cmp);
       for (i = nelts-1; i >= 0; --i) {
 	leftward_set = List_push(leftward_set,(void *) array[i]);
       }
-      FREE(array);
+      FREEA(array);
     }
 
 
@@ -3830,27 +4338,27 @@ Sarray_search_greedy (int *found_score, List_T *subs, List_T *indels, List_T *am
     }
 
     if ((nelts = List_length(rightward_set)) > 0) {
-      array = (Elt_T *) List_to_array(rightward_set,NULL);
-      List_free(&rightward_set);
+      array = (Elt_T *) MALLOCA(nelts * sizeof(Elt_T));
+      List_fill_array_and_free((void **) array,&rightward_set);
       rightward_set = (List_T) NULL;
     
       qsort(array,nelts,sizeof(Elt_T),Elt_querypos_ascending_cmp);
       for (i = nelts-1; i >= 0; --i) {
 	rightward_set = List_push(rightward_set,(void *) array[i]);
       }
-      FREE(array);
+      FREEA(array);
     }
 
     if ((nelts = List_length(leftward_set)) > 0) {
-      array = (Elt_T *) List_to_array(leftward_set,NULL);
-      List_free(&leftward_set);
+      array = (Elt_T *) MALLOCA(nelts * sizeof(Elt_T));
+      List_fill_array_and_free((void **) array,&leftward_set);
       leftward_set = (List_T) NULL;
     
       qsort(array,nelts,sizeof(Elt_T),Elt_querypos_descending_cmp);
       for (i = nelts-1; i >= 0; --i) {
 	leftward_set = List_push(leftward_set,(void *) array[i]);
       }
-      FREE(array);
+      FREEA(array);
     }
 
     chrhigh = 0U;

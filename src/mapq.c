@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: mapq.c 145604 2014-08-20 17:43:03Z twu $";
+static char rcsid[] = "$Id: mapq.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -6,6 +6,7 @@ static char rcsid[] = "$Id: mapq.c 145604 2014-08-20 17:43:03Z twu $";
 #include "mapq.h"
 #include "bool.h"
 #include "assert.h"
+#include "mem.h"
 #include "genome128_hr.h"
 
 #include <stdlib.h>
@@ -160,7 +161,7 @@ MAPQ_loglik (Compress_T query_compress, Univcoord_T left, int querystart, int qu
   int alignlength;
 
 #ifdef HAVE_ALLOCA
-  int *mismatch_positions = (int *) alloca((querylength+1) * sizeof(int));
+  int *mismatch_positions = (int *) ALLOCA((querylength+1) * sizeof(int));
 #else
   int mismatch_positions[MAX_READLENGTH+1];
 #endif

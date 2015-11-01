@@ -1,6 +1,10 @@
-/* $Id: samprint.h 136801 2014-05-21 19:22:46Z twu $ */
+/* $Id: samprint.h 149571 2014-10-01 19:22:17Z twu $ */
 #ifndef SAMPRINT_INCLUDED
 #define SAMPRINT_INCLUDED
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <stdio.h>
 #include "stage3hr.h"
@@ -45,9 +49,7 @@ SAM_file_setup_all (FILE *failedinput_1_in, FILE *failedinput_2_in, FILE *fp_nom
 		    FILE *fp_concordant_mult_in, FILE *fp_concordant_mult_xs_1_in, FILE *fp_concordant_mult_xs_2_in);
 
 extern Chrpos_T
-SAM_compute_chrpos (int *hardclip_low, int *hardclip_high,
-		    int clipdir, int hardclip5, int hardclip3, bool firstp,
-		    Stage3end_T this, Substring_T substring_low, int querylength);
+SAM_compute_chrpos (int hardclip_low, int hardclip_high, Stage3end_T this, Substring_T substring_low, int querylength);
 
 extern unsigned int
 SAM_compute_flag (bool plusp, Stage3end_T mate, Resulttype_T resulttype,
@@ -73,8 +75,8 @@ extern void
 SAM_print_paired (Result_T result, Resulttype_T resulttype,
 		  Univ_IIT_T chromosome_iit, Shortread_T queryseq1, Shortread_T queryseq2,
 		  bool invert_first_p, bool invert_second_p,
-		  bool nofailsp, bool failsonlyp, bool clip_overlap_p, bool merge_samechr_p,
-		  int quality_shift, char *sam_read_group_id);
+		  bool nofailsp, bool failsonlyp, bool clip_overlap_p, bool merge_overlap_p,
+		  bool merge_samechr_p, int quality_shift, char *sam_read_group_id);
 
 #endif
 

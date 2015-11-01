@@ -1,5 +1,5 @@
 #! @PERL@
-# $Id: gmap_build.pl.in 138523 2014-06-09 17:09:03Z twu $
+# $Id: gmap_build.pl.in 150410 2014-10-09 21:56:30Z twu $
 
 use warnings;	
 
@@ -146,6 +146,8 @@ close($FP);
 
 #####################################################################################
 
+check_compiler_assumptions();
+
 $dbdir = create_db($destdir,$dbname);
 
 create_genome_version($dbdir,$dbname);
@@ -187,6 +189,13 @@ exit;
 
 
 #####################################################################################
+
+sub check_compiler_assumptions {
+    if (system("$bindir/gmapindex -9") != 0) {
+	print STDERR "There is a mismatch between this computer system and the one where gmapindex was compiled.  Exiting.\n";
+	exit(9);
+    }
+}
 
 sub create_db {
     my ($destdir, $dbname) = @_;

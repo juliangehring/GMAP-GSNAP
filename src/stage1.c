@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: stage1.c 132710 2014-04-08 20:28:45Z twu $";
+static char rcsid[] = "$Id: stage1.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -73,6 +73,8 @@ static char rcsid[] = "$Id: stage1.c 132710 2014-04-08 20:28:45Z twu $";
 #define MAX_GREGIONS_POST_UNIQUE 100
 
 #define BINARY_FOLDDIFF 8
+
+#define MAXEXONS 3
 
 /* Once a match at a genomic location has PROMISCUOUS matches locally,
    it is unlikely that further matches will help define that candidate
@@ -2193,7 +2195,12 @@ identify_repeated_oligos (T this, int oligobase, int querylength) {
 
   debug(printf("Starting identify_repeated_oligos\n"));
 
-  reps = (struct Rep_T *) CALLOC(this->querylength,sizeof(struct Rep_T));
+  if (querylength < MAX_QUERYLENGTH_STACK) {
+    reps = (struct Rep_T *) MALLOCA(this->querylength * sizeof(struct Rep_T));
+  } else {
+    reps = (struct Rep_T *) MALLOC(this->querylength * sizeof(struct Rep_T));
+  }
+
   for (querypos = 0; querypos <= this->querylength - oligobase; querypos++) {
     if (this->validp[querypos] == true) {
 #ifdef PMAP
@@ -2261,7 +2268,12 @@ identify_repeated_oligos (T this, int oligobase, int querylength) {
     }
   }
 
-  FREE(reps);
+  if (querylength < MAX_QUERYLENGTH_STACK) {
+    FREEA(reps);
+  } else {
+    FREE(reps);
+  }
+
   return;
 }
 
@@ -2533,8 +2545,9 @@ collapse_diagonals (Univcoord_T **diagonals, int *ndiagonals,
   /* Set up batches */
   maxsegments = 0;
 
-  batchpool = (struct Batch_T *) CALLOC(querylength-oligobase+1,sizeof(struct Batch_T));
-  heap = (Batch_T *) CALLOC(2*querylength+1+1,sizeof(Batch_T));
+  batchpool = (struct Batch_T *) MALLOCA((querylength-oligobase+1) * sizeof(struct Batch_T));
+  heap = (Batch_T *) MALLOCA((2*querylength+1+1) * sizeof(Batch_T));
+
   for (querypos = 0, i = 0; querypos <= querylength - oligobase; querypos++) {
     if (ndiagonals[querypos] > 0) {
       maxsegments += ndiagonals[querypos];
@@ -2552,8 +2565,8 @@ collapse_diagonals (Univcoord_T **diagonals, int *ndiagonals,
   }
 
   if (maxsegments == 0) {
-    FREE(heap);
-    FREE(batchpool);
+    FREEA(heap);
+    FREEA(batchpool);
     return;
   }
 
@@ -2654,8 +2667,8 @@ collapse_diagonals (Univcoord_T **diagonals, int *ndiagonals,
   }
 
   /* Terminate loop. */
-  FREE(heap);
-  FREE(batchpool);
+  FREEA(heap);
+  FREEA(batchpool);
 
   return;
 }
@@ -2682,8 +2695,9 @@ find_segments (int *nsegments, Univcoord_T **diagonals, int *ndiagonals,
   /* Set up batches */
   maxsegments = 0;
 
-  batchpool = (struct Batch_T *) CALLOC(querylength-oligobase+1,sizeof(struct Batch_T));
-  heap = (Batch_T *) CALLOC(2*querylength+1+1,sizeof(Batch_T));
+  batchpool = (struct Batch_T *) MALLOCA((querylength-oligobase+1) * sizeof(struct Batch_T));
+  heap = (Batch_T *) MALLOCA((2*querylength+1+1) * sizeof(Batch_T));
+
   for (querypos = 0, i = 0; querypos <= querylength - oligobase; querypos++) {
     if (ndiagonals[querypos] > 0) {
       maxsegments += ndiagonals[querypos];
@@ -2701,8 +2715,8 @@ find_segments (int *nsegments, Univcoord_T **diagonals, int *ndiagonals,
   }
 
   if (maxsegments == 0) {
-    FREE(heap);
-    FREE(batchpool);
+    FREEA(heap);
+    FREEA(batchpool);
     *nsegments = 0;
     return (struct Segment_T *) NULL;
   } else {
@@ -2876,8 +2890,8 @@ find_segments (int *nsegments, Univcoord_T **diagonals, int *ndiagonals,
     ptr++;			/* Needed to get correct value for nsegments below */
   }
 
-  FREE(heap);
-  FREE(batchpool);
+  FREEA(heap);
+  FREEA(batchpool);
 
   *nsegments = ptr - segments;
   debug6(for (j = 0; j < *nsegments; j++) {
@@ -2894,9 +2908,8 @@ find_segments (int *nsegments, Univcoord_T **diagonals, int *ndiagonals,
 }
 
 
-static int **
-compute_paths (int ***prev, struct Segment_T *segments, int nsegments, int maxexons, bool plusp) {
-  int **scores;
+static void
+compute_paths (int **prev, int **scores, struct Segment_T *segments, int nsegments, int maxexons, bool plusp) {
   int *bestscore, score, intronadj, overlapadj;
   struct Segment_T *segmentj;
   int k, j, i, *besti;
@@ -2904,17 +2917,14 @@ compute_paths (int ***prev, struct Segment_T *segments, int nsegments, int maxex
   Univcoord_T diagonalj, intronlength;
 
   if (nsegments == 0) {
-    *prev = (int **) NULL;
-    return (int **) NULL;
+    return;
   } else {
-    *prev = (int **) CALLOC(maxexons+1,sizeof(int *));
-    scores = (int **) CALLOC(maxexons+1,sizeof(int *));
     for (i = 1; i <= maxexons; i++) {
-      (*prev)[i] = (int *) CALLOC(nsegments,sizeof(int));
-      scores[i] = (int *) CALLOC(nsegments,sizeof(int));
+      prev[i] = (int *) CALLOC(nsegments,sizeof(int)); /* Return value */
+      scores[i] = (int *) CALLOC(nsegments,sizeof(int)); /* Return value */
     }
-    bestscore = (int *) CALLOC(maxexons+1,sizeof(int));
-    besti = (int *) CALLOC(maxexons+1,sizeof(int));
+    bestscore = (int *) MALLOCA((maxexons+1) * sizeof(int));
+    besti = (int *) MALLOCA((maxexons+1) * sizeof(int));
   }
 
   if (plusp == true) {
@@ -2925,7 +2935,7 @@ compute_paths (int ***prev, struct Segment_T *segments, int nsegments, int maxex
 
       /* k = 1 */
       scores[1][j] = segmentj->score;
-      (*prev)[1][j] = -1;
+      prev[1][j] = -1;
 
       for (k = 2; k <= maxexons; k++) {
 	bestscore[k] = 0;
@@ -2969,7 +2979,7 @@ compute_paths (int ***prev, struct Segment_T *segments, int nsegments, int maxex
 
       for (k = 2; k <= maxexons; k++) {
 	scores[k][j] = bestscore[k] + segmentj->score;
-	(*prev)[k][j] = besti[k];
+	prev[k][j] = besti[k];
 	debug8(printf("+#%d, nexons %d: diagonal %u, querypos %d..%d, median %d, score %u from previous #%d\n",
 		      j,k,diagonalj,segmentj->querypos5,segmentj->querypos3,medianj,scores[k][j],besti[k]));
       }
@@ -2983,7 +2993,7 @@ compute_paths (int ***prev, struct Segment_T *segments, int nsegments, int maxex
 
       /* k = 1 */
       scores[1][j] = segmentj->score;
-      (*prev)[1][j] = -1;
+      prev[1][j] = -1;
 
       for (k = 2; k <= maxexons; k++) {
 	bestscore[k] = 0;
@@ -3027,32 +3037,32 @@ compute_paths (int ***prev, struct Segment_T *segments, int nsegments, int maxex
 
       for (k = 2; k <= maxexons; k++) {
 	scores[k][j] = bestscore[k] + segmentj->score;
-	(*prev)[k][j] = besti[k];
+	prev[k][j] = besti[k];
 	debug8(printf("-#%d, nexons %d: diagonal %u, querypos %d..%d, median %d, score %u from previous #%d\n",
 		      j,k,diagonalj,segmentj->querypos5,segmentj->querypos3,medianj,scores[k][j],besti[k]));
       }
     }
   }
 
-  FREE(besti);
-  FREE(bestscore);
+  FREEA(besti);
+  FREEA(bestscore);
 
-  return scores;
+  return;
 }
 
 
-static int *
-find_best_scores (int **nthbest, int **plus_scores, int plus_nscores,
+static void
+find_best_scores (int *nthbest, int *bestscores, int **plus_scores, int plus_nscores,
 		  int **minus_scores, int minus_nscores, int maxexons,
 		  int n) {
-  int *bestscores;
   int ninserted = 0, k, j, i;
   int *heap, newscore;
   int parenti, smallesti, righti;
 
-  bestscores = (int *) CALLOC(maxexons+1,sizeof(int));
-  *nthbest = (int *) CALLOC(maxexons+1,sizeof(int));
-  heap = (int *) CALLOC(2*n+1+1,sizeof(int));
+  memset(bestscores,0,(maxexons+1) * sizeof(int));
+  memset(nthbest,0,(maxexons+1) * sizeof(int));
+
+  heap = (int *) MALLOCA((2*n+1+1) * sizeof(int));
 
   for (k = 1; k <= maxexons; k++) {
     /* Initialize heap */
@@ -3117,35 +3127,34 @@ find_best_scores (int **nthbest, int **plus_scores, int plus_nscores,
       }
     }
 
-    (*nthbest)[k] = heap[1];
+    nthbest[k] = heap[1];
     bestscores[k] = 0;
     for (j = 1; j <= ninserted; j++) {
       if (heap[j] > bestscores[k]) {
 	bestscores[k] = heap[j];
       }
     }
-    debug8(printf("For %d exons, best score is %d, %dth best is %d\n",bestscores[k],n,(*nthbest)[k]));
+    debug8(printf("For %d exons, best score is %d, %dth best is %d\n",bestscores[k],n,nthbest[k]));
   }
 
-  FREE(heap);
-  return bestscores;
+  FREEA(heap);
+  return;
 }
 
 
-static int *
-find_best_scores_nonstranded (int **nthbest, int **plus_scores_fwd, int plus_nscores_fwd,
+static void
+find_best_scores_nonstranded (int *nthbest, int *bestscores, int **plus_scores_fwd, int plus_nscores_fwd,
 			      int **minus_scores_fwd, int minus_nscores_fwd,
 			      int **plus_scores_rev, int plus_nscores_rev,
 			      int **minus_scores_rev, int minus_nscores_rev,
 			      int maxexons, int n) {
-  int *bestscores;
   int ninserted = 0, k, j, i;
   int *heap, newscore;
   int parenti, smallesti, righti;
 
-  bestscores = (int *) CALLOC(maxexons+1,sizeof(int));
-  *nthbest = (int *) CALLOC(maxexons+1,sizeof(int));
-  heap = (int *) CALLOC(2*n+1+1,sizeof(int));
+  memset(bestscores,0,(maxexons+1) * sizeof(int));
+  memset(nthbest,0,(maxexons+1) * sizeof(int));
+  heap = (int *) MALLOCA((2*n+1+1) * sizeof(int));
 
   for (k = 1; k <= maxexons; k++) {
     /* Initialize heap */
@@ -3266,7 +3275,7 @@ find_best_scores_nonstranded (int **nthbest, int **plus_scores_fwd, int plus_nsc
       }
     }
 
-    (*nthbest)[k] = heap[1];
+    nthbest[k] = heap[1];
     bestscores[k] = 0;
     for (j = 1; j <= ninserted; j++) {
       if (heap[j] > bestscores[k]) {
@@ -3276,8 +3285,8 @@ find_best_scores_nonstranded (int **nthbest, int **plus_scores_fwd, int plus_nsc
     debug8(printf("For %d exons, best score is %d, %dth best is %d\n",bestscores[k],n,(*nthbest)[k]));
   }
 
-  FREE(heap);
-  return bestscores;
+  FREEA(heap);
+  return;
 }
 
 
@@ -3534,8 +3543,9 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
 
   struct Segment_T *plus_segments = NULL, *minus_segments = NULL;
   int plus_nsegments = 0, minus_nsegments = 0, maxexons, k;
-  int *nthbest, *bestscores;
-  int **plus_prev = NULL, **plus_scores = NULL, **minus_prev = NULL, **minus_scores = NULL;
+  int nthbest[MAXEXONS+1], bestscores[MAXEXONS+1];
+  int *plus_prev[MAXEXONS+1], *minus_prev[MAXEXONS+1], *plus_scores[MAXEXONS+1], *minus_scores[MAXEXONS+1];
+
 
   *lowidentityp = false;
 #ifdef DEBUG
@@ -3668,11 +3678,10 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
 #endif
 
     maxexons = 3;
-    plus_scores = compute_paths(&plus_prev,plus_segments,plus_nsegments,maxexons,/*plusp*/true);
-    minus_scores = compute_paths(&minus_prev,minus_segments,minus_nsegments,maxexons,/*plusp*/false);
-
-    bestscores = find_best_scores(&nthbest,plus_scores,/*plus_nscores*/plus_nsegments,
-				  minus_scores,/*minus_nscores*/minus_nsegments,maxexons,/*n*/nbest);
+    compute_paths(plus_prev,plus_scores,plus_segments,plus_nsegments,/*maxexons*/MAXEXONS,/*plusp*/true);
+    compute_paths(minus_prev,minus_scores,minus_segments,minus_nsegments,/*maxexons*/MAXEXONS,/*plusp*/false);
+    find_best_scores(nthbest,bestscores,plus_scores,/*plus_nscores*/plus_nsegments,
+		     minus_scores,/*minus_nscores*/minus_nsegments,maxexons,/*n*/nbest);
 
     for (k = 1; k <= maxexons; k++) {
       if (nthbest[k] < bestscores[k] - SUBOPTIMAL) {
@@ -3692,23 +3701,17 @@ Stage1_compute (bool *lowidentityp, Sequence_T queryuc, Indexdb_T indexdb_fwd, I
       }
     }
 
-    FREE(nthbest);
-    FREE(bestscores);
     if (minus_nsegments > 0) {
       for (k = 1; k <= maxexons; k++) {
 	FREE(minus_scores[k]);
 	FREE(minus_prev[k]);
       }
-      FREE(minus_scores);
-      FREE(minus_prev);
     }
     if (plus_nsegments > 0) {
       for (k = 1; k <= maxexons; k++) {
 	FREE(plus_scores[k]);
 	FREE(plus_prev[k]);
       }
-      FREE(plus_scores);
-      FREE(plus_prev);
     }
     FREE(minus_segments);
     FREE(plus_segments);
@@ -3842,9 +3845,10 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 
   struct Segment_T *plus_segments_fwd = NULL, *minus_segments_fwd = NULL, *plus_segments_rev = NULL, *minus_segments_rev = NULL;
   int plus_nsegments_fwd = 0, minus_nsegments_fwd = 0, plus_nsegments_rev = 0, minus_nsegments_rev = 0, maxexons, k;
-  int *nthbest, *bestscores;
-  int **plus_prev_fwd = NULL, **plus_scores_fwd = NULL, **minus_prev_fwd = NULL, **minus_scores_fwd = NULL;
-  int **plus_prev_rev = NULL, **plus_scores_rev = NULL, **minus_prev_rev = NULL, **minus_scores_rev = NULL;
+  int nthbest[MAXEXONS+1], bestscores[MAXEXONS+1];
+
+  int *plus_prev_fwd[MAXEXONS+1], *plus_scores_fwd[MAXEXONS+1], *minus_prev_fwd[MAXEXONS+1], *minus_scores_fwd[MAXEXONS+1];
+  int *plus_prev_rev[MAXEXONS+1], *plus_scores_rev[MAXEXONS+1], *minus_prev_rev[MAXEXONS+1], *minus_scores_rev[MAXEXONS+1];
 
   *lowidentityp = false;
 #ifdef DEBUG
@@ -4030,8 +4034,8 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 #endif
 
       maxexons = 3;
-      plus_scores_fwd = compute_paths(&plus_prev_fwd,plus_segments_fwd,plus_nsegments_fwd,maxexons,/*plusp*/true);
-      minus_scores_fwd = compute_paths(&minus_prev_fwd,minus_segments_fwd,minus_nsegments_fwd,maxexons,/*plusp*/false);
+      compute_paths(plus_prev_fwd,plus_scores_fwd,plus_segments_fwd,plus_nsegments_fwd,/*maxexons*/MAXEXONS,/*plusp*/true);
+      compute_paths(minus_prev_fwd,minus_scores_fwd,minus_segments_fwd,minus_nsegments_fwd,/*maxexons*/MAXEXONS,/*plusp*/false);
 
 #if 0
     }
@@ -4073,18 +4077,18 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
 #endif
 
       maxexons = 3;
-      plus_scores_rev = compute_paths(&plus_prev_rev,plus_segments_rev,plus_nsegments_rev,maxexons,/*plusp*/true);
-      minus_scores_rev = compute_paths(&minus_prev_rev,minus_segments_rev,minus_nsegments_rev,maxexons,/*plusp*/false);
+      compute_paths(plus_prev_rev,plus_scores_rev,plus_segments_rev,plus_nsegments_rev,/*maxexons*/MAXEXONS,/*plusp*/true);
+      compute_paths(minus_prev_rev,minus_scores_rev,minus_segments_rev,minus_nsegments_rev,/*maxexons*/MAXEXONS,/*plusp*/false);
 
 #if 0
     }
 #endif
 
-    bestscores = find_best_scores_nonstranded(&nthbest,plus_scores_fwd,/*plus_nscores*/plus_nsegments_fwd,
-					      minus_scores_fwd,/*minus_nscores*/minus_nsegments_fwd,
-					      plus_scores_rev,/*plus_nscores*/plus_nsegments_rev,
-					      minus_scores_rev,/*minus_nscores*/minus_nsegments_rev,
-					      /*maxexons*/3,/*n*/nbest);
+    find_best_scores_nonstranded(nthbest,bestscores,plus_scores_fwd,/*plus_nscores*/plus_nsegments_fwd,
+				 minus_scores_fwd,/*minus_nscores*/minus_nsegments_fwd,
+				 plus_scores_rev,/*plus_nscores*/plus_nsegments_rev,
+				 minus_scores_rev,/*minus_nscores*/minus_nsegments_rev,
+				 /*maxexons*/3,/*n*/nbest);
 
     for (k = 1; k <= maxexons; k++) {
       if (nthbest[k] < bestscores[k] - SUBOPTIMAL) {
@@ -4116,39 +4120,29 @@ Stage1_compute_nonstranded (bool *lowidentityp, Sequence_T queryuc,
       }
     }
 
-    FREE(nthbest);
-    FREE(bestscores);
     if (minus_nsegments_rev > 0) {
       for (k = 1; k <= maxexons; k++) {
 	FREE(minus_scores_rev[k]);
 	FREE(minus_prev_rev[k]);
       }
-      FREE(minus_scores_rev);
-      FREE(minus_prev_rev);
     }
     if (plus_nsegments_rev > 0) {
       for (k = 1; k <= maxexons; k++) {
 	FREE(plus_scores_rev[k]);
 	FREE(plus_prev_rev[k]);
       }
-      FREE(plus_scores_rev);
-      FREE(plus_prev_rev);
     }
     if (minus_nsegments_fwd > 0) {
       for (k = 1; k <= maxexons; k++) {
 	FREE(minus_scores_fwd[k]);
 	FREE(minus_prev_fwd[k]);
       }
-      FREE(minus_scores_fwd);
-      FREE(minus_prev_fwd);
     }
     if (plus_nsegments_fwd > 0) {
       for (k = 1; k <= maxexons; k++) {
 	FREE(plus_scores_fwd[k]);
 	FREE(plus_prev_fwd[k]);
       }
-      FREE(plus_scores_fwd);
-      FREE(plus_prev_fwd);
     }
     FREE(minus_segments_rev);
     FREE(plus_segments_rev);

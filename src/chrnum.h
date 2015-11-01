@@ -1,12 +1,13 @@
-/* $Id: chrnum.h 99737 2013-06-27 19:33:03Z twu $ */
+/* $Id: chrnum.h 148721 2014-09-24 00:45:45Z twu $ */
 #ifndef CHRNUM_INCLUDED
 #define CHRNUM_INCLUDED
+
+typedef int Chrnum_T;
+
 #include "bool.h"
 #include "iit-read-univ.h"
 #include "types.h"
 #include "genomicpos.h"
-
-typedef int Chrnum_T;
 
 extern char *
 Chrnum_to_string (Chrnum_T chrnum, Univ_IIT_T chromosome_iit);

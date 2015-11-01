@@ -1,4 +1,4 @@
-/* $Id: chimera.h 132706 2014-04-08 20:02:26Z twu $ */
+/* $Id: chimera.h 149319 2014-09-30 02:15:42Z twu $ */
 #ifndef CHIMERA_INCLUDED
 #define CHIMERA_INCLUDED
 
@@ -24,7 +24,7 @@ Chimera_equivpos (T this);
 extern int
 Chimera_cdna_direction (T this);
 extern void
-Chimera_print_sam_tag (FILE *fp, T this);
+Chimera_print_sam_tag (FILE *fp, T this, Univ_IIT_T chromosome_iit);
 extern double
 Chimera_donor_prob (T this);
 extern double

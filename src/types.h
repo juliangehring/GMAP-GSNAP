@@ -1,4 +1,4 @@
-/* $Id: types.h 132144 2014-04-02 16:02:28Z twu $ */
+/* $Id: types.h 148721 2014-09-24 00:45:45Z twu $ */
 #ifndef TYPES_INCLUDED
 #define TYPES_INCLUDED
 #ifdef HAVE_CONFIG_H
@@ -90,15 +90,23 @@ typedef UINT4 Positionsptr_T;
 #ifdef HAVE_64_BIT
 
 #ifdef UTILITYP
+#include "uint8list.h"
 typedef UINT8 Univcoord_T;
+typedef Uint8list_T Univcoordlist_T;
 #elif defined(LARGE_GENOMES)
+#include "uint8list.h"
 typedef UINT8 Univcoord_T;
+typedef Uint8list_T Univcoordlist_T;
 #else
+#include "uintlist.h"
 typedef UINT4 Univcoord_T;
+typedef Uintlist_T Univcoordlist_T;
 #endif
 
 #else
+#include "uintlist.h"
 typedef UINT4 Univcoord_T;
+typedef Uintlist_T Univcoordlist_T;
 #endif
 
 /* For splicetrie */

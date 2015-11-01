@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: doublelist.c 106198 2013-08-28 23:07:34Z twu $";
+static char rcsid[] = "$Id: doublelist.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -57,9 +57,11 @@ Doublelist_free (T *list) {
   T prev;
 
   while ((prev = *list) != NULL) {
-    *list = (*list)->rest;
+    *list = prev->rest;
     FREE(prev);
   }
+
+  return;
 }
 
 T
@@ -100,6 +102,17 @@ Doublelist_to_array (int *n, T list) {
     }
     return array;
   }
+}
+
+void
+Doublelist_fill_array (double *array, T list) {
+  int i = 0;
+
+  while (list) {
+    array[i++] = list->first;
+    list = list->rest;
+  }
+  return;
 }
 
 T

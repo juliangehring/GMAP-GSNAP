@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: genome.c 140510 2014-07-03 01:48:26Z twu $";
+static char rcsid[] = "$Id: genome.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -10885,98 +10885,94 @@ Genome_get_char_blocks (char *charalt, Univcoord_T left) {
 }
 
 
-char *
-Genome_get_segment_blocks_right (char **segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chrhigh,
+void
+Genome_get_segment_blocks_right (char *segment, char *segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chrhigh,
 				 bool revcomp) {
-  char *segment;
   Chrpos_T out_of_bounds, i;
 
   if (length == 0) {
-    *segmentalt = (char *) NULL;
-    return (char *) NULL;
+    segment[0] = segmentalt[0] = '\0';
+    return;
   } else if (left >= chrhigh) {
     /* All out of bounds */
-    *segmentalt = (char *) NULL;
-    return (char *) NULL;
+    segment[0] = segmentalt[0] = '\0';
+    return;
   } else if (left + length >= chrhigh) {
-    segment = (char *) MALLOC((length+1) * sizeof(char));
     out_of_bounds = left + length - chrhigh;
     /* Cannot check i >= length - out_of_bounds when i is unsigned */
     for (i = length - 1; i + out_of_bounds >= length; i--) {
       segment[i] = '*';
     }
   } else {
-    segment = (char *) MALLOC((length+1) * sizeof(char));
     out_of_bounds = 0;
   }
 
   /* printf("Genome_get_segment_blocks called with left = %u, revcomp %d\n",left,revcomp); */
   Genome_uncompress_mmap(segment,genome_blocks,left,left+length-out_of_bounds);
+  segment[length] = '\0';
   if (revcomp == true) {
     make_complement_inplace(segment,length);
   }
 
   if (genomealt_blocks == genome_blocks) {
-    *segmentalt = segment;
+    strncpy(segmentalt,segment,length);
   } else {
-    *segmentalt = (char *) MALLOC((length+1) * sizeof(char));
     for (i = length - 1; i >= length - out_of_bounds; i--) {
-      (*segmentalt)[i] = '*';
+      segmentalt[i] = '*';
     }
-    uncompress_mmap_snps_subst(*segmentalt,genome_blocks,genomealt_blocks,left,left+length-out_of_bounds);
+    uncompress_mmap_snps_subst(segmentalt,genome_blocks,genomealt_blocks,left,left+length-out_of_bounds);
+    segmentalt[length] = '\0';
     if (revcomp == true) {
-      make_complement_inplace(*segmentalt,length);
+      make_complement_inplace(segmentalt,length);
     }
   }
   
-  return segment;
+  return;
 }
 
 
-char *
-Genome_get_segment_blocks_left (char **segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chroffset,
+void
+Genome_get_segment_blocks_left (char *segment, char *segmentalt, Univcoord_T right, Chrpos_T length, Univcoord_T chroffset,
 				bool revcomp) {
-  char *segment;
   Chrpos_T out_of_bounds, i;
 
-
   if (length == 0) {
-    *segmentalt = (char *) NULL;
-    return (char *) NULL;
-  } else if (left < chroffset) {
-    *segmentalt = (char *) NULL;
-    return (char *) NULL;
-  } else if (left < chroffset + length) {
-    segment = (char *) MALLOC((length+1) * sizeof(char));
-    out_of_bounds = chroffset + length - left;
+    segment[0] = segmentalt[0] = '\0';
+    return;
+  } else if (right < chroffset) {
+    /* All out of bounds */
+    segment[0] = segmentalt[0] = '\0';
+    return;
+  } else if (right < chroffset + length) {
+    out_of_bounds = chroffset + length - right;
     for (i = 0; i < out_of_bounds; i++) {
       segment[i] = '*';
     }
   } else {
-    segment = (char *) MALLOC((length+1) * sizeof(char));
     out_of_bounds = 0;
   }
 
-  /* printf("Genome_get_segment_blocks called with left = %u, revcomp %d\n",left,revcomp); */
-  Genome_uncompress_mmap(&(segment[out_of_bounds]),genome_blocks,left-length+out_of_bounds,left);
+  /* printf("Genome_get_segment_blocks called with left = %u, revcomp %d\n",right-length,revcomp); */
+  Genome_uncompress_mmap(&(segment[out_of_bounds]),genome_blocks,right-length+out_of_bounds,right);
+  segment[length] = '\0';
   if (revcomp == true) {
     make_complement_inplace(segment,length);
   }
 
   if (genomealt_blocks == genome_blocks) {
-    *segmentalt = segment;
+    strncpy(segmentalt,segment,length);
   } else {
-    *segmentalt = (char *) MALLOC((length+1) * sizeof(char));
     for (i = 0; i < out_of_bounds; i++) {
-      (*segmentalt)[i] = '*';
+      segmentalt[i] = '*';
     }
-    uncompress_mmap_snps_subst(&((*segmentalt)[out_of_bounds]),genome_blocks,genomealt_blocks,left-length+out_of_bounds,left);
+    uncompress_mmap_snps_subst(&(segmentalt[out_of_bounds]),genome_blocks,genomealt_blocks,right-length+out_of_bounds,right);
+    segmentalt[length] = '\0';
     if (revcomp == true) {
-      make_complement_inplace(*segmentalt,length);
+      make_complement_inplace(segmentalt,length);
     }
   }
   
-  return segment;
+  return;
 }
 
 

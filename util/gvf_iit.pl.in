@@ -27,7 +27,7 @@ while (defined($line = <>)) {
 		}
 	    }
 	    if (($snp_strand = $fields[6]) eq "-") {
-		$alleleA = $refcomp{$alleleA};
+		$alleleA = $revcomp{$alleleA};
 		$alleleB = $revcomp{$alleleB};
 	    }
 	    if ($alleleA le $alleleB) {

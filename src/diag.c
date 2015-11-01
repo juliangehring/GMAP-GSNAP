@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: diag.c 110676 2013-10-10 02:33:48Z twu $";
+static char rcsid[] = "$Id: diag.c 146622 2014-09-02 21:30:22Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -155,7 +155,15 @@ Diag_update_coverage (bool *coveredp, int *ncovered, List_T diagonals, int query
   int *scores, querypos, count;
 
   *ncovered = 0;
-  scores = (int *) CALLOC(querylength,sizeof(int));
+#ifdef GSNAP
+  scores = (int *) CALLOCA(querylength,sizeof(int));  
+#else
+  if (querylength < MAX_QUERYLENGTH_STACK) {
+    scores = (int *) CALLOCA(querylength,sizeof(int));
+  } else {
+    scores = (int *) CALLOC(querylength,sizeof(int));
+  }
+#endif
 
   for (p = diagonals; p != NULL; p = List_next(p)) {
     diag = (T) List_head(p);
@@ -173,7 +181,15 @@ Diag_update_coverage (bool *coveredp, int *ncovered, List_T diagonals, int query
     (*ncovered) += (int) coveredp[querypos];
   }
 
-  FREE(scores);
+#ifdef GSNAP
+  FREEA(scores);
+#else
+  if (querylength < MAX_QUERYLENGTH_STACK) {
+    FREEA(scores);
+  } else {
+    FREE(scores);
+  }
+#endif
 
   debug(printf("coverage = %f\n\n",(double) (*ncovered)/(double) querylength));
 
@@ -191,7 +207,7 @@ diagonal_coverage (int *clear_coverage, T *array, int nunique) {
   *clear_coverage = 0;
   nevents = nunique+nunique;
 
-  events = (int *) CALLOC(nevents,sizeof(int));
+  events = (int *) MALLOCA(nevents * sizeof(int));
   for (i = 0; i < nunique; i++) {
     diag = array[i];
     events[j++] = +diag->querystart;
@@ -224,7 +240,7 @@ diagonal_coverage (int *clear_coverage, T *array, int nunique) {
     }
   }
 
-  FREE(events);
+  FREEA(events);
   
   return coverage;
 }
@@ -285,15 +301,16 @@ print_segment (T this, Chrpos_T chrinit, char *queryseq_ptr, char *genomicseg_pt
 void
 Diag_print_segments (List_T diagonals, char *queryseq_ptr, char *genomicseg_ptr) {
   T *array;
-  int i;
+  int i, n;
 
-  if (List_length(diagonals) > 0) {
-    array = (T *) List_to_array(diagonals,NULL);
+  if ((n = List_length(diagonals)) > 0) {
+    array = (T *) MALLOCA(n * sizeof(T));
+    List_fill_array((void **) array,diagonals);
     qsort(array,List_length(diagonals),sizeof(T),Diag_compare_querystart);
     for (i = 0; i < List_length(diagonals); i++) {
       print_segment(array[i],/*chrinit*/0U,queryseq_ptr,genomicseg_ptr);
     }
-    FREE(array);
+    FREEA(array);
   }
   return;
 }
@@ -396,7 +413,15 @@ assign_scores (List_T diagonals, int querylength) {
   List_T p;
   T diag;
 
-  cumscores = (double *) CALLOC(querylength,sizeof(double));
+#ifdef GSNAP
+  cumscores = (double *) CALLOCA(querylength,sizeof(double));
+#else
+  if (querylength < MAX_QUERYLENGTH_STACK) {
+    cumscores = (double *) CALLOCA(querylength,sizeof(double));
+  } else {
+    cumscores = (double *) CALLOC(querylength,sizeof(double));
+  }
+#endif
 
   /* Record endpoints: +1, 0, -1 */
   for (p = diagonals; p != NULL; p = List_next(p)) {
@@ -431,7 +456,15 @@ assign_scores (List_T diagonals, int querylength) {
     diag->score = cumscores[diag->queryend] - cumscores[diag->querystart];
   }
 
-  FREE(cumscores);
+#ifdef GSNAP
+  FREEA(cumscores);
+#else
+  if (querylength < MAX_QUERYLENGTH_STACK) {
+    FREEA(cumscores);
+  } else {
+    FREE(cumscores);
+  }
+#endif
 
   return;
 }
@@ -463,7 +496,7 @@ Diag_compute_bounds (int *diag_querystart, int *diag_queryend,
 		     int querylength, bool debug_graphic_p,
 		     Chrpos_T chrstart, Chrpos_T chrend,
 		     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp) {
-  int nunique, ndiagonals, i, j;
+  int nunique, ndiagonals, ngooddiagonals, i, j;
   Chrpos_T diagonal;
   Chrpos_T genomiclength, position, chrinit, chrterm;
   int activestart, activeend;
@@ -515,21 +548,17 @@ Diag_compute_bounds (int *diag_querystart, int *diag_queryend,
       }
     }
 
-    if (List_length(gooddiagonals) == 0) {
-      if (List_length(diagonals) == 0) {
-	array = (T *) NULL;
-      } else {
-	array = (T *) List_to_array(diagonals,NULL);
-	array = compute_dominance(&nunique,array,ndiagonals);
-      }
+    if ((ngooddiagonals = List_length(gooddiagonals)) == 0) {
+      /* Not possible for List_length(diagonals) == 0) */
+      array = (T *) MALLOCA(ndiagonals * sizeof(T));
+      List_fill_array((void **) array,diagonals);
+      array = compute_dominance(&nunique,array,ndiagonals);
+
     } else {
-      if ((ndiagonals = List_length(gooddiagonals)) == 0) {
-	array = (T *) NULL;
-      } else {
-	array = (T *) List_to_array(gooddiagonals,NULL);
-	array = compute_dominance(&nunique,array,ndiagonals);
-	List_free(&gooddiagonals);
-      }
+      /* Not possible for List_length(gooddiagonals) to be 0 */
+      array = (T *) MALLOCA(ngooddiagonals * sizeof(T));
+      List_fill_array_and_free((void **) array,&gooddiagonals);
+      array = compute_dominance(&nunique,array,ngooddiagonals);
     }
 
     qsort(array,nunique,sizeof(T),Diag_compare_diagonal);
@@ -724,7 +753,7 @@ Diag_compute_bounds (int *diag_querystart, int *diag_queryend,
       debug1(printf("to beginning of query: maxactive at querypos %d is %u\n",querypos,maxactive[querypos]));
     }
 
-    FREE(array);
+    FREEA(array);
   }
 
   return nunique;

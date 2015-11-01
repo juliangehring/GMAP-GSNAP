@@ -1,6 +1,8 @@
-/* $Id: stage1hr.h 135447 2014-05-07 22:25:45Z twu $ */
+/* $Id: stage1hr.h 148721 2014-09-24 00:45:45Z twu $ */
 #ifndef STAGE1HR_INCLUDED
 #define STAGE1HR_INCLUDED
+
+
 #include "bool.h"
 #include "types.h"
 #include "mode.h"
@@ -11,6 +13,7 @@
 #include "genome.h"
 #include "splicetrie.h"
 #include "resulthr.h"		/* For Pairtype_T */
+#include "stage2.h"
 #include "stage3hr.h"
 
 #ifdef PMAP
@@ -20,6 +23,7 @@
 #endif
 #include "pairpool.h"
 #include "diagpool.h"
+#include "cellpool.h"
 #include "dynprog.h"
 
 
@@ -84,7 +88,7 @@ extern void
 Stage1hr_cleanup ();
 
 extern void
-Stage1hr_setup (bool use_sarray_p_in, int index1part_in, int index1interval_in,
+Stage1hr_setup (bool use_sarray_p_in, bool use_only_sarray_p_in, int index1part_in, int index1interval_in,
 		int spansize_in, Univ_IIT_T chromosome_iit_in, int nchromosomes_in,
 		Genome_T genomealt, Mode_T mode_in, int maxpaths_search_in,
 		int terminal_threshold_in, int terminal_output_minlength_in,

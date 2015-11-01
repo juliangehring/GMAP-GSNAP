@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: gsnap.c 145604 2014-08-20 17:43:03Z twu $";
+static char rcsid[] = "$Id: gsnap.c 150408 2014-10-09 21:55:35Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -18,6 +18,15 @@ static char rcsid[] = "$Id: gsnap.c 145604 2014-08-20 17:43:03Z twu $";
 #endif
 #ifdef HAVE_SSE4_1
 #include <smmintrin.h>
+#endif
+#ifdef HAVE_POPCNT
+#include <immintrin.h>
+#endif
+#if defined(HAVE_MM_POPCNT)
+#include <nmmintrin.h>
+#endif
+#if defined(HAVE_LZCNT) || defined(HAVE_BMI1)
+#include <immintrin.h>
 #endif
 
 #ifdef HAVE_PTHREAD
@@ -145,8 +154,13 @@ static Genome_T genomecomp_alt = NULL;
 static Genome_T genomebits = NULL;
 static Genome_T genomebits_alt = NULL;
 
+
+#ifdef LARGE_GENOMES
+static bool use_sarray_p = false;
+static bool use_only_sarray_p = false;
+#else
 static bool use_sarray_p = true; /* if present */
-#ifndef LARGE_GENOMES
+static bool use_only_sarray_p = false;
 static Sarray_T sarray_fwd = NULL;
 static Sarray_T sarray_rev = NULL;
 #endif
@@ -161,6 +175,7 @@ static char ATOI_REV_CHARTABLE[4] = {'A','C','G','C'};     /* TC */
 
 
 static bool fastq_format_p = false;
+static bool want_random_p = true; /* randomize among equivalent scores */
 static bool creads_format_p = false;
 static Stopwatch_T stopwatch = NULL;
 
@@ -360,7 +375,9 @@ static bool print_snplabels_p = false;
 
 static bool show_refdiff_p = false;
 static bool clip_overlap_p = false;
+static bool merge_overlap_p = false;
 static bool merge_samechr_p = false;
+static bool print_m8_p = false;
 
 /* SAM */
 static int sam_headers_batch = -1;
@@ -405,7 +422,7 @@ static struct option long_options[] = {
   /* Input options */
   {"dir", required_argument, 0, 'D'},	/* user_genomedir */
   {"db", required_argument, 0, 'd'}, /* dbroot */
-  {"use-sarray", required_argument, 0, 0}, /* use_sarray_p */
+  {"use-sarray", required_argument, 0, 0}, /* use_sarray_p, use_only_sarray_p */
   {"kmer", required_argument, 0, 'k'}, /* required_index1part, index1part */
   {"sampling", required_argument, 0, 0}, /* required_index1interval, index1interval */
   {"genomefull", no_argument, 0, 'G'}, /* uncompressedp */
@@ -508,7 +525,7 @@ static struct option long_options[] = {
 
   /* Output options */
   {"output-buffer-size", required_argument, 0, 0}, /* output_buffer_size */
-  {"format", required_argument, 0, 'A'}, /* output_sam_p, output_goby_p */
+  {"format", required_argument, 0, 'A'}, /* output_sam_p, output_goby_p, print_m8_p */
 
   {"quality-protocol", required_argument, 0, 0}, /* quality_score_adj, quality_shift */
   {"quality-zero-score", required_argument, 0, 'J'}, /* quality_score_adj */
@@ -531,6 +548,7 @@ static struct option long_options[] = {
   {"quiet-if-excessive", no_argument, 0, 'Q'}, /* quiet_if_excessive_p */
   {"ordered", no_argument, 0, 'O'}, /* orderedp */
   {"clip-overlap", no_argument, 0, 0},	     /* clip_overlap_p */
+  {"merge-overlap", no_argument, 0, 0},	     /* merge_overlap_p */
   {"show-refdiff", no_argument, 0, 0},	       /* show_refdiff_p */
   {"print-snps", no_argument, 0, 0}, /* print_snplabels_p */
   {"failsonly", no_argument, 0, 0}, /* failsonlyp */
@@ -538,6 +556,8 @@ static struct option long_options[] = {
   {"split-output", required_argument, 0, 0}, /* sevenway_root */
   {"failed-input", required_argument, 0, 0}, /* failed_input_root */
   {"append-output", no_argument, 0, 0},	     /* appendp */
+
+  {"order-among-best", required_argument, 0, 0}, /* want_random_p */
 
 #ifdef HAVE_GOBY
   /* Goby-specific options */
@@ -552,6 +572,7 @@ static struct option long_options[] = {
   {"unload", no_argument, 0, 0},	/* unloadp */
 
   /* Help options */
+  {"check", no_argument, 0, 0}, /* check_compiler_assumptions */
   {"version", no_argument, 0, 0}, /* print_program_version */
   {"help", no_argument, 0, 0}, /* print_program_usage */
   {0, 0, 0, 0}
@@ -604,19 +625,29 @@ print_program_version () {
 #endif
   fprintf(stdout,"\n");
 
-
-  fprintf(stdout,"Builtin functions:");
-#ifdef HAVE_BUILTIN_CLZ
-  fprintf(stdout," clz");
+  fprintf(stdout,"Popcnt:");
+#ifdef HAVE_POPCNT
+  fprintf(stdout," popcnt/lzcnt/tzcnt");
 #endif
-#ifdef HAVE_BUILTIN_CTZ
-  fprintf(stdout," ctz");
+#ifdef HAVE_MM_POPCNT
+  fprintf(stdout," mm_popcnt");
 #endif
 #ifdef HAVE_BUILTIN_POPCOUNT
-  fprintf(stdout," popcount");
+  fprintf(stdout," builtin_popcount");
 #endif
   fprintf(stdout,"\n");
 
+  fprintf(stdout,"Builtin functions:");
+#ifdef HAVE_BUILTIN_CLZ
+  fprintf(stdout," builtin_clz");
+#endif
+#ifdef HAVE_BUILTIN_CTZ
+  fprintf(stdout," builtin_ctz");
+#endif
+#ifdef HAVE_BUILTIN_POPCOUNT
+  fprintf(stdout," builtin_popcount");
+#endif
+  fprintf(stdout,"\n");
 
   fprintf(stdout,"SIMD functions:");
 #ifdef HAVE_ALTIVEC
@@ -685,15 +716,29 @@ check_compiler_assumptions () {
 
   fprintf(stderr,"Checking compiler assumptions for popcnt: ");
   fprintf(stderr,"%08X ",x);
+#ifdef HAVE_LZCNT
+  fprintf(stderr,"_lzcnt_u32=%d ",_lzcnt_u32(x));
+#endif
 #ifdef HAVE_BUILTIN_CLZ
-  fprintf(stderr,"clz=%d ",__builtin_clz(x));
+  fprintf(stderr,"__builtin_clz=%d ",__builtin_clz(x));
+#endif
+#ifdef HAVE_BMI1
+  fprintf(stderr,"_tzcnt_u32=%d ",_tzcnt_u32(x));
 #endif
 #ifdef HAVE_BUILTIN_CTZ
-  fprintf(stderr,"clz=%d ",__builtin_ctz(x));
+  fprintf(stderr,"__builtin_ctz=%d ",__builtin_ctz(x));
 #endif
-#ifdef HAVE_BUILTIN_POPCOUNT
-  fprintf(stderr,"popcount=%d ",__builtin_popcount(x));
+
+#ifdef HAVE_POPCNT
+  fprintf(stderr,"_popcnt32=%d ",_popcnt32(x));
 #endif
+#if defined(HAVE_MM_POPCNT)
+  fprintf(stderr,"_mm_popcnt_u32=%d ",_mm_popcnt_u32(x));
+#endif
+#if defined(HAVE_BUILTIN_POPCOUNT)
+  fprintf(stderr,"__builtin_popcount=%d ",__builtin_popcount(x));
+#endif
+
   fprintf(stderr,"\n");
 
 #ifdef HAVE_SSE2
@@ -778,8 +823,9 @@ process_request (Request_T request, Floors_T *floors_array,
 				     indel_penalty_middle,indel_penalty_end,
 				     allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 				     localsplicing_penalty,distantsplicing_penalty,min_shortend,
-				     oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
-				     dynprogL,dynprogM,dynprogR,/*keep_floors_p*/true);
+				     oligoindices_major,oligoindices_minor,
+				     pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+				     /*keep_floors_p*/true);
 
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
     return Result_single_read_new(jobid,(void **) stage3array,npaths,first_absmq,second_absmq,worker_runtime);
@@ -792,8 +838,9 @@ process_request (Request_T request, Floors_T *floors_array,
 						   indel_penalty_middle,indel_penalty_end,
 						   allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 						   localsplicing_penalty,distantsplicing_penalty,min_shortend,
-						   oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
-						   dynprogL,dynprogM,dynprogR,pairmax,/*keep_floors_p*/true)) != NULL) {
+						   oligoindices_major,oligoindices_minor,
+						   pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+						   pairmax,/*keep_floors_p*/true)) != NULL) {
     /* Paired or concordant hits found */
     worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
     return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,first_absmq,second_absmq,
@@ -826,8 +873,9 @@ process_request (Request_T request, Floors_T *floors_array,
 					      indel_penalty_middle,indel_penalty_end,
 					      allow_end_indels_p,max_end_insertions,max_end_deletions,min_indel_end_matches,
 					      localsplicing_penalty,distantsplicing_penalty,min_shortend,
-					      oligoindices_major,oligoindices_minor,pairpool,diagpool,cellpool,
-					      dynprogL,dynprogM,dynprogR,pairmax,/*keep_floors_p*/false)) != NULL) {
+					      oligoindices_major,oligoindices_minor,
+					      pairpool,diagpool,cellpool,dynprogL,dynprogM,dynprogR,
+					      pairmax,/*keep_floors_p*/false)) != NULL) {
       /* Paired or concordant hits found, after chopping adapters */
       worker_runtime = worker_stopwatch == NULL ? 0.00 : Stopwatch_stop(worker_stopwatch);
       return Result_paired_read_new(jobid,(void **) stage3pairarray,npaths,first_absmq,second_absmq,
@@ -962,9 +1010,9 @@ single_thread () {
   /* Except_stack_create(); -- requires pthreads */
 
 #ifdef MEMUSAGE
-  memusage_constant += Mem_usage_report_std();
-  Mem_usage_reset(0);
-  printf("Initial memusage of single thread: %ld\n",Mem_usage_report_std());
+  memusage_constant += Mem_usage_report_std_heap();
+  Mem_usage_reset_heap_baseline(0);
+  printf("Initial memusage of single thread: %ld\n",Mem_usage_report_std_heap());
 #endif
 
   while ((request = Inbuffer_get_request(inbuffer)) != NULL) {
@@ -1009,15 +1057,15 @@ single_thread () {
 #ifdef MEMUSAGE
     /* Run with a single thread (-t 0), which should bring usage back down to 0 after each read */
 #if 0
-    printf("Memusage of single thread: standard %ld, keep %ld\n",Mem_usage_report_std(),Mem_usage_report_keep());
+    printf("Memusage of single thread: standard %ld, keep %ld\n",Mem_usage_report_std_heap(),Mem_usage_report_keep());
     printf("Memusage of OUT: %ld\n",Mem_usage_report_out());
     assert(Mem_usage_report_std() == 0);
     assert(Mem_usage_report_out() == 0);
 #endif
 
     queryseq1 = Request_queryseq1(request);
-    comma1 = Genomicpos_commafmt(Mem_max_usage_report_std());
-    comma2 = Genomicpos_commafmt(Mem_usage_report_std());
+    comma1 = Genomicpos_commafmt(Mem_usage_report_std_heap_max());
+    comma2 = Genomicpos_commafmt(Mem_usage_report_std_heap());
     comma3 = Genomicpos_commafmt(Mem_usage_report_keep());
     comma4 = Genomicpos_commafmt(Mem_usage_report_in());
     comma5 = Genomicpos_commafmt(Mem_usage_report_out());
@@ -1046,7 +1094,7 @@ single_thread () {
   /* Except_stack_destroy(); -- requires pthreads */
 
 #ifdef MEMUSAGE
-  Mem_usage_add(memusage_constant);
+  Mem_usage_std_heap_add(memusage_constant);
 #endif
 
   for (i = 0; i <= MAX_READLENGTH; i++) {
@@ -1117,8 +1165,8 @@ worker_thread (void *data) {
   Except_stack_create();
 
 #ifdef MEMUSAGE
-  memusage_constant += Mem_usage_report_std();
-  Mem_usage_reset(0);
+  memusage_constant += Mem_usage_report_std_heap();
+  Mem_usage_reset_heap_baseline(0);
 #endif
 
   while ((request = Inbuffer_get_request(inbuffer)) != NULL) {
@@ -1132,14 +1180,14 @@ worker_thread (void *data) {
     }
 
 #ifdef MEMUSAGE
-    memusage = Mem_usage_report_std();
+    memusage = Mem_usage_report_std_heap();
     printf("Memusage of worker thread %ld: %ld\n",worker_id,memusage);
     if (memusage != 0) {
       fprintf(stderr,"Memusage of worker thread %ld: %ld\n",worker_id,memusage);
       fflush(stdout);
       exit(9);
     }
-    Mem_usage_reset_max();
+    Mem_usage_reset_heap_max();
 #endif
 
     TRY
@@ -1176,8 +1224,8 @@ worker_thread (void *data) {
 
 #ifdef MEMUSAGE
     queryseq1 = Request_queryseq1(request);
-    comma1 = Genomicpos_commafmt(Mem_max_usage_report_std());
-    comma2 = Genomicpos_commafmt(Mem_usage_report_std());
+    comma1 = Genomicpos_commafmt(Mem_usage_report_std_heap_max());
+    comma2 = Genomicpos_commafmt(Mem_usage_report_std_heap());
     comma3 = Genomicpos_commafmt(Mem_usage_report_keep());
     comma4 = Genomicpos_commafmt(Mem_usage_report_in());
     comma5 = Genomicpos_commafmt(Mem_usage_report_out());
@@ -1199,7 +1247,7 @@ worker_thread (void *data) {
   }
 
 #ifdef MEMUSAGE
-  Mem_usage_add(memusage_constant);
+  Mem_usage_std_heap_add(memusage_constant);
 #endif
 
   Except_stack_destroy();
@@ -1508,20 +1556,39 @@ main (int argc, char *argv[]) {
       long_name = long_options[long_option_index].name;
       if (!strcmp(long_name,"version")) {
 	print_program_version();
+	exit(0); 
+      } else if (!strcmp(long_name,"check")) {
+	check_compiler_assumptions();
 	exit(0);
       } else if (!strcmp(long_name,"help")) {
 	print_program_usage();
 	exit(0);
 	
+#ifdef LARGE_GENOMES
       } else if (!strcmp(long_name,"use-sarray")) {
-	if (!strcmp(optarg,"1")) {
-	  use_sarray_p = true;
-	} else if (!strcmp(optarg,"0")) {
+	if (!strcmp(optarg,"0")) {
 	  use_sarray_p = false;
+	  use_only_sarray_p = false;
 	} else {
-	  fprintf(stderr,"--use-sarray flag must be 0 or 1\n");
+	  fprintf(stderr,"--use-sarray flag for large genomes must be 0\n");
 	  exit(9);
 	}
+#else
+      } else if (!strcmp(long_name,"use-sarray")) {
+	if (!strcmp(optarg,"2")) {
+	  use_sarray_p = true;
+	  use_only_sarray_p = true;
+	} else if (!strcmp(optarg,"1")) {
+	  use_sarray_p = true;
+	  use_only_sarray_p = false;
+	} else if (!strcmp(optarg,"0")) {
+	  use_sarray_p = false;
+	  use_only_sarray_p = false;
+	} else {
+	  fprintf(stderr,"--use-sarray flag must be 0, 1, or 2\n");
+	  exit(9);
+	}
+#endif
 
       } else if (!strcmp(long_name,"expand-offsets")) {
 	if (!strcmp(optarg,"1")) {
@@ -1663,6 +1730,15 @@ main (int argc, char *argv[]) {
 	failedinput_root = optarg;
       } else if (!strcmp(long_name,"append-output")) {
 	appendp = true;
+      } else if (!strcmp(long_name,"order-among-best")) {
+	if (!strcmp(optarg,"genomic")) {
+	  want_random_p = false;
+	} else if (!strcmp(optarg,"random")) {
+	  want_random_p = true;
+	} else {
+	  fprintf(stderr,"--order-among-best values allowed: genomic, random (default)\n");
+	  exit(9);
+	}
       } else if (!strcmp(long_name,"pairmax-dna")) {
 	pairmax_dna = atoi(check_valid_int(optarg));
       } else if (!strcmp(long_name,"pairmax-rna")) {
@@ -1722,6 +1798,8 @@ main (int argc, char *argv[]) {
 	show_refdiff_p = true;
       } else if (!strcmp(long_name,"clip-overlap")) {
 	clip_overlap_p = true;
+      } else if (!strcmp(long_name,"merge-overlap")) {
+	merge_overlap_p = true;
       } else if (!strcmp(long_name,"no-sam-headers")) {
 	sam_headers_p = false;
       } else if (!strcmp(long_name,"sam-headers-batch")) {
@@ -1802,10 +1880,7 @@ main (int argc, char *argv[]) {
       break;
 
     case 'D': user_genomedir = optarg; break;
-    case 'd': 
-      dbroot = (char *) CALLOC(strlen(optarg)+1,sizeof(char));
-      strcpy(dbroot,optarg);
-      break;
+    case 'd': dbroot = optarg; break;
     case 'k':
       required_index1part = atoi(check_valid_int(optarg));
       if (required_index1part > 16) {
@@ -1974,8 +2049,10 @@ main (int argc, char *argv[]) {
 	output_sam_p = true;
       } else if (!strcmp(optarg,"goby")) {
 	output_goby_p = true;
+      } else if (!strcmp(optarg,"m8")) {
+	print_m8_p = true;
       } else {
-	fprintf(stderr,"Output format %s not recognized\n",optarg);
+	fprintf(stderr,"Output format %s not recognized.  Allowed values: sam, m8, goby\n",optarg);
 	exit(9);
       }
       break;
@@ -2046,6 +2123,11 @@ main (int argc, char *argv[]) {
   } else {
     Shortread_setup(acc_fieldi_start,acc_fieldi_end,force_single_end_p,filter_chastity_p,
 		    allow_paired_end_mismatch_p);
+  }
+
+  if (clip_overlap_p == true && merge_overlap_p == true) {
+    fprintf(stderr,"Cannot specify both --clip-overlap and --merge-overlap.  Please choose one.\n");
+    exit(9);
   }
 
   if (novelsplicingp == true && knownsplicingp == true) {
@@ -2373,7 +2455,10 @@ main (int argc, char *argv[]) {
     }
 #endif
 
-    if (dibasep == true) {
+    if (use_only_sarray_p == true) {
+      indexdb = indexdb2 = NULL;
+      
+    } else if (dibasep == true) {
       fprintf(stderr,"No longer supporting 2-base encoding\n");
       exit(9);
       if ((indexdb = Indexdb_new_genome(&index1part,&index1interval,
@@ -2577,15 +2662,17 @@ main (int argc, char *argv[]) {
     exit(9);
   }
 
-  Dynprog_init(mode);
-  Compoundpos_init_positions_free(Indexdb_positions_fileio_p(indexdb));
-  Spanningelt_init_positions_free(Indexdb_positions_fileio_p(indexdb));
-  Stage1_init_positions_free(Indexdb_positions_fileio_p(indexdb));
+  if (use_only_sarray_p == false) {
+    Dynprog_init(mode);
+    Compoundpos_init_positions_free(Indexdb_positions_fileio_p(indexdb));
+    Spanningelt_init_positions_free(Indexdb_positions_fileio_p(indexdb));
+    Stage1_init_positions_free(Indexdb_positions_fileio_p(indexdb));
 
-  indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,mode,index1part));
-  debug(printf("Size threshold is %d\n",indexdb_size_threshold));
-  if (indexdb_size_threshold < MIN_INDEXDB_SIZE_THRESHOLD) {
-    indexdb_size_threshold = MIN_INDEXDB_SIZE_THRESHOLD;
+    indexdb_size_threshold = (int) (10*Indexdb_mean_size(indexdb,mode,index1part));
+    debug(printf("Size threshold is %d\n",indexdb_size_threshold));
+    if (indexdb_size_threshold < MIN_INDEXDB_SIZE_THRESHOLD) {
+      indexdb_size_threshold = MIN_INDEXDB_SIZE_THRESHOLD;
+    }
   }
 
   if (genes_file != NULL) {
@@ -2821,7 +2908,6 @@ main (int argc, char *argv[]) {
 
   FREE(genomesubdir);
   FREE(fileroot);
-  FREE(dbroot);
 
 
 #ifdef HAVE_GOBY
@@ -2873,17 +2959,40 @@ main (int argc, char *argv[]) {
   }
   Genome_sites_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL);
   Maxent_hr_setup(Genome_blocks(genomecomp),/*snp_blocks*/genomecomp_alt ? Genome_blocks(genomecomp_alt) : NULL);
-  Indexdb_setup(index1part);
-  Indexdb_hr_setup(index1part);
-  Oligo_setup(index1part);
+  if (use_only_sarray_p == true) {
+    spansize = 1;
+  } else {
+    Indexdb_setup(index1part);
+    Indexdb_hr_setup(index1part);
+    Oligo_setup(index1part);
+    spansize = Spanningelt_setup(index1part,index1interval);
+
+    Dynprog_single_setup(/*homopolymerp*/false);
+    Dynprog_genome_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
+			 donor_typeint,acceptor_typeint);
+    Dynprog_end_setup(splicesites,splicetypes,splicedists,nsplicesites,
+		      trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
+    Oligoindex_hr_setup(Genome_blocks(genomecomp),mode);
+    Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
+		 suboptimal_score_start,suboptimal_score_end,
+		 mode,/*snps_p*/snps_iit ? true : false);
+    Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p,
+	       force_xs_direction_p,md_lowercase_variant_p,
+	       /*snps_p*/snps_iit ? true : false,
+	       Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
+    Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
+		 /*require_splicedir_p*/true,splicing_iit,splicing_divint_crosstable,
+		 donor_typeint,acceptor_typeint,
+		 splicesites,min_intronlength,max_deletionlength,min_indel_end_matches,
+		 output_sam_p,/*homopolymerp*/false,/*stage3debug*/NO_STAGE3DEBUG);
+  }
+
   Splicetrie_setup(splicecomp,splicesites,splicefrags_ref,splicefrags_alt,
 		   trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max,
 		   /*snpp*/snps_iit ? true : false,amb_closest_p,amb_clip_p,min_shortend);
   Splice_setup(min_shortend);
-
-  spansize = Spanningelt_setup(index1part,index1interval);
   Indel_setup(min_indel_end_matches,indel_penalty_middle);
-  Stage1hr_setup(use_sarray_p,index1part,index1interval,spansize,chromosome_iit,nchromosomes,
+  Stage1hr_setup(use_sarray_p,use_only_sarray_p,index1part,index1interval,spansize,chromosome_iit,nchromosomes,
 		 genomecomp_alt,mode,maxpaths_search,terminal_threshold,terminal_output_minlength,
 		 splicesites,splicetypes,splicedists,nsplicesites,
 		 novelsplicingp,knownsplicingp,distances_observed_p,
@@ -2899,31 +3008,15 @@ main (int argc, char *argv[]) {
 		  genes_iit,genes_divint_crosstable,
 		  splicing_iit,splicing_divint_crosstable,
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
-		  novelsplicingp,knownsplicingp,output_sam_p,mode);
-  Dynprog_single_setup(/*homopolymerp*/false);
-  Dynprog_genome_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
-		       donor_typeint,acceptor_typeint);
-  Dynprog_end_setup(splicesites,splicetypes,splicedists,nsplicesites,
-		    trieoffsets_obs,triecontents_obs,trieoffsets_max,triecontents_max);
-  Oligoindex_hr_setup(Genome_blocks(genomecomp),mode);
-  Stage2_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,/*cross_species_p*/false,
-	       suboptimal_score_start,suboptimal_score_end,
-	       mode,/*snps_p*/snps_iit ? true : false);
-  Pair_setup(trim_mismatch_score,trim_indel_score,sam_insert_0M_p,
-	     force_xs_direction_p,md_lowercase_variant_p,
-	     /*snps_p*/snps_iit ? true : false);
-  Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
-	       /*require_splicedir_p*/true,splicing_iit,splicing_divint_crosstable,
-	       donor_typeint,acceptor_typeint,
-	       splicesites,min_intronlength,max_deletionlength,min_indel_end_matches,
-	       output_sam_p,/*homopolymerp*/false,/*stage3debug*/NO_STAGE3DEBUG);
+		  novelsplicingp,knownsplicingp,output_sam_p,mode,
+		  Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
   Stage3hr_setup(invert_first_p,invert_second_p,genes_iit,genes_divint_crosstable,
 		 tally_iit,tally_divint_crosstable,runlength_iit,runlength_divint_crosstable,
 		 terminal_output_minlength,distances_observed_p,pairmax,
 		 expected_pairlength,pairlength_deviation,
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,novelsplicingp,
-		 merge_samechr_p,circularp,failedinput_root,fastq_format_p);
+		 merge_samechr_p,circularp,failedinput_root,fastq_format_p,print_m8_p,want_random_p);
   SAM_setup(quiet_if_excessive_p,maxpaths_report,failedinput_root,fastq_format_p,hide_soft_clips_p,
 	    sam_multiple_primaries_p,force_xs_direction_p,md_lowercase_variant_p,snps_iit);
 
@@ -2932,7 +3025,7 @@ main (int argc, char *argv[]) {
 			    output_sam_p,sam_headers_p,sam_read_group_id,sam_read_group_name,
 			    sam_read_group_library,sam_read_group_platform,
 			    nworkers,orderedp,gobywriter,nofailsp,failsonlyp,
-			    fastq_format_p,clip_overlap_p,merge_samechr_p,
+			    fastq_format_p,clip_overlap_p,merge_overlap_p,merge_samechr_p,print_m8_p,
 			    maxpaths_report,quiet_if_excessive_p,quality_shift,
 			    invert_first_p,invert_second_p,pairmax,argc,argv,optind);
 
@@ -3023,8 +3116,10 @@ main (int argc, char *argv[]) {
   Goby_shutdown();
 #endif
 
-  Dynprog_term();
-  Stage1hr_cleanup();
+  if (use_only_sarray_p == false) {
+    Dynprog_term();
+    Stage1hr_cleanup();
+  }
 
   if (indexdb2 != indexdb) {
     Indexdb_free(&indexdb2);
@@ -3128,7 +3223,8 @@ Usage: gsnap [OPTIONS...] <FASTA file>, or\n\
   -D, --dir=directory            Genome directory\n\
   -d, --db=STRING                Genome database\n\
   --use-sarray=INT               Whether to use a suffix array, which will give increased speed.\n\
-                                   Allowed values: 0 (no) or 1 (yes, if available, default).\n\
+                                   Allowed values: 0 (no), 1 (yes, plus GSNAP/GMAP algorithm, default),\n\
+                                   or 2 (yes, and use only suffix array algorithm).\n\
                                    Note that suffix arrays will bias against SNP alleles in\n\
                                    SNP-tolerant alignment.\n\
   -k, --kmer=INT                 kmer size to use in genome database (allowed values: 16 or less)\n\
@@ -3471,6 +3567,7 @@ is still designed to be fast.\n\
                                    relative to the reference genome as lower case (otherwise, it shows\n\
                                    all differences relative to both the reference and alternate genome)\n\
   --clip-overlap                 For paired-end reads whose alignments overlap, clip the overlapping region.\n\
+  --merge-overlap                For paired-end reads whose alignments overlap, merge the two ends into a single end (beta implementation)\n\
   --print-snps                   Print detailed information about SNPs in reads (works only if -v also selected)\n\
                                    (not fully implemented yet)\n\
   --failsonly                    Print only failed alignments, those with no results\n\
@@ -3485,7 +3582,7 @@ is still designed to be fast.\n\
 #else
   fprintf(stdout,"\
   -A, --format=STRING            Another format type, other than default.\n\
-                                   Currently implemented: sam\n\
+                                   Currently implemented: sam, m8 (BLAST tabular format)\n\
                                    Also allowed, but not installed at compile-time: goby\n\
                                    (To install, need to re-compile with appropriate options)\n\
 ");
@@ -3501,6 +3598,8 @@ is still designed to be fast.\n\
                                     in addition to the output in the .nomapping file.\n\
   --append-output                When --split-output or --failed-input is given, this flag will append output\n\
                                     to the existing files.  Otherwise, the default is to create new files.\n\
+  --order-among-best=STRING      Among alignments tied with the best score, order those alignments in this order.\n\
+                                    Allowed values: genomic, random (default)\n\
   --output-buffer-size=INT       Buffer size, in queries, for output thread (default 1000).  When the number\n\
                                    of results to be printed exceeds this size, the worker threads are halted\n\
                                    until the backlog is cleared\n\
@@ -3547,6 +3646,7 @@ is still designed to be fast.\n\
   /* Help options */
   fprintf(stdout,"Help options\n");
   fprintf(stdout,"\
+  --check                        Check compiler assumptions\n\
   --version                      Show version\n\
   --help                         Show this help message\n\
 ");

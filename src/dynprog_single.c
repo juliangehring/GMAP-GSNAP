@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_single.c 140230 2014-06-30 21:31:58Z twu $";
+static char rcsid[] = "$Id: dynprog_single.c 146623 2014-09-02 21:31:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -535,38 +535,50 @@ Dynprog_single_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmis
     rlength_orig = rlength;
     rsequence = uniq_string(&rsequence_nreps,&rlength,rsequence_orig,rlength_orig);
 
+    gsequence_orig = (char *) MALLOCA((glength+1) * sizeof(char));
+    gsequence_alt = (char *) MALLOCA((glength+1) * sizeof(char));
+
     if (watsonp) {
-      gsequence_orig = Genome_get_segment_blocks_right(&gsequence_alt,/*left*/chroffset+goffset,glength,chrhigh,/*revcomp*/false);
+      Genome_get_segment_blocks_right(gsequence_orig,gsequence_alt,/*left*/chroffset+goffset,
+                                      glength,chrhigh,/*revcomp*/false);
     } else {
-      gsequence_orig = Genome_get_segment_blocks_left(&gsequence_alt,/*left*/chrhigh-goffset+1,glength,chroffset,/*revcomp*/true);
+      Genome_get_segment_blocks_left(gsequence_orig,gsequence_alt,/*right*/chrhigh-goffset+1,
+                                     glength,chroffset,/*revcomp*/true);
     }
-    if (gsequence_orig == NULL) {
+    if (gsequence_orig[0] == '\0') {
       *finalscore = NEG_INFINITY_32;
       *nmatches = *nmismatches = *nopens = *nindels = 0;
+      FREEA(gsequence_alt);
+      FREEA(gsequence_orig);
       return (List_T) NULL;
     } else {
       glength_orig = glength;
-      gsequence = gsequence_alt = uniq_string(&gsequence_nreps,&glength,gsequence_orig,glength_orig);
+      rsequence = uniq_string(&gsequence_nreps,&glength,gsequence_orig,glength_orig);
     }
 
   } else {
+    gsequence = (char *) MALLOCA((glength+1) * sizeof(char));
+    gsequence_alt = (char *) MALLOCA((glength+1) * sizeof(char));
+
     if (watsonp) {
-      gsequence = Genome_get_segment_blocks_right(&gsequence_alt,/*left*/chroffset+goffset,glength,chrhigh,/*revcomp*/false);
+      Genome_get_segment_blocks_right(gsequence,gsequence_alt,/*left*/chroffset+goffset,
+				      glength,chrhigh,/*revcomp*/false);
     } else {
-      gsequence = Genome_get_segment_blocks_left(&gsequence_alt,/*left*/chrhigh-goffset+1,glength,chroffset,/*revcomp*/true);
+      Genome_get_segment_blocks_left(gsequence,gsequence_alt,/*right*/chrhigh-goffset+1,
+				     glength,chroffset,/*revcomp*/true);
     }
-    if (gsequence == NULL) {
+    if (gsequence[0] == '\0') {
       *finalscore = NEG_INFINITY_32;
       *nmatches = *nmismatches = *nopens = *nindels = 0;
+      FREEA(gsequence_alt);
+      FREEA(gsequence);
       return (List_T) NULL;
     } else if (glength == rlength &&
 	       (pairs = single_gap_simple(&(*finalscore),&(*nmatches),&(*nmismatches),
 					  rsequence,rsequenceuc,rlength,gsequence,gsequence_alt,roffset,goffset,
 					  pairpool,mismatchtype,*dynprogindex)) != NULL) {
-      if (gsequence_alt != gsequence) {
-	FREE(gsequence_alt);
-      }
-      FREE(gsequence);
+      FREEA(gsequence_alt);
+      FREEA(gsequence);
 
       *nopens = *nindels = 0;
       *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
@@ -578,7 +590,8 @@ Dynprog_single_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmis
   Dynprog_compute_bands(&lband,&uband,rlength,glength,extraband_single,widebandp);
 #if defined(HAVE_SSE4_1) || defined(HAVE_SSE2)
   /* Use || because we want the minimum length (which determines the diagonal length) to achieve a score less than 128 */
-  if (rlength <= SIMD_MAXLENGTH_EPI8 || glength <= SIMD_MAXLENGTH_EPI8) {
+  /* Use && because we don't want to overflow in either direction */
+  if (rlength <= SIMD_MAXLENGTH_EPI8 && glength <= SIMD_MAXLENGTH_EPI8) {
     matrix8 = Dynprog_simd_8(&directions8_nogap,&directions8_Egap,&directions8_Fgap,dynprog,
 			     rsequence,gsequence,gsequence_alt,rlength,glength,
 #ifdef DEBUG14
@@ -633,18 +646,16 @@ Dynprog_single_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmis
     pairs = augment_pairs(pairs,rsequence_nreps,rlength,roffset,
 			  gsequence_nreps,glength,goffset,pairpool,*dynprogindex);
     FREE(gsequence_nreps);
-    FREE(gsequence_orig);
-    FREE(gsequence);
+    FREEA(gsequence_orig);
+    FREEA(gsequence);
 
     FREE(rsequence_nreps);
     /* Do not free rsequence_orig */
     FREE(rsequence);
     
   } else {
-    if (gsequence_alt != gsequence) {
-      FREE(gsequence_alt);
-    }
-    FREE(gsequence);
+    FREEA(gsequence_alt);
+    FREEA(gsequence);
   }
 
   /*

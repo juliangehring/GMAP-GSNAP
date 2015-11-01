@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indel.c 145604 2014-08-20 17:43:03Z twu $";
+static char rcsid[] = "$Id: indel.c 148844 2014-09-24 21:32:56Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -50,8 +50,8 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
   int nmismatches1, nmismatches2;
 
 #ifdef HAVE_ALLOCA
-  int *mismatch_positions_left = (int *) alloca(querylength * sizeof(int));
-  int *mismatch_positions_right = (int *) alloca(querylength * sizeof(int));
+  int *mismatch_positions_left = (int *) ALLOCA(querylength * sizeof(int));
+  int *mismatch_positions_right = (int *) ALLOCA(querylength * sizeof(int));
 #else
   int mismatch_positions_left[MAX_READLENGTH], mismatch_positions_right[MAX_READLENGTH];
 #endif
@@ -73,6 +73,7 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
   nmismatches_left = Genome_mismatches_left(mismatch_positions_left,max_mismatches_allowed,
 					    query_compress,left+indels,/*pos5*/0,/*pos3*/querylength,
 					    plusp,genestrand,first_read_p);
+
   debug2(
 	 printf("%d mismatches on left at:",nmismatches_left);
 	 for (i = 0; i <= nmismatches_left; i++) {
@@ -86,6 +87,7 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
   nmismatches_right = Genome_mismatches_right(mismatch_positions_right,max_mismatches_allowed,
 					      query_compress,left,/*pos5*/0,/*pos3*/querylength,
 					      plusp,genestrand,first_read_p);
+
   debug2(
 	 printf("%d mismatches on right at:",nmismatches_right);
 	 for (i = 0; i <= nmismatches_right; i++) {
@@ -94,11 +96,13 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
 	 printf("\n");
 	 );
 
-  best_sum = querylength;
+  best_sum = querylength + querylength;
 
   /* Modeled after end D to get lowest possible coordinate */
   righti = 0;
   lefti = nmismatches_left - 1;
+  nmismatches_righti = /*righti*/ 0;
+  nmismatches_lefti = /*lefti+1*/ nmismatches_left;
 
   while (righti < nmismatches_right) {
     while (lefti >= 0 && mismatch_positions_left[lefti] > mismatch_positions_right[righti] - indels) {
@@ -158,7 +162,6 @@ Indel_solve_middle_insertion (bool *foundp, int *found_score, int *nhits, List_T
   }
   debug2(printf("\n"));
 
-
   if (best_sum <= max_mismatches_allowed) {
     if (plusp == true) {
       query_indel_pos = best_indel_pos;
@@ -209,8 +212,8 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
   int nmismatches1, nmismatches2;
 
 #ifdef HAVE_ALLOCA
-  int *mismatch_positions_left = (int *) alloca(querylength * sizeof(int));
-  int *mismatch_positions_right = (int *) alloca(querylength * sizeof(int));
+  int *mismatch_positions_left = (int *) ALLOCA(querylength * sizeof(int));
+  int *mismatch_positions_right = (int *) ALLOCA(querylength * sizeof(int));
 #else
   int mismatch_positions_left[MAX_READLENGTH], mismatch_positions_right[MAX_READLENGTH];
 #endif
@@ -256,11 +259,13 @@ Indel_solve_middle_deletion (bool *foundp, int *found_score, int *nhits, List_T 
 	 printf("\n");
 	 );
 
-  best_sum = querylength;
+  best_sum = querylength + querylength;
 
   /* Modeled after end C to get lowest possible coordinate */
   righti = 0;
   lefti = nmismatches_left - 1;
+  nmismatches_righti = /*righti*/ 0;
+  nmismatches_lefti = /*lefti+1*/ nmismatches_left;
 
   while (righti < nmismatches_right) {
     while (lefti >= 0 && mismatch_positions_left[lefti] > mismatch_positions_right[righti]) {

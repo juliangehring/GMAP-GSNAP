@@ -1,4 +1,4 @@
-/* $Id: samflags.h 115429 2013-11-18 18:19:14Z twu $ */
+/* $Id: samflags.h 149314 2014-09-30 01:14:55Z twu $ */
 #ifndef SAMFLAGS_INCLUDED
 #define SAMFLAGS_INCLUDED
 
@@ -13,6 +13,7 @@
 #define NOT_PRIMARY        0x0100 /* 256 */
 #define BAD_READ_QUALITY   0x0200 /* 512 */
 #define DUPLICATE_READ     0x0400 /* 1024 */
+
 
 /* 83 = first read, minus strand for paired */
 /* 99 = first read, plus strand for paired */

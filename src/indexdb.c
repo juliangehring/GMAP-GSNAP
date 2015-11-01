@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: indexdb.c 134965 2014-05-02 21:39:55Z twu $";
+static char rcsid[] = "$Id: indexdb.c 150679 2014-10-14 00:46:33Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -147,7 +147,7 @@ Indexdb_free (T *old) {
 #ifdef LARGE_GENOMES
       munmap((void *) (*old)->positions_high,(*old)->positions_high_len);
       close((*old)->positions_high_fd);
-      munmap((void *) (*old)->positions_high,(*old)->positions_low_len);
+      munmap((void *) (*old)->positions_low,(*old)->positions_low_len);
       close((*old)->positions_low_fd);
 #else
       munmap((void *) (*old)->positions,(*old)->positions_len);

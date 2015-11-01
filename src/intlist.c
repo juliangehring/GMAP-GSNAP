@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: intlist.c 140368 2014-07-02 00:56:33Z twu $";
+static char rcsid[] = "$Id: intlist.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -15,6 +15,15 @@ static char rcsid[] = "$Id: intlist.c 140368 2014-07-02 00:56:33Z twu $";
 T
 Intlist_push (T list, int x) {
   T new = (T) MALLOC(sizeof(*new));
+  
+  new->first = x;
+  new->rest = list;
+  return new;
+}
+
+T
+Intlist_push_in (T list, int x) {
+  T new = (T) MALLOC_IN(sizeof(*new));
   
   new->first = x;
   new->rest = list;
@@ -78,8 +87,18 @@ Intlist_free (T *list) {
   T prev;
 
   while ((prev = *list) != NULL) {
-    *list = (*list)->rest;
+    *list = prev->rest;
     FREE(prev);
+  }
+}
+
+void
+Intlist_free_in (T *list) {
+  T prev;
+
+  while ((prev = *list) != NULL) {
+    *list = prev->rest;
+    FREE_IN(prev);
   }
 }
 
@@ -148,6 +167,32 @@ Intlist_to_array (int *n, T list) {
   }
 }
 
+void
+Intlist_fill_array (int *array, T list) {
+  int i = 0;
+
+  while (list) {
+    array[i++] = list->first;
+    list = list->rest;
+  }
+
+  return;
+}
+
+
+void
+Intlist_fill_array_and_free (int *array, T *list) {
+  T prev;
+  int i = 0;
+
+  while ((prev = *list) != NULL) {
+    array[i++] = prev->first;
+    *list = prev->rest;
+    FREE(prev);
+  }
+
+  return;
+}
 
 int *
 Intlist_to_array_out (int *n, T list) {
@@ -372,33 +417,26 @@ Intlist_array_ascending_by_key (int *n, T this, T key) {
 }
 
 
-int *
-Intlist_array_dual_ascending_by_key (int *n, int **keyarray, T this, T key) {
-  int *sorted, i;
+void
+Intlist_array_dual_ascending_by_key (int *sorted, int *keyarray, int n, T this, T key) {
+  int i;
   struct Cell_T *cells;
   T p, q;
 
-  /* find length */
-  for (*n = 0, p = this; p; p = p->rest) {
-    (*n)++;
-  }
-
-  cells = (struct Cell_T *) CALLOC(*n,sizeof(struct Cell_T));
+  cells = (struct Cell_T *) MALLOCA(n * sizeof(struct Cell_T));
   for (p = this, q = key, i = 0; p != NULL; p = p->rest, q = q->rest, i++) {
     cells[i].elt = p->first;
     cells[i].keyvalue = q->first;
   }
-  qsort(cells,*n,sizeof(struct Cell_T),cell_ascending_dual);
+  qsort(cells,n,sizeof(struct Cell_T),cell_ascending_dual);
 
-  sorted = (int *) CALLOC(*n,sizeof(int));
-  *keyarray = (int *) CALLOC(*n,sizeof(int));
-  for (i = 0; i < *n; i++) {
+  for (i = 0; i < n; i++) {
     sorted[i] = cells[i].elt;
-    (*keyarray)[i] = cells[i].keyvalue;
+    keyarray[i] = cells[i].keyvalue;
   }
 
-  FREE(cells);
-  return sorted;
+  FREEA(cells);
+  return;
 }
 
 

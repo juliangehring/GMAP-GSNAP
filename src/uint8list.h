@@ -1,11 +1,13 @@
-/* $Id: uint8list.h 140368 2014-07-02 00:56:33Z twu $ */
+/* $Id: uint8list.h 148721 2014-09-24 00:45:45Z twu $ */
 #ifndef UINT8LIST_INCLUDED
 #define UINT8LIST_INCLUDED
+
+typedef struct Uint8list_T *Uint8list_T;
+
 #include "types.h"
 #include "bool.h"
 
 #define T Uint8list_T
-typedef struct T *T;
 
 extern T 
 Uint8list_push (T list, UINT8 x);
@@ -27,6 +29,10 @@ extern UINT8 *
 Uint8list_to_array (int *n, T list);
 extern UINT8 *
 Uint8list_to_array_out (int *n, T list);
+extern void
+Uint8list_fill_array (UINT8 *array, T list);
+extern void
+Uint8list_fill_array_and_free (UINT8 *array, T *list);
 extern T
 Uint8list_from_array (UINT8 *array, int n);
 extern T 

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pairpool.c 145494 2014-08-19 18:37:48Z twu $";
+static char rcsid[] = "$Id: pairpool.c 147823 2014-09-15 23:13:11Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -250,7 +250,7 @@ Pairpool_push (List_T list, T this, int querypos, int genomepos, char cdna, char
 	       pair,pair->querypos,pair->genomepos,pair->cdna,pair->comp,pair->genome);
 	);
 
-	if (this->listcellctr >= this->nlistcells) {
+  if (this->listcellctr >= this->nlistcells) {
     this->listcellptr = add_new_listcellchunk(this);
   } else if ((this->listcellctr % CHUNKSIZE) == 0) {
     for (n = this->nlistcells - CHUNKSIZE, p = this->listcellchunks;
@@ -608,65 +608,6 @@ Pairpool_count_bounded (int *nstart, List_T source, int minpos, int maxpos) {
     }
   }
   return npairs;
-}
-
-
-/* Note: This code is designed to handle source, which may still have
-   gaps with querypos undefined */
-List_T
-Pairpool_clip_bounded (List_T source, int minpos, int maxpos) {
-  List_T dest, *prev, p;
-  Pair_T pair;
-  int starti = -1, endi = -1, i;
-
-  if (source == NULL) {
-    return (List_T) NULL;
-  } else {
-    for (p = source, i = 0; p != NULL; p = p->rest, i++) {
-      pair = (Pair_T) List_head(p);
-      if (pair->querypos == minpos) {
-	starti = i;		/* Advances in case of ties */
-      } else if (pair->querypos > minpos && starti < 0) {
-	starti = i;		/* Handles case where minpos was skipped */
-      }
-
-      if (pair->querypos == maxpos && endi < 0) {
-	endi = i + 1;		/* Does not advance in case of tie */
-      } else if (pair->querypos > maxpos && endi < 0) {
-	endi = i;	   /* Handles case where maxpos was skipped */
-      }
-    }
-
-    if (starti < 0 && endi < 0) {
-      /* None of the pairs fall within bounds */
-      return (List_T) NULL;
-    } else {
-      if (starti < 0) {
-	starti = 0;
-      }
-      if (endi < 0) {
-	endi = i;
-      }
-    }
-
-    p = source;
-    i = 0;
-    while (i < starti) {
-      p = p->rest;
-      i++;
-    }
-
-    dest = p;
-    prev = &p->rest;
-    while (i < endi) {
-      prev = &p->rest;
-      p = p->rest;
-      i++;
-    }
-
-    *prev = NULL;		/* Clip rest of list */
-    return dest;
-  }
 }
 
 

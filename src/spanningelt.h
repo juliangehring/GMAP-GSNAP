@@ -1,6 +1,9 @@
-/* $Id: spanningelt.h 115433 2013-11-18 18:24:33Z twu $ */
+/* $Id: spanningelt.h 146624 2014-09-02 21:32:50Z twu $ */
 #ifndef SPANNINGELT_INCLUDED
 #define SPANNINGELT_INCLUDED
+
+typedef struct Spanningelt_T *Spanningelt_T;
+
 #include "bool.h"
 #include "genomicpos.h"
 #include "types.h"
@@ -8,8 +11,8 @@
 #include "indexdb.h"
 #include "list.h"
 
+
 #define T Spanningelt_T
-typedef struct T *T;
 struct T {
   bool partnerp;
   int querylength;
@@ -70,16 +73,19 @@ Spanningelt_setup (Width_T index1part_in, Width_T index1interval_in);
 extern void
 Spanningelt_init_positions_free (bool positions_fileio_p);
 extern void
-Spanningelt_free (T *old);
+Spanningelt_gc (T old);
 extern T
 Spanningelt_reset (T this);
 extern void
 Spanningelt_print (T this);
 extern void
+Spanningelt_print_array (Spanningelt_T *array, int nelts);
+extern void
 Spanningelt_print_set (List_T spanningset);
 
-extern List_T
-Spanningelt_set (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
+extern void
+Spanningelt_set (int *minscore, int *nelts, Spanningelt_T *array,
+		 Storedoligomer_T *stage1_oligos, bool **stage1_retrievedp,
 #ifdef LARGE_GENOMES
 		 unsigned char ***stage1_positions_high, UINT4 ***stage1_positions_low,
 #else
@@ -87,7 +93,6 @@ Spanningelt_set (int *minscore, Storedoligomer_T *stage1_oligos, bool **stage1_r
 #endif
 		 int **stage1_npositions, Indexdb_T indexdb, int query_lastpos, int querylength,
 		 int mod, bool plusp);
-
 extern int
 Spanningelt_candidates_cmp (const void *a, const void *b);
 extern int

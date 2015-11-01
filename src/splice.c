@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: splice.c 145604 2014-08-20 17:43:03Z twu $";
+static char rcsid[] = "$Id: splice.c 148672 2014-09-23 18:51:53Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1580,13 +1580,11 @@ Splice_solve_double (int *found_score, int *nhits, List_T hits, List_T *lowprob,
   return hits;
 }
 
-
-List_T
-Splice_group_by_segmenti (int *found_score, List_T localsplicing, List_T *ambiguous, 
-			  int querylength, bool first_read_p, bool sarrayp) {
-  List_T winners = NULL;
-  Stage3end_T *array, hit;
-  int n, j, i, k;
+static List_T
+group_by_segmenti_aux (int *found_score, List_T winners, List_T *ambiguous,
+		       Stage3end_T *array, int n, int querylength, bool first_read_p, bool sarrayp) {
+  Stage3end_T hit;
+  int j, i, k;
   int n_good_spliceends;
   Univcoord_T segmenti_left;
   Substring_T donor, acceptor;
@@ -1601,10 +1599,6 @@ Splice_group_by_segmenti (int *found_score, List_T localsplicing, List_T *ambigu
 #endif
   Intlist_T amb_knowni, amb_nmismatches;
 
-  array = (Stage3end_T *) List_to_array_n(&n,localsplicing);
-  qsort(array,n,sizeof(Stage3end_T),Stage3end_chimera_segmenti_cmp);
-  List_free(&localsplicing);
-  
   j = 0;
   while (j + 1 < n) {
     segmenti_left = Stage3end_chimera_segmenti_left(array[j]);
@@ -1769,7 +1763,59 @@ Splice_group_by_segmenti (int *found_score, List_T localsplicing, List_T *ambigu
     winners = List_push(winners,(void *) array[j]);
   }
 
-  FREE(array);
+  return winners;
+}
+
+List_T
+Splice_group_by_segmenti (int *found_score, List_T localsplicing, List_T *ambiguous,
+			  int querylength, bool first_read_p, bool sarrayp) {
+  List_T winners = NULL, p;
+  Stage3end_T *array_forward, *array_anti, hit;
+  int n_sense_forward = 0, n_sense_anti = 0, k_forward, k_anti;
+
+  for (p = localsplicing; p != NULL; p = List_next(p)) {
+    hit = (Stage3end_T) List_head(p);
+    if (Stage3end_sensedir(hit) == SENSE_FORWARD) {
+      n_sense_forward++;
+    } else {
+      assert(Stage3end_sensedir(hit) == SENSE_ANTI);
+      n_sense_anti++;
+    }
+  }
+
+  if (n_sense_forward > 0) {
+    array_forward = (Stage3end_T *) MALLOCA(n_sense_forward * sizeof(Stage3end_T));
+    k_forward = 0;
+  }
+  if (n_sense_anti > 0) {
+    array_anti = (Stage3end_T *) MALLOCA(n_sense_anti * sizeof(Stage3end_T));
+    k_anti = 0;
+  }
+
+  for (p = localsplicing; p != NULL; p = List_next(p)) {
+    hit = (Stage3end_T) List_head(p);
+    if (Stage3end_sensedir(hit) == SENSE_FORWARD) {
+      array_forward[k_forward++] = (Stage3end_T) List_head(p);
+    } else {
+      array_anti[k_anti++] = (Stage3end_T) List_head(p);
+    }
+  }
+
+  if (n_sense_forward > 0) {
+    qsort(array_forward,n_sense_forward,sizeof(Stage3end_T),Stage3end_chimera_segmenti_cmp);
+    winners = group_by_segmenti_aux(&(*found_score),winners,&(*ambiguous),array_forward,n_sense_forward,
+				    querylength,first_read_p,sarrayp);
+    FREEA(array);
+  }
+
+  if (n_sense_anti > 0) {
+    qsort(array_anti,n_sense_anti,sizeof(Stage3end_T),Stage3end_chimera_segmenti_cmp);
+    winners = group_by_segmenti_aux(&(*found_score),winners,&(*ambiguous),array_anti,n_sense_anti,
+				    querylength,first_read_p,sarrayp);
+    FREEA(array);
+  }
+
+  List_free(&localsplicing);
 
   return winners;
 }
@@ -1777,12 +1823,11 @@ Splice_group_by_segmenti (int *found_score, List_T localsplicing, List_T *ambigu
 
 
 
-List_T
-Splice_group_by_segmentj (int *found_score, List_T localsplicing, List_T *ambiguous, 
-			  int querylength, bool first_read_p, bool sarrayp) {
-  List_T winners = NULL;
-  Stage3end_T *array, hit;
-  int n, j, i, k;
+static List_T
+group_by_segmentj_aux (int *found_score, List_T winners, List_T *ambiguous, 
+		       Stage3end_T *array, int n, int querylength, bool first_read_p, bool sarrayp) {
+  Stage3end_T hit;
+  int j, i, k;
   int n_good_spliceends;
   Univcoord_T segmentj_left;
   Substring_T donor, acceptor;
@@ -1797,10 +1842,6 @@ Splice_group_by_segmentj (int *found_score, List_T localsplicing, List_T *ambigu
 #endif
   Intlist_T amb_knowni, amb_nmismatches;
 
-  array = (Stage3end_T *) List_to_array_n(&n,localsplicing);
-  qsort(array,n,sizeof(Stage3end_T),Stage3end_chimera_segmentj_cmp);
-  List_free(&localsplicing);
-  
   j = 0;
   while (j + 1 < n) {
     segmentj_left = Stage3end_chimera_segmentj_left(array[j]);
@@ -1965,9 +2006,60 @@ Splice_group_by_segmentj (int *found_score, List_T localsplicing, List_T *ambigu
     winners = List_push(winners,(void *) array[j]);
   }
 
-  FREE(array);
-
   return winners;
 }
 
+List_T
+Splice_group_by_segmentj (int *found_score, List_T localsplicing, List_T *ambiguous,
+			  int querylength, bool first_read_p, bool sarrayp) {
+  List_T winners = NULL, p;
+  Stage3end_T *array_forward, *array_anti, hit;
+  int n_sense_forward = 0, n_sense_anti = 0, k_forward, k_anti;
+
+  for (p = localsplicing; p != NULL; p = List_next(p)) {
+    hit = (Stage3end_T) List_head(p);
+    if (Stage3end_sensedir(hit) == SENSE_FORWARD) {
+      n_sense_forward++;
+    } else {
+      assert(Stage3end_sensedir(hit) == SENSE_ANTI);
+      n_sense_anti++;
+    }
+  }
+
+  if (n_sense_forward > 0) {
+    array_forward = (Stage3end_T *) MALLOCA(n_sense_forward * sizeof(Stage3end_T));
+    k_forward = 0;
+  }
+  if (n_sense_anti > 0) {
+    array_anti = (Stage3end_T *) MALLOCA(n_sense_anti * sizeof(Stage3end_T));
+    k_anti = 0;
+  }
+
+  for (p = localsplicing; p != NULL; p = List_next(p)) {
+    hit = (Stage3end_T) List_head(p);
+    if (Stage3end_sensedir(hit) == SENSE_FORWARD) {
+      array_forward[k_forward++] = (Stage3end_T) List_head(p);
+    } else {
+      array_anti[k_anti++] = (Stage3end_T) List_head(p);
+    }
+  }
+
+  if (n_sense_forward > 0) {
+    qsort(array_forward,n_sense_forward,sizeof(Stage3end_T),Stage3end_chimera_segmentj_cmp);
+    winners = group_by_segmentj_aux(&(*found_score),winners,&(*ambiguous),array_forward,n_sense_forward,
+				    querylength,first_read_p,sarrayp);
+    FREEA(array);
+  }
+
+  if (n_sense_anti > 0) {
+    qsort(array_anti,n_sense_anti,sizeof(Stage3end_T),Stage3end_chimera_segmentj_cmp);
+    winners = group_by_segmentj_aux(&(*found_score),winners,&(*ambiguous),array_anti,n_sense_anti,
+				    querylength,first_read_p,sarrayp);
+    FREEA(array);
+  }
+
+  List_free(&localsplicing);
+
+  return winners;
+}
 

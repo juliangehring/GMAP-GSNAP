@@ -1,11 +1,13 @@
-/* $Id: uintlist.h 140368 2014-07-02 00:56:33Z twu $ */
+/* $Id: uintlist.h 148721 2014-09-24 00:45:45Z twu $ */
 #ifndef UINTLIST_INCLUDED
 #define UINTLIST_INCLUDED
+
+typedef struct Uintlist_T *Uintlist_T;
+
 #include "types.h"
 #include "bool.h"
 
 #define T Uintlist_T
-typedef struct T *T;
 
 extern T 
 Uintlist_push (T list, UINT4 x);
@@ -25,6 +27,10 @@ extern int
 Uintlist_length (T list);
 extern UINT4 *
 Uintlist_to_array (int *n, T list);
+extern void
+Uintlist_fill_array (UINT4 *array, T list);
+extern void
+Uintlist_fill_array_and_free (UINT4 *array, T *list);
 extern UINT4 *
 Uintlist_to_array_out (int *n, T list);
 extern T

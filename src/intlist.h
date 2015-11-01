@@ -1,4 +1,4 @@
-/* $Id: intlist.h 140368 2014-07-02 00:56:33Z twu $ */
+/* $Id: intlist.h 145990 2014-08-25 21:47:32Z twu $ */
 #ifndef INTLIST_INCLUDED
 #define INTLIST_INCLUDED
 #include "bool.h"
@@ -8,6 +8,8 @@ typedef struct T *T;
 
 extern T 
 Intlist_push (T list, int x);
+extern T 
+Intlist_push_in (T list, int x);
 extern T
 Intlist_insert_second (T list, int x);
 extern T 
@@ -22,6 +24,8 @@ extern void
 Intlist_head_set (T list, int x);
 extern void 
 Intlist_free (T *list);
+extern void 
+Intlist_free_in (T *list);
 extern T 
 Intlist_reverse (T list);
 extern int 
@@ -32,6 +36,10 @@ extern bool
 Intlist_exists_p (T list, int x);
 extern int *
 Intlist_to_array (int *n, T list);
+extern void
+Intlist_fill_array (int *array, T list);
+extern void
+Intlist_fill_array_and_free (int *array, T *list);
 extern int *
 Intlist_to_array_out (int *n, T list);
 extern char *
@@ -52,8 +60,8 @@ extern char *
 Intlist_to_string (T this);
 extern int *
 Intlist_array_ascending_by_key (int *n, T this, T key);
-extern int *
-Intlist_array_dual_ascending_by_key (int *n, int **keyarray, T this, T key);
+extern void
+Intlist_array_dual_ascending_by_key (int *sorted, int *keyarray, int n, T this, T key);
 extern T
 Intlist_list_ascending_by_key (T this, T key);
 extern T

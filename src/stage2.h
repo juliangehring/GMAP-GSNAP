@@ -1,7 +1,8 @@
-/* $Id: stage2.h 135447 2014-05-07 22:25:45Z twu $ */
+/* $Id: stage2.h 146625 2014-09-02 21:33:41Z twu $ */
 #ifndef STAGE2_INCLUDED
 #define STAGE2_INCLUDED
 
+typedef struct Stage2_alloc_T *Stage2_alloc_T;
 typedef struct Stage2_T *Stage2_T;
 
 #include "bool.h"
@@ -16,6 +17,14 @@ typedef struct Stage2_T *Stage2_T;
 #else
 #include "oligoindex_hr.h"
 #endif
+
+
+extern void
+Stage2_alloc_free (Stage2_alloc_T *old);
+extern Stage2_alloc_T
+Stage2_alloc_new (int max_querylength_alloc);
+
+
 
 #define T Stage2_T
 
@@ -40,7 +49,7 @@ extern int
 Stage2_scan (int *stage2_source, char *queryuc_ptr, int querylength,
 	     Chrpos_T chrstart, Chrpos_T chrend,
 	     Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp,
-	     int genestrand, Oligoindex_array_T oligoindices,
+	     int genestrand, Stage2_alloc_T stage2_alloc, Oligoindex_array_T oligoindices,
 	     Diagpool_T diagpool, bool debug_graphic_p, bool diagnosticp);
 
 extern List_T
@@ -48,6 +57,9 @@ Stage2_compute (int *stage2_source, int *stage2_indexsize,
 		char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,
 		Chrpos_T chrstart, Chrpos_T chrend,
 		Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
+#ifndef GSNAP
+		Stage2_alloc_T stage2_alloc,
+#endif
 		Oligoindex_array_T oligoindices, double proceed_pctcoverage,
 		Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		int sufflookback, int nsufflookback, int maxintronlen, bool localp, bool skip_repetitive_p,
@@ -59,7 +71,6 @@ Stage2_compute_one (int *stage2_source, int *stage2_indexsize,
 		    char *queryseq_ptr, char *queryuc_ptr, int querylength, int query_offset,	
 		    Chrpos_T chrstart, Chrpos_T chrend,
 		    Univcoord_T chroffset, Univcoord_T chrhigh, bool plusp, int genestrand,
-
 		    Oligoindex_array_T oligoindices, double proceed_pctcoverage,
 		    Pairpool_T pairpool, Diagpool_T diagpool, Cellpool_T cellpool,
 		    int sufflookback, int nsufflookback, int maxintronlen, bool localp, bool skip_repetitive_p,

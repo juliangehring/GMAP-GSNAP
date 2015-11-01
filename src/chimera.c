@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: chimera.c 132706 2014-04-08 20:02:26Z twu $";
+static char rcsid[] = "$Id: chimera.c 149319 2014-09-30 02:15:42Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -7,6 +7,7 @@ static char rcsid[] = "$Id: chimera.c 132706 2014-04-08 20:02:26Z twu $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>		/* For sqrt */
+#include <string.h>		/* For memset */
 #include "mem.h"
 #include "genomicpos.h"
 #include "types.h"
@@ -105,8 +106,10 @@ Chimera_cdna_direction (T this) {
 
 
 void
-Chimera_print_sam_tag (FILE *fp, T this) {
+Chimera_print_sam_tag (FILE *fp, T this, Univ_IIT_T chromosome_iit) {
   char donor_strand, acceptor_strand;
+  char *donor_chr, *acceptor_chr;
+  bool alloc1p, alloc2p;
 
   if (this->cdna_direction >= 0) {
     if (this->donor_watsonp == true) {
@@ -134,8 +137,17 @@ Chimera_print_sam_tag (FILE *fp, T this) {
 
   fprintf(fp,"%c%c-%c%c,%.2f,%.2f",
 	  this->donor1,this->donor2,this->acceptor2,this->acceptor1,this->donor_prob,this->acceptor_prob);
-  fprintf(fp,",%d..%d",this->chimerapos+1,this->equivpos+1);
-  /* fprintf(fp,",%c..%c",donor_strand,acceptor_strand); */
+  donor_chr = Univ_IIT_label(chromosome_iit,Stage3_chrnum(this->from),&alloc1p);
+  acceptor_chr = Univ_IIT_label(chromosome_iit,Stage3_chrnum(this->to),&alloc2p);
+  fprintf(fp,",%c%s@%u..%c%s@%u",
+	  donor_strand,donor_chr,Stage3_chrend(this->from),
+	  acceptor_strand,acceptor_chr,Stage3_chrstart(this->to));
+  if (alloc2p == true) {
+    FREE(acceptor_chr);
+  }
+  if (alloc1p == true) {
+    FREE(donor_chr);
+  }
 
   return;
 }
@@ -236,7 +248,12 @@ Chimera_alignment_break (int *newstart, int *newend, Stage3_T stage3, int queryn
   start = Stage3_querystart(stage3);
   end = Stage3_queryend(stage3);
 
-  matchscores = Pair_matchscores(Stage3_pairarray(stage3),Stage3_npairs(stage3),queryntlength);
+  if (queryntlength < MAX_QUERYLENGTH_STACK) {
+    matchscores = (int *) CALLOCA(queryntlength,sizeof(int));
+  } else {
+    matchscores = (int *) CALLOC(queryntlength,sizeof(int));
+  }
+  Pair_matchscores(matchscores,Stage3_pairarray(stage3),Stage3_npairs(stage3),queryntlength);
 
   x = 0;
   for (pos = start; pos < end; pos++) {
@@ -248,7 +265,11 @@ Chimera_alignment_break (int *newstart, int *newend, Stage3_T stage3, int queryn
   /* when rss_sep == rss, fscore == 0 */
   min_rss_sep = rss = (double) x * (double) y/(double) n;
   if (rss == 0.0) {
-    FREE(matchscores);
+    if (queryntlength < MAX_QUERYLENGTH_STACK) {
+      FREEA(matchscores);
+    } else {
+      FREE(matchscores);
+    }
     return 0;
   }
 
@@ -305,7 +326,11 @@ Chimera_alignment_break (int *newstart, int *newend, Stage3_T stage3, int queryn
       }
     }
   }
-  FREE(matchscores);
+  if (queryntlength < MAX_QUERYLENGTH_STACK) {
+    FREEA(matchscores);
+  } else {
+    FREE(matchscores);
+  }
 
   fscore = ((double) (n - 2))*(rss - min_rss_sep)/min_rss_sep;
   if (fscore < fthreshold) {

@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: oligoindex_hr.c 133760 2014-04-20 05:16:56Z twu $";
+static char rcsid[] = "$Id: oligoindex_hr.c 146626 2014-09-02 21:34:26Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -17421,7 +17421,7 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
   counts[POLY_G & mask] = 0;
   counts[POLY_T & mask] = 0;
 
-  nskip_ptr = nskip = (int *) MALLOC((oligospace/SIMD_NCHARS + 1) * sizeof(int));
+  nskip_ptr = nskip = (int *) MALLOCA((oligospace/SIMD_NCHARS + 1) * sizeof(int));
   *nskip_ptr = 0;
 
   inquery_ptr = (__m128i *) inquery;
@@ -17523,7 +17523,7 @@ allocate_positions (Chrpos_T **pointers, Chrpos_T **positions,
 #endif
   }
 
-  FREE(nskip);
+  FREEA(nskip);
 
   return totalcounts;
 }
@@ -17927,8 +17927,18 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
     return 1.0;
   } else {
     /* Determine where to trim using a changepoint analysis */
-    sumx = (int *) CALLOC(querylength - indexsize + 1,sizeof(int));
-    sumxx = (int *) CALLOC(querylength - indexsize + 1,sizeof(int));
+#ifdef GSNAP
+    sumx = (int *) CALLOCA(querylength - indexsize + 1,sizeof(int));
+    sumxx = (int *) CALLOCA(querylength - indexsize + 1,sizeof(int));
+#else
+    if (querylength < MAX_QUERYLENGTH_STACK) {
+      sumx = (int *) CALLOCA(querylength - indexsize + 1,sizeof(int));
+      sumxx = (int *) CALLOCA(querylength - indexsize + 1,sizeof(int));
+    } else {
+      sumx = (int *) CALLOC(querylength - indexsize + 1,sizeof(int));
+      sumxx = (int *) CALLOC(querylength - indexsize + 1,sizeof(int));
+    }
+#endif
 
     in_counter = 0;
     querypos = -indexsize;
@@ -17976,8 +17986,18 @@ Oligoindex_set_inquery (int *badoligos, int *repoligos, int *trimoligos, int *tr
       }
     }
 
-    FREE(sumxx);
-    FREE(sumx);
+#ifdef GSNAP
+    FREEA(sumxx);
+    FREEA(sumx);
+#else
+    if (querylength < MAX_QUERYLENGTH_STACK) {
+      FREEA(sumxx);
+      FREEA(sumx);
+    } else {
+      FREE(sumxx);
+      FREE(sumx);
+    }
+#endif
 
     debug1(printf("trim_start = %d, trim_end = %d\n",*trim_start,*trim_end));
   }

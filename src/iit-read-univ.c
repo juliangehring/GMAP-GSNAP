@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: iit-read-univ.c 137099 2014-05-23 21:15:00Z twu $";
+static char rcsid[] = "$Id: iit-read-univ.c 149319 2014-09-30 02:15:42Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -630,6 +630,22 @@ Univ_IIT_dump_sam (FILE *fp, T this, char *sam_read_group_id, char *sam_read_gro
   }
 
   return;
+}
+
+
+Chrpos_T *
+Univ_IIT_chrlengths (T this) {
+  Chrpos_T *chrlengths;
+  int i;
+  Univinterval_T interval;
+
+  chrlengths = (Chrpos_T *) MALLOC(this->total_nintervals * sizeof(Chrpos_T));
+  for (i = 0; i < this->total_nintervals; i++) {
+    interval = &(this->intervals[i]);
+    chrlengths[i] = Univinterval_length(interval);
+  }
+
+  return chrlengths;
 }
 
 
@@ -1573,7 +1589,7 @@ Univ_IIT_find (int *nmatches, T this, char *label) {
   *nmatches = 0;
 
   while (!foundp && low < high) {
-    middle = (low+high)/2;
+    middle = low + (high - low)/2;
 
 #ifdef WORDS_BIGENDIAN
     cmp = strcmp(label,&(this->labels[Bigendian_convert_uint(this->labelpointers[Bigendian_convert_int(this->labelorder[middle])])]));
@@ -1665,6 +1681,7 @@ Univ_IIT_find_linear (T this, char *label) {
   return -1;
 }
 
+/* Returns 1-based index */
 int
 Univ_IIT_find_one (T this, char *label) {
   int index;

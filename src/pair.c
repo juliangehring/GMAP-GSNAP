@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: pair.c 141803 2014-07-17 02:12:57Z twu $";
+static char rcsid[] = "$Id: pair.c 149618 2014-10-01 22:31:16Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -128,18 +128,21 @@ static bool sam_insert_0M_p = false;
 static bool force_xs_direction_p;
 static bool md_lowercase_variant_p;
 static bool snps_p;
+static double genomelength;	/* For BLAST E-value */
 
 
 void
 Pair_setup (int trim_mismatch_score_in, int trim_indel_score_in,
 	    bool sam_insert_0M_p_in, bool force_xs_direction_p_in,
-	    bool md_lowercase_variant_p_in, bool snps_p_in) {
+	    bool md_lowercase_variant_p_in, bool snps_p_in, Univcoord_T genomelength_in) {
   trim_mismatch_score = trim_mismatch_score_in;
   trim_indel_score = trim_indel_score_in;
   sam_insert_0M_p = sam_insert_0M_p_in;
   force_xs_direction_p = force_xs_direction_p_in;
   md_lowercase_variant_p = md_lowercase_variant_p_in;
   snps_p = snps_p_in;
+  genomelength = (double) genomelength_in;
+
   return;
 }
 
@@ -248,6 +251,114 @@ Pair_set_genomepos_list (List_T pairs, Univcoord_T chroffset,
 #endif
 
 
+/* For outbuffer usage (e.g., truncation), use Pair_clip_bounded_array instead */
+/* Note: This code is designed to handle source, which may still have
+   gaps with querypos undefined */
+List_T
+Pair_clip_bounded_list (List_T source, int minpos, int maxpos) {
+  List_T dest, *prev, p;
+  T pair;
+  int starti = -1, endi = -1, i;
+
+  if (source == NULL) {
+    return (List_T) NULL;
+  } else {
+    for (p = source, i = 0; p != NULL; p = p->rest, i++) {
+      pair = (Pair_T) List_head(p);
+      if (pair->querypos == minpos) {
+	starti = i;		/* Advances in case of ties */
+      } else if (pair->querypos > minpos && starti < 0) {
+	starti = i;		/* Handles case where minpos was skipped */
+      }
+
+      if (pair->querypos == maxpos && endi < 0) {
+	endi = i + 1;		/* Does not advance in case of tie */
+      } else if (pair->querypos > maxpos && endi < 0) {
+	endi = i;	   /* Handles case where maxpos was skipped */
+      }
+    }
+
+    if (starti < 0 && endi < 0) {
+      /* None of the pairs fall within bounds */
+      return (List_T) NULL;
+    } else {
+      if (starti < 0) {
+	starti = 0;
+      }
+      if (endi < 0) {
+	endi = i;
+      }
+    }
+
+    p = source;
+    i = 0;
+    while (i < starti) {
+      p = p->rest;
+      i++;
+    }
+
+    dest = p;
+    prev = &p->rest;
+    while (i < endi) {
+      prev = &p->rest;
+      p = p->rest;
+      i++;
+    }
+
+    *prev = NULL;		/* Clip rest of list */
+    return dest;
+  }
+}
+
+
+int
+Pair_clip_bounded_array (struct T *source, int npairs, int minpos, int maxpos) {
+  T pair;
+  int starti = -1, endi = -1, i, k;
+
+#if 0
+  printf("Pair_clip_bounded_array called with %d pairs, minpos %d, maxpos %d\n",npairs,minpos,maxpos);
+  Pair_dump_array(source,npairs,true);
+#endif
+
+  for (i = 0; i < npairs; i++) {
+    pair = &(source[i]);
+    if (pair->querypos == minpos) {
+      starti = i;		/* Advances in case of ties */
+    } else if (pair->querypos > minpos && starti < 0) {
+      starti = i;		/* Handles case where minpos was skipped */
+    }
+
+    if (pair->querypos == maxpos && endi < 0) {
+      endi = i + 1;		/* Does not advance in case of tie */
+    } else if (pair->querypos > maxpos && endi < 0) {
+      endi = i;	   /* Handles case where maxpos was skipped */
+    }
+  }
+
+  if (starti < 0 && endi < 0) {
+    /* None of the pairs fall within bounds.  Don't do anything. */
+    return npairs;
+  } else {
+    if (starti < 0) {
+      starti = 0;
+    }
+    if (endi < 0) {
+      endi = i;
+    }
+  }
+
+  k = 0;
+  for (i = starti; i < endi; i++) {
+    memcpy((void *) &(source[k++]),(void *) &(source[i]),sizeof(struct T));
+  }
+
+  return endi - starti;
+}
+
+
+
+
 /* Head of list is the medial part of the read */
 List_T
 Pair_protect_end5 (List_T pairs, Pairpool_T pairpool) {
@@ -347,37 +458,57 @@ Pair_protect_list (List_T pairs) {
 
 
 
-/* Pairs now made in pairpool.c */
-/*
+/* For output thread only.  Pairs needed by worker threads are made in pairpool.c */
 T
-Pair_new (int querypos, int genomepos, char cdna, char comp, char genome) {
-  T new = (T) MALLOC(sizeof(*new));
+Pair_new_out (int querypos, Chrpos_T genomepos, char cdna, char comp, char genome) {
+  T new = (T) MALLOC_OUT(sizeof(*new));
   
   new->querypos = querypos;
   new->genomepos = genomepos;
+  new->aapos = 0;
+  new->aaphase_g = -1;
+  new->aaphase_e = -1;
   new->cdna = cdna;
   new->comp = comp;
   new->genome = genome;
+  new->genomealt = genome;
+  new->dynprogindex = 0;
+
+  new->aa_g = ' ';
+  new->aa_e = ' ';
+  new->shortexonp = false;
+  new->introntype = NONINTRON;
+
   switch (comp) {
-  case '>': case '<': case '=': case '~': case '.': case ')': case '(': case ']': case '[': case '#':
+  case FWD_CANONICAL_INTRON_COMP /*'>'*/:
+  case REV_CANONICAL_INTRON_COMP /*'<'*/:
+  case NONINTRON_COMP /*'='*/:
+  case SHORTGAP_COMP /*'~'*/:
+  case INTRONGAP_COMP /*'.'*/:
+  case FWD_GCAG_INTRON_COMP /*')'*/:
+  case REV_GCAG_INTRON_COMP /*'('*/:
+  case FWD_ATAC_INTRON_COMP /*']'*/:
+  case REV_ATAC_INTRON_COMP /*'['*/:
+  case DUALBREAK_COMP /*'#'*/:
     new->gapp = true; break;
   default: new->gapp = false;
   }
 
+  new->extraexonp = false;
+
+  new->protectedp = false;
+  new->disallowedp = false;
+
   return new;
 }
-*/
 
-/* Pairs now made in pairpool.c */
-/*
 void
-Pair_free (T *old) {
+Pair_free_out (T *old) {
   if (*old) {
-    FREE(*old);
+    FREE_OUT(*old);
   }
   return;
 }
-*/
 
 
 /* Print routines */
@@ -1569,6 +1700,58 @@ Pair_check_array (struct T *pairs, int npairs) {
   }
   return result;
 }  
+
+
+/* Called by output thread for --merge-overlap feature.  Modeled after Substring_convert_to_pairs. */
+List_T
+Pair_convert_array_to_pairs (List_T pairs, struct T *pairarray, int npairs, bool plusp, int querylength,
+			     int clipdir, int hardclip, bool first_read_p, int queryseq_offset) {
+  T pair;
+  int querystart, queryend, querypos, i, k;
+  int hardclip_low, hardclip_high;
+  Chrpos_T chrpos;
+  char genome;
+
+  if (first_read_p == true) {
+    if (clipdir >= 0) {
+      hardclip_low = 0;
+      hardclip_high = hardclip;	/* hardclip5 */
+    } else {
+      hardclip_low = hardclip;	/* hardclip5 */
+      hardclip_high = 0;
+    }
+
+  } else {
+    if (clipdir >= 0) {
+      hardclip_low = hardclip;	/* hardclip3 */
+      hardclip_high = 0;
+    } else {
+      hardclip_low = 0;
+      hardclip_high = hardclip;	/* hardclip3 */
+    }
+  }
+
+
+  if (plusp == true) {
+    querystart = hardclip_low;
+    queryend = querylength - hardclip_high;
+
+  } else {
+    querystart = hardclip_high;
+    queryend = querylength - hardclip_low;
+  }
+
+  for (i = 0; i < npairs; i++) {
+    pair = &(pairarray[i]);
+    if (pair->querypos >= querystart && pair->querypos < queryend) {
+      pairs = List_push_out(pairs,(void *) Pair_new_out(pair->querypos + queryseq_offset,/*genomepos*/pair->genomepos,
+							pair->cdna,pair->comp,pair->genome));
+    }
+  }
+      
+  return pairs;
+}
+
 
 
 #if 0
@@ -3641,6 +3824,226 @@ Pair_print_gsnap (FILE *fp, struct T *pairs_querydir, int npairs, int nsegments,
 }
 
 
+#ifdef GSNAP
+/* Taken from NCBI Blast 2.2.29, algo/blast/core/blast_stat.c */
+/* Karlin-Altschul formula: m n exp(-lambda * S + log k) = k m n exp(-lambda * S) */
+/* Also in substring.c */
+
+static double
+blast_evalue (int alignlength, int nmismatches) {
+  double k = 0.1;
+  double lambda = 1.58;		/* For a +1, -1 scoring scheme */
+  double score;
+  
+  score = (double) ((alignlength - nmismatches) /* scored as +1 */ - nmismatches /* scored as -1 */);
+
+  return k * (double) alignlength * genomelength * exp(-lambda * score);
+}
+
+static double
+blast_bitscore (int alignlength, int nmismatches) {
+  double k = 0.1;
+  double lambda = 1.58;		/* For a +1, -1 scoring scheme */
+  double score;
+  
+  score = (double) ((alignlength - nmismatches) /* scored as +1 */ - nmismatches /* scored as -1 */);
+  return (score * lambda - log(k)) / log(2.0);
+}
+
+
+static void
+print_m8_line (FILE *fp, int exon_querystart, int exon_queryend,
+	       char *chr, Chrpos_T exon_genomestart, Chrpos_T exon_genomeend,
+	       int nmismatches_bothdiff, Shortread_T headerseq, char *acc_suffix) {
+  double identity;
+  int alignlength_trim;
+
+  fprintf(fp,"%s%s",Shortread_accession(headerseq),acc_suffix); /* field 0: accession */
+
+  fprintf(fp,"\t%s",chr);	/* field 1: chr */
+
+  /* field 2: identity */
+  alignlength_trim = exon_queryend - exon_querystart;
+  identity = (double) (alignlength_trim - nmismatches_bothdiff)/(double) alignlength_trim;
+  fprintf(fp,"\t%.1f",100.0*identity);
+
+
+  fprintf(fp,"\t%d",alignlength_trim); /* field 3: query length */
+
+  fprintf(fp,"\t%d",nmismatches_bothdiff); /* field 4: nmismatches */
+
+  fprintf(fp,"\t0");		/* field 5: gap openings */
+
+  /* fields 6 and 7: query start and end */
+  fprintf(fp,"\t%d\t%d",exon_querystart,exon_queryend);
+
+  /* fields 8 and 9: chr start and end */
+  fprintf(fp,"\t%u\t%u",exon_genomestart,exon_genomeend);
+
+  /* field 10: E value */
+  fprintf(fp,"\t%.2g",blast_evalue(alignlength_trim,nmismatches_bothdiff));
+
+ /* field 11: bit score */
+  fprintf(fp,"\t%.1f",blast_bitscore(alignlength_trim,nmismatches_bothdiff));
+  
+  fprintf(fp,"\n");
+
+  return;
+}
+
+
+void
+Pair_print_m8 (FILE *fp, struct T *pairs_querydir, int npairs, bool invertedp,
+	       Chrnum_T chrnum, Shortread_T queryseq, Shortread_T headerseq,
+	       char *acc_suffix, Univ_IIT_T chromosome_iit) {
+  bool in_exon = true;
+  struct T *pairs, *ptr, *ptr0, *this = NULL;
+  int exon_querystart = -1, exon_queryend;
+  Chrpos_T exon_genomestart = -1U, exon_genomeend;
+  int nmismatches_refdiff, nmismatches_bothdiff, nmatches, i;
+  int last_querypos = -1;
+  Chrpos_T last_genomepos = -1U;
+  char *chr, c;
+  int querylength;
+  bool allocp;
+
+  querylength = Shortread_fulllength(queryseq);
+
+  if (invertedp == true) {
+    pairs = invert_and_revcomp_path_and_coords(pairs_querydir,npairs,querylength);
+  } else {
+    pairs = pairs_querydir;
+  }
+
+
+  chr = Univ_IIT_label(chromosome_iit,chrnum,&allocp);
+
+  ptr = pairs;
+  exon_querystart = ptr->querypos + 1;
+  exon_genomestart = ptr->genomepos + 1;
+  nmismatches_refdiff = nmismatches_bothdiff = nmatches = 0;
+
+  i = 0;
+  while (i < npairs) {
+    this = ptr++;
+    i++;
+
+    if (this->gapp) {
+      if (in_exon == true) {
+	/* SPLICE START */
+	ptr0 = ptr;
+	while (ptr0->gapp) {
+	  ptr0++;
+	}
+	exon_queryend = last_querypos + 1;
+	exon_genomeend = last_genomepos + 1;
+
+	print_m8_line(fp,exon_querystart,exon_queryend,chr,exon_genomestart,exon_genomeend,
+		      nmismatches_bothdiff,headerseq,acc_suffix);
+
+	nmismatches_refdiff = nmismatches_bothdiff = nmatches = 0;
+
+	in_exon = false;
+      }
+    } else if (this->comp == INTRONGAP_COMP) {
+      /* May want to print dinucleotides */
+
+    } else {
+      /* Remaining possibilities are MATCH_COMP, DYNPROG_MATCH_COMP, AMBIGUOUS_COMP, INDEL_COMP, 
+	 SHORTGAP_COMP, or MISMATCH_COMP */
+      if (in_exon == false) {
+	/* SPLICE CONTINUATION */
+	exon_querystart = this->querypos + 1;
+	exon_genomestart = this->genomepos + 1;
+
+	in_exon = true;
+      }
+      if (this->comp == INDEL_COMP || this->comp == SHORTGAP_COMP) {
+	if (this->genome == ' ') {
+	  /* INSERTION */
+	  exon_queryend = last_querypos + 1;
+	  exon_genomeend = last_genomepos + 1;
+
+	  /* indel_pos = this->querypos; */
+	  while (i < npairs && this->gapp == false && this->genome == ' ') {
+	    this = ptr++;
+	    i++;
+	  }
+	  ptr--;
+	  i--;
+
+	  this = ptr;
+	  exon_querystart = this->querypos + 1;
+	  exon_genomestart = this->genomepos + 1;
+	  nmismatches_refdiff = nmismatches_bothdiff = nmatches = 0;
+
+	} else if (this->cdna == ' ') {
+	  /* DELETION */
+	  exon_queryend = last_querypos + 1;
+	  exon_genomeend = last_genomepos + 1;
+
+	  /* indel_pos = this->querypos; */
+	  while (i < npairs && this->gapp == false && this->cdna == ' ') {
+	    this = ptr++;
+	    i++;
+	  }
+	  ptr--;
+	  i--;
+
+	  /* Finish rest of this line */
+	  print_m8_line(fp,exon_querystart,exon_queryend,chr,exon_genomestart,exon_genomeend,
+			nmismatches_bothdiff,headerseq,acc_suffix);
+
+	  this = ptr;
+	  exon_querystart = this->querypos + 1;
+	  exon_genomestart = this->genomepos + 1;
+	  nmismatches_refdiff = nmismatches_bothdiff = nmatches = 0;
+
+	} else {
+	  fprintf(stderr,"Error at %c%c%c\n",this->genome,this->comp,this->cdna);
+	  exit(9);
+	}
+
+      } else {
+	c = this->genome;
+	if (this->genome == this->cdna) {
+	  nmatches++;
+	} else if (this->genomealt == this->cdna) {
+	  nmismatches_refdiff++;
+	} else {
+	  nmismatches_bothdiff++;
+	  nmismatches_refdiff++;
+	}
+      }
+    }
+
+    if (this->cdna != ' ') {
+      last_querypos = this->querypos;
+    }
+    if (this->genome != ' ') {
+      last_genomepos = this->genomepos;
+    }
+  }
+
+  exon_queryend = last_querypos + 1;
+  exon_genomeend = last_genomepos + 1;
+
+  print_m8_line(fp,exon_querystart,exon_queryend,chr,exon_genomestart,exon_genomeend,
+		nmismatches_bothdiff,headerseq,acc_suffix);
+
+  if (allocp) {
+    FREE(chr);
+  }
+
+  if (invertedp == true) {
+    FREE(pairs);
+  }
+
+  return;
+}
+#endif
+
+
 /* Modified from print_endtypes */
 static void
 splice_site_probs (double *sense_prob, double *antisense_prob,
@@ -4030,12 +4433,12 @@ tokens_cigarlength (List_T tokens) {
 
 /* Only for GMAP program */
 static unsigned int
-compute_sam_flag_nomate (int pathnum, int npaths, bool firstp, bool watsonp, bool sam_paired_p) {
+compute_sam_flag_nomate (int pathnum, int npaths, bool first_read_p, bool watsonp, bool sam_paired_p) {
   unsigned int flag = 0U;
 
   if (sam_paired_p == true) {
     flag |= PAIRED_READ;
-    if (firstp == true) {
+    if (first_read_p == true) {
       flag |= FIRST_READ_P;
     } else {
       flag |= SECOND_READ_P;
@@ -4071,6 +4474,7 @@ print_chopped (FILE *fp, char *contents, int querylength,
   return;
 }
 
+/* Differs from Shortread version, in that hardclip_high and hardclip_low are not reversed */
 static void
 print_chopped_revcomp (FILE *fp, char *contents, int querylength,
 		       int hardclip_low, int hardclip_high) {
@@ -4081,6 +4485,47 @@ print_chopped_revcomp (FILE *fp, char *contents, int querylength,
   }
   return;
 }
+
+
+static void
+print_chopped_end (FILE *fp, char *contents, int querylength,
+		   int hardclip_low, int hardclip_high) {
+  int i;
+
+  if (hardclip_low > 0) {
+    for (i = 0; i < hardclip_low; i++) {
+      putc(contents[i],fp);
+    }
+    return;
+
+  } else {
+    for (i = querylength - hardclip_high; i < querylength; i++) {
+      putc(contents[i],fp);
+    }
+    return;
+  }
+}
+
+/* Differs from Shortread version, in that hardclip_high and hardclip_low are not reversed */
+static void
+print_chopped_end_revcomp (FILE *fp, char *contents, int querylength,
+			   int hardclip_low, int hardclip_high) {
+  int i;
+
+  if (hardclip_low > 0) {
+    for (i = hardclip_low - 1; i >= 0; --i) {
+      putc(complCode[(int) contents[i]],fp);
+    }
+    return;
+
+  } else {
+    for (i = querylength - 1; i >= querylength - hardclip_high; --i) {
+      putc(complCode[(int) contents[i]],fp);
+    }
+    return;
+  }
+}
+
 
 
 /* Modeled after Shortread_print_quality */
@@ -4147,20 +4592,21 @@ sensedir_from_cdna_direction (int cdna_direction) {
 /* Derived from print_gff3_cdna_match */
 /* Assumes pairarray has been hard clipped already */
 static void
-print_sam_line (FILE *fp, char *abbrev, bool firstp, char *acc1, char *acc2, char *chrstring,
+print_sam_line (FILE *fp, char *abbrev, bool first_read_p, char *acc1, char *acc2, char *chrstring,
 		bool watsonp, int cdna_direction, List_T cigar_tokens, List_T md_tokens,
 		int nmismatches_refdiff, int nmismatches_bothdiff, int nindels,
 		bool intronp, char *queryseq_ptr, char *quality_string,
 		int hardclip_low, int hardclip_high, int querylength, Chimera_T chimera, int quality_shift,
 		int pathnum, int npaths, int absmq_score, int first_absmq, int second_absmq, unsigned int flag,
-		Chrpos_T chrpos,
+		Chrnum_T chrnum, Univ_IIT_T chromosome_iit, Chrpos_T chrpos,
 #ifdef GSNAP
-		Resulttype_T resulttype, int pair_mapq_score, int end_mapq_score,
-		char *mate_chrstring, Chrpos_T mate_chrpos, int mate_cdna_direction, int pairedlength,
+		Shortread_T queryseq, Resulttype_T resulttype, int pair_mapq_score, int end_mapq_score,
+		char *mate_chrstring, Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum,
+		Chrpos_T mate_chrpos, int mate_cdna_direction, int pairedlength,
 #else
 		int mapq_score, struct T *pairarray, int npairs,
 #endif
-		char *sam_read_group_id, bool invertp) {
+		char *sam_read_group_id, bool invertp, bool merged_overlap_p) {
   int sensedir;
 
   assert(tokens_cigarlength(cigar_tokens) + hardclip_low + hardclip_high == querylength);
@@ -4217,7 +4663,7 @@ print_sam_line (FILE *fp, char *abbrev, bool firstp, char *acc1, char *acc2, cha
     fprintf(fp,"\t%d",pairedlength);
   } else if (chrpos > mate_chrpos) {
     fprintf(fp,"\t%d",-pairedlength);
-  } else if (firstp == true) {
+  } else if (first_read_p == true) {
     fprintf(fp,"\t%d",pairedlength);
   } else {
     fprintf(fp,"\t%d",-pairedlength);
@@ -4242,55 +4688,64 @@ print_sam_line (FILE *fp, char *abbrev, bool firstp, char *acc1, char *acc2, cha
 
   /* 12. TAGS: RG */
   if (sam_read_group_id != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"RG:Z:%s",sam_read_group_id);
+    fprintf(fp,"\tRG:Z:%s",sam_read_group_id);
   }
 
+  /* 12. TAGS: XH */
+  if (hardclip_low > 0 || hardclip_high > 0) {
+    fprintf(fp,"\tXH:Z:");
+    if (watsonp == true) {
+      print_chopped_end(fp,queryseq_ptr,querylength,hardclip_low,hardclip_high);
+    } else {
+      print_chopped_end_revcomp(fp,queryseq_ptr,querylength,hardclip_low,hardclip_high);
+    }
+  }
+
+#ifdef GSNAP
+  if (queryseq != NULL) {
+    /* 12. TAGS: XB */
+    Shortread_print_barcode(fp,queryseq);
+
+    /* 12. TAGS: XP.  Logically should be last in reconstructing a read. */
+    Shortread_print_chop(fp,queryseq,invertp);
+  }
+#endif
+
   /* 12. TAGS: MD string */
-  fprintf(fp,"\t");
-  fprintf(fp,"MD:Z:");
+  fprintf(fp,"\tMD:Z:");
   print_tokens_sam(fp,md_tokens);
 
   /* 12. TAGS: NH */
-  fprintf(fp,"\t");
-  fprintf(fp,"NH:i:%d",npaths);
-
+  fprintf(fp,"\tNH:i:%d",npaths);
+  
   /* 12. TAGS: HI */
-  fprintf(fp,"\t");
-  fprintf(fp,"HI:i:%d",pathnum);
+  fprintf(fp,"\tHI:i:%d",pathnum);
 
   /* 12. TAGS: NM */
-  fprintf(fp,"\t");
-  fprintf(fp,"NM:i:%d",nmismatches_refdiff + nindels);
+  fprintf(fp,"\tNM:i:%d",nmismatches_refdiff + nindels);
 
   if (snps_p) {
     /* 12. TAGS: XW and XV */
-    fprintf(fp,"\t");
-    fprintf(fp,"XW:i:%d",nmismatches_bothdiff);
-    fprintf(fp,"\t");
-    fprintf(fp,"XV:i:%d",nmismatches_refdiff - nmismatches_bothdiff);
+    fprintf(fp,"\tXW:i:%d",nmismatches_bothdiff);
+    fprintf(fp,"\tXV:i:%d",nmismatches_refdiff - nmismatches_bothdiff);
   }
 
 
   /* 12. TAGS: SM */
-  fprintf(fp,"\t");
 #ifdef GSNAP
-  fprintf(fp,"SM:i:%d",end_mapq_score);
+  fprintf(fp,"\tSM:i:%d",end_mapq_score);
 #else
-  fprintf(fp,"SM:i:%d",40);
+  fprintf(fp,"\tSM:i:%d",40);
 #endif
 
   /* 12. TAGS: XQ */
-  fprintf(fp,"\t");
-  fprintf(fp,"XQ:i:%d",absmq_score);
+  fprintf(fp,"\tXQ:i:%d",absmq_score);
 
   /* 12. TAGS: X2 */
-  fprintf(fp,"\t");
-  fprintf(fp,"X2:i:%d",second_absmq);
+  fprintf(fp,"\tX2:i:%d",second_absmq);
 
   /* 12. TAGS: XO */
-  fprintf(fp,"\t");
-  fprintf(fp,"XO:Z:%s",abbrev);
+  fprintf(fp,"\tXO:Z:%s",abbrev);
 
   /* 12. TAGS: XS */
   if (intronp == true) {
@@ -4302,44 +4757,45 @@ print_sam_line (FILE *fp, char *abbrev, bool firstp, char *acc1, char *acc2, cha
     sensedir = sensedir_from_cdna_direction(cdna_direction);
 #endif
 
-    fprintf(fp,"\t");
     if (sensedir == SENSE_FORWARD) {
       if (watsonp == true) {
-	fprintf(fp,"XS:A:+");
+	fprintf(fp,"\tXS:A:+");
       } else {
-	fprintf(fp,"XS:A:-");
+	fprintf(fp,"\tXS:A:-");
       }
 
     } else if (sensedir == SENSE_ANTI) {
       if (watsonp == true) {
-	fprintf(fp,"XS:A:-");
+	fprintf(fp,"\tXS:A:-");
       } else {
-	fprintf(fp,"XS:A:+");
+	fprintf(fp,"\tXS:A:+");
       }
 
     } else if (force_xs_direction_p == true) {
       /* Could not determine sense, so just report arbitrarily as + */
       /* This option provided for users of Cufflinks, which cannot handle XS:A:? */
-      fprintf(fp,"XS:A:+");
+      fprintf(fp,"\tXS:A:+");
 
     } else {
       /* Non-canonical, so report as such */
-      fprintf(fp,"XS:A:?");
+      fprintf(fp,"\tXS:A:?");
     }
   }
 
   /* 12. TAGS: XT */
   if (chimera != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"XT:Z:");
-    Chimera_print_sam_tag(fp,chimera);
+    fprintf(fp,"\tXT:Z:");
+    Chimera_print_sam_tag(fp,chimera,chromosome_iit);
   }
 
-  /* 12. TAGS: PG */
-  fprintf(fp,"\t");
-  fprintf(fp,"PG:Z:M");
+  /* 12. TAGS: XG */
+  if (merged_overlap_p) {
+    fprintf(fp,"\tXG:Z:O");
+  } else {
+    fprintf(fp,"\tXG:Z:M");
+  }
 
-  putc('\n',fp);
+  fprintf(fp,"\n");
 
   return;
 }
@@ -4381,19 +4837,19 @@ Pair_unalias_circular (struct T *pairs, int npairs, Chrpos_T chrlength) {
 
 
 static struct T *
-hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
+hardclip_pairs (int *clipped_npairs, int hardclip_low, int hardclip_high,
 		struct T *pairs, int npairs, int querylength) {
   struct T *clipped_pairs, *ptr;
   int i, starti;
 
   debug10(printf("Entered hardclip_pairs with hardclip_low %d, hardclip_high %d, querylength %d\n",
-		 *hardclip_low,*hardclip_high,querylength));
+		 hardclip_low,hardclip_high,querylength));
   debug10(Pair_dump_array(pairs,npairs,true));
   debug10(printf("Starting with %d pairs\n",npairs));
 
   i = 0;
   ptr = pairs;
-  while (i < npairs && ptr->querypos < *hardclip_low) {
+  while (i < npairs && ptr->querypos < hardclip_low) {
     i++;
     ptr++;
   }
@@ -4404,9 +4860,9 @@ hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
 
   if (i >= npairs) {
     /* hardclip_low passes right end of read, so invalid */
-    *hardclip_low = 0;
-  } else if (*hardclip_low > 0) {
-    *hardclip_low = ptr->querypos;
+    hardclip_low = 0;
+  } else if (hardclip_low > 0) {
+    hardclip_low = ptr->querypos;
   }
 
   starti = i;
@@ -4414,7 +4870,7 @@ hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
 
   clipped_pairs = ptr;
 
-  while (i < npairs && ptr->querypos < querylength - *hardclip_high) {
+  while (i < npairs && ptr->querypos < querylength - hardclip_high) {
     i++;
     ptr++;
   }
@@ -4428,12 +4884,12 @@ hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
   
   if (i < 0) {
     /* hardclip_high passes left end of read, so invalid */
-    *hardclip_high = 0;
-  } else if (*hardclip_high > 0) {
-    *hardclip_high = querylength - 1 - ptr->querypos;
+    hardclip_high = 0;
+  } else if (hardclip_high > 0) {
+    hardclip_high = querylength - 1 - ptr->querypos;
   }
 
-  if (*hardclip_low == 0 && *hardclip_high == 0) {
+  if (hardclip_low == 0 && hardclip_high == 0) {
     debug10(printf("Unable to hard clip\n"));
     *clipped_npairs = npairs;
     clipped_pairs = pairs;
@@ -4443,7 +4899,7 @@ hardclip_pairs (int *clipped_npairs, int *hardclip_low, int *hardclip_high,
 
   debug10(printf("Ending with %d pairs\n",*clipped_npairs));
   debug10(printf("Exiting hardclip_pairs with hardclip_low %d, hardclip_high %d\n",
-		 *hardclip_low,*hardclip_high));
+		 hardclip_low,hardclip_high));
 
   return clipped_pairs;
 }
@@ -5232,17 +5688,17 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
 		char *queryseq_ptr, char *quality_string,
 		int clipdir, int hardclip5, int hardclip3, int querylength_given,
 		bool watsonp, int cdna_direction, int chimera_part, Chimera_T chimera,
-		int quality_shift, bool firstp, int pathnum, int npaths,
+		int quality_shift, bool first_read_p, int pathnum, int npaths,
 		int absmq_score, int first_absmq, int second_absmq, Chrpos_T chrpos,
 #ifdef GSNAP
-		Resulttype_T resulttype, unsigned int flag, int pair_mapq_score, int end_mapq_score,
+		Shortread_T queryseq, Resulttype_T resulttype, unsigned int flag,
+		int pair_mapq_score, int end_mapq_score,
 		Chrnum_T mate_chrnum, Chrnum_T mate_effective_chrnum, Chrpos_T mate_chrpos,
 		int mate_cdna_direction, int pairedlength,
 #else
 		int mapq_score, bool sam_paired_p,
 #endif
-		char *sam_read_group_id, bool invertp, bool circularp) {
-
+		char *sam_read_group_id, bool invertp, bool circularp, bool merged_overlap_p) {
   char *chrstring = NULL;
 #ifdef GSNAP
   char *mate_chrstring, *mate_chrstring_alloc = NULL;
@@ -5282,11 +5738,11 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
     }
   }
 #else
-  flag = compute_sam_flag_nomate(pathnum,npaths,firstp,watsonp,sam_paired_p);
+  flag = compute_sam_flag_nomate(pathnum,npaths,first_read_p,watsonp,sam_paired_p);
 #endif
 
-  debug4(printf("Entered Pair_print_sam with clipdir %d, watsonp %d, firstp %d, hardclip5 %d, and hardclip3 %d\n",
-		clipdir,watsonp,firstp,hardclip5,hardclip3));
+  debug4(printf("Entered Pair_print_sam with clipdir %d, watsonp %d, first_read_p %d, hardclip5 %d, and hardclip3 %d\n",
+		clipdir,watsonp,first_read_p,hardclip5,hardclip3));
 
   if (circularp == true) {
     if (watsonp == true) {
@@ -5300,7 +5756,7 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
     /* Incoming hardclip5 and hardclip3 are due to overlaps, not chimera */
     if (clipdir >= 0) {
       if (watsonp == true) {
-	if (firstp == true) {
+	if (first_read_p == true) {
 	  hardclip_high = hardclip5;
 	  hardclip_low = 0;
 	} else {
@@ -5308,7 +5764,7 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
 	  hardclip_low = hardclip3;
 	}
       } else {
-	if (firstp == true) {
+	if (first_read_p == true) {
 	  hardclip_low = hardclip5;
 	  hardclip_high = 0;
 	} else {
@@ -5318,7 +5774,7 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
       }
     } else {
       if (watsonp == true) {
-	if (firstp == true) {
+	if (first_read_p == true) {
 	  hardclip_low = hardclip5;
 	  hardclip_high = 0;
 	} else {
@@ -5326,7 +5782,7 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
 	  hardclip_high = hardclip3;
 	}
       } else {
-	if (firstp == true) {
+	if (first_read_p == true) {
 	  hardclip_high = hardclip5;
 	  hardclip_low = 0;
 	} else {
@@ -5345,7 +5801,7 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
     clipped_pairs = pairs;
     clipped_npairs = npairs;
   } else {
-    clipped_pairs = hardclip_pairs(&clipped_npairs,&hardclip_low,&hardclip_high,
+    clipped_pairs = hardclip_pairs(&clipped_npairs,hardclip_low,hardclip_high,
 				   pairs,npairs,querylength_given);
   }
   tokens_free(&cigar_tokens);
@@ -5357,19 +5813,20 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
   md_tokens = compute_md_string(&nmismatches_refdiff,&nmismatches_bothdiff,&nindels,
 				clipped_pairs,clipped_npairs,watsonp,cigar_tokens);
 
-  print_sam_line(fp,abbrev,firstp,acc1,acc2,chrstring,
+  print_sam_line(fp,abbrev,first_read_p,acc1,acc2,chrstring,
 		 watsonp,cdna_direction,cigar_tokens,md_tokens,
 		 nmismatches_refdiff,nmismatches_bothdiff,nindels,
 		 intronp,queryseq_ptr,quality_string,hardclip_low,hardclip_high,
 		 querylength_given,chimera,quality_shift,pathnum,npaths,
-		 absmq_score,first_absmq,second_absmq,flag,chrpos,
+		 absmq_score,first_absmq,second_absmq,flag,chrnum,chromosome_iit,chrpos,
 #ifdef GSNAP
-		 resulttype,pair_mapq_score,end_mapq_score,mate_chrstring,mate_chrpos,
+		 queryseq,resulttype,pair_mapq_score,end_mapq_score,mate_chrstring,
+		 mate_chrnum,mate_effective_chrnum,mate_chrpos,
 		 mate_cdna_direction,pairedlength,
 #else
 		 mapq_score,clipped_pairs,clipped_npairs,
 #endif
-		 sam_read_group_id,invertp);
+		 sam_read_group_id,invertp,merged_overlap_p);
 
   /* Print procedures free the character strings */
   List_free(&md_tokens);
@@ -5391,7 +5848,7 @@ Pair_print_sam (FILE *fp, char *abbrev, struct T *pairs, int npairs,
 void
 Pair_print_sam_nomapping (FILE *fp, char *abbrev, char *acc1, char *acc2, char *queryseq_ptr,
 			  char *quality_string, int querylength, int quality_shift,
-			  bool firstp, bool sam_paired_p, char *sam_read_group_id) {
+			  bool first_read_p, bool sam_paired_p, char *sam_read_group_id) {
   unsigned int flag;
 
 #ifdef GSNAP
@@ -5407,7 +5864,7 @@ Pair_print_sam_nomapping (FILE *fp, char *abbrev, char *acc1, char *acc2, char *
   }
   
   /* 2. FLAG */
-  flag = compute_sam_flag_nomate(/*pathnum*/0,/*npaths*/0,firstp,/*watsonp*/true,sam_paired_p);
+  flag = compute_sam_flag_nomate(/*pathnum*/0,/*npaths*/0,first_read_p,/*watsonp*/true,sam_paired_p);
   fprintf(fp,"\t%u",flag);
 
   /* 3. RNAME: chr */
@@ -5436,15 +5893,13 @@ Pair_print_sam_nomapping (FILE *fp, char *abbrev, char *acc1, char *acc2, char *
 
   /* 12. TAGS: RG */
   if (sam_read_group_id != NULL) {
-    fprintf(fp,"\t");
-    fprintf(fp,"RG:Z:%s",sam_read_group_id);
+    fprintf(fp,"\tRG:Z:%s",sam_read_group_id);
   }
   
   /* 12. TAGS: XO */
-  fprintf(fp,"\t");
-  fprintf(fp,"XO:Z:%s",abbrev);
+  fprintf(fp,"\tXO:Z:%s",abbrev);
 
-  putc('\n',fp);
+  fprintf(fp,"\n");
 
   return;
 }
@@ -6541,14 +6996,11 @@ Pair_fracidentity_bounded (int *matches, int *unknowns, int *mismatches,
 static const Except_T Array_bounds_error = { "Exceeded array bounds" };
 
 
-int *
-Pair_matchscores (struct T *ptr, int npairs, int querylength) {
-  int *matchscores;
+void
+Pair_matchscores (int *matchscores, struct T *ptr, int npairs, int querylength) {
   T this;
   int querypos;
   int i;
-
-  matchscores = (int *) CALLOC(querylength,sizeof(int));
 
   for (i = 0; i < npairs; i++) {
     this = ptr++;
@@ -6565,10 +7017,12 @@ Pair_matchscores (struct T *ptr, int npairs, int querylength) {
     }
   }
 
-  return matchscores;
+  return;
 }
 
 
+#if 0
+/* Called only by chop_ends_by_changepoint in stage3.c, which is not used anymore */
 int *
 Pair_matchscores_list (int *nmatches, int *ntotal, int *length, List_T pairs) {
   int *matchscores;
@@ -6604,6 +7058,7 @@ Pair_matchscores_list (int *nmatches, int *ntotal, int *length, List_T pairs) {
 
   return matchscores;
 }
+#endif
 
 
 void
@@ -7615,18 +8070,43 @@ Pair_binary_search_descending (int *querypos, int lowi, int highi, struct T *pai
 
 #ifndef PMAP
 
-Chrpos_T
-Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
-		     struct T *pairarray, int npairs, int querylength,
-		     bool watsonp, bool firstp, bool hide_soft_clips_p) {
-  struct T *clipped_pairs;
-  int clipped_npairs;
-  int hardclip_low, hardclip_high;
+bool
+Pairarray_contains_p (struct T *pairarray, int npairs, int querypos) {
+  int i;
   T pair;
 
+  for (i = 0; i < npairs; i++) {
+    pair = &(pairarray[i]);
+    if (pair->querypos > querypos) {
+      return false;
+    } else if (pair->querypos < querypos) {
+      /* continue */
+    } else if (pair->gapp == true) {
+      return false;
+    } else if (pair->cdna == ' ') {
+      return false;
+    } else if (pair->genome == ' ') {
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+Chrpos_T
+Pair_genomicpos_low (int hardclip_low, int hardclip_high, struct T *pairarray, int npairs, int querylength,
+		     bool watsonp, bool hide_soft_clips_p) {
+  struct T *clipped_pairs;
+  int clipped_npairs;
+  T pair;
+
+#if 0
   if (clipdir >= 0) {
     if (watsonp == true) {
-      if (firstp == true) {
+      if (first_read_p == true) {
 	hardclip_high = hardclip5;
 	hardclip_low = 0;
       } else {
@@ -7634,7 +8114,7 @@ Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
 	hardclip_low = hardclip3;
       }
     } else {
-      if (firstp == true) {
+      if (first_read_p == true) {
 	hardclip_low = hardclip5;
 	hardclip_high = 0;
       } else {
@@ -7644,7 +8124,7 @@ Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
     }
   } else {
     if (watsonp == true) {
-      if (firstp == true) {
+      if (first_read_p == true) {
 	hardclip_low = hardclip5;
 	hardclip_high = 0;
       } else {
@@ -7652,7 +8132,7 @@ Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
 	hardclip_high = hardclip3;
       }
     } else {
-      if (firstp == true) {
+      if (first_read_p == true) {
 	hardclip_high = hardclip5;
 	hardclip_low = 0;
       } else {
@@ -7661,10 +8141,11 @@ Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
       }
     }
   }
+#endif
 
-  clipped_pairs = hardclip_pairs(&clipped_npairs,&hardclip_low,&hardclip_high,
-				 pairarray,npairs,querylength);
   if (watsonp == true) {
+    clipped_pairs = hardclip_pairs(&clipped_npairs,hardclip_low,hardclip_high,
+				   pairarray,npairs,querylength);
     pair = &(clipped_pairs[0]);
     if (hide_soft_clips_p == true) {
       assert(pair->querypos == 0);
@@ -7673,6 +8154,9 @@ Pair_genomicpos_low (int clipdir, int hardclip5, int hardclip3,
       return pair->genomepos + 1U;
     }
   } else {
+    /* Swap hardclip_low and hardclip_high */
+    clipped_pairs = hardclip_pairs(&clipped_npairs,hardclip_high,hardclip_low,
+				   pairarray,npairs,querylength);
     pair = &(clipped_pairs[clipped_npairs-1]);
     if (hide_soft_clips_p == true) {
       assert(pair->querypos == querylength - 1);

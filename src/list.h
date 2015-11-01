@@ -1,4 +1,4 @@
-/* $Id: list.h 50911 2011-10-27 22:15:37Z twu $ */
+/* $Id: list.h 148359 2014-09-19 22:09:34Z twu $ */
 #ifndef LIST_INCLUDED
 #define LIST_INCLUDED
 
@@ -7,6 +7,7 @@ typedef struct T *T;
 
 extern T List_push (T list, void *x);
 extern T List_push_keep (T list, void *x);
+extern T List_push_out (T list, void *x);
 extern T List_pop (T list, void **x);
 extern void *List_head (T list);
 extern T List_next (T list);
@@ -14,11 +15,15 @@ extern void List_head_set (T list, void *x);
 extern void List_tail_set (T this, T rest);
 extern void List_free (T *list);
 extern void List_free_keep (T *list);
+extern void List_free_out (T *list);
 extern T List_reverse (T list);
 extern int List_length (T list);
 extern T
 List_truncate (T list, int n);
 extern void **List_to_array (T list, void *end);
+extern void List_fill_array (void **array, T list);
+extern void List_fill_array_and_free (void **array, T *list);
+extern T List_fill_array_with_handle (struct T *new, void **array, int nelts);
 extern void **List_to_array_out (T list, void *end);
 extern void **List_to_array_n (int *n, T list);
 extern T List_copy (T list);

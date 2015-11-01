@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_genome.c 141806 2014-07-17 02:41:31Z twu $";
+static char rcsid[] = "$Id: dynprog_genome.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -578,8 +578,8 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
   }
 
   /* Read dinucleotides */
-  leftdi = (int *) CALLOC(glengthL+1,sizeof(int));
-  rightdi = (int *) CALLOC(glengthR+1,sizeof(int));
+  leftdi = (int *) MALLOCA((glengthL+1) * sizeof(int));
+  rightdi = (int *) MALLOCA((glengthR+1) * sizeof(int));
 
   for (cL = 0; cL < glengthL - 1; cL++) {
     left1 = gsequenceL[cL];
@@ -629,8 +629,8 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
   }
   rightdi[glengthR-1] = rightdi[glengthR] = 0x00;
 
-  left_known = (int *) CALLOC(glengthL+1,sizeof(int));
-  right_known = (int *) CALLOC(glengthR+1,sizeof(int));
+  left_known = (int *) CALLOCA(glengthL+1,sizeof(int));
+  right_known = (int *) CALLOCA(glengthR+1,sizeof(int));
   get_known_splicesites(left_known,right_known,glengthL,glengthR,
 			/*leftoffset*/goffsetL,/*rightoffset*/rev_goffsetR,
 			cdna_direction,watsonp,chrnum,chroffset,chrhigh);
@@ -874,12 +874,12 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
     *best_introntype = NONINTRON;
 
   } else {
-    left_probabilities = (double *) CALLOC(glengthL+1,sizeof(double));
-    right_probabilities = (double *) CALLOC(glengthR+1,sizeof(double));
+    left_probabilities = (double *) MALLOCA(glengthL * sizeof(double));
+    right_probabilities = (double *) MALLOCA(glengthR * sizeof(double));
 
     if (watsonp == true) {
       if (cdna_direction > 0) {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chroffset + leftoffset + cL;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -888,7 +888,7 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chroffset + rightoffset - cR + 1;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -898,7 +898,7 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	}
 
       } else {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chroffset + leftoffset + cL;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -907,7 +907,7 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chroffset + rightoffset - cR + 1;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -919,7 +919,7 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 
     } else {
       if (cdna_direction > 0) {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chrhigh - leftoffset - cL + 1;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -928,7 +928,7 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chrhigh - rightoffset + cR;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -938,7 +938,7 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	}
 
       } else {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chrhigh - leftoffset - cL + 1;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -947,7 +947,7 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chrhigh - rightoffset + cR;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -1433,8 +1433,8 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
       *finalscore = (int) bestscore;
     }
 
-    FREE(left_probabilities);
-    FREE(right_probabilities);
+    FREEA(left_probabilities);
+    FREEA(right_probabilities);
   }
 
 
@@ -1470,11 +1470,10 @@ bridge_intron_gap_8_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL, 
   debug(printf("Returning final score of %d at (%d,%d) left to (%d,%d) right, with probs %f and %f\n",
 	       *finalscore,*bestrL,*bestcL,*bestrR,*bestcR,*left_prob,*right_prob));
 
-  FREE(right_known);
-  FREE(left_known);
-
-  FREE(rightdi);
-  FREE(leftdi);
+  FREEA(right_known);
+  FREEA(left_known);
+  FREEA(rightdi);
+  FREEA(leftdi);
 
   return result;
 }
@@ -1526,8 +1525,8 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
   }
 
   /* Read dinucleotides */
-  leftdi = (int *) CALLOC(glengthL+1,sizeof(int));
-  rightdi = (int *) CALLOC(glengthR+1,sizeof(int));
+  leftdi = (int *) MALLOCA((glengthL+1) * sizeof(int));
+  rightdi = (int *) MALLOCA((glengthR+1) * sizeof(int));
 
   for (cL = 0; cL < glengthL - 1; cL++) {
     left1 = gsequenceL[cL];
@@ -1577,8 +1576,8 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
   }
   rightdi[glengthR-1] = rightdi[glengthR] = 0x00;
 
-  left_known = (int *) CALLOC(glengthL+1,sizeof(int));
-  right_known = (int *) CALLOC(glengthR+1,sizeof(int));
+  left_known = (int *) CALLOCA(glengthL+1,sizeof(int));
+  right_known = (int *) CALLOCA(glengthR+1,sizeof(int));
   get_known_splicesites(left_known,right_known,glengthL,glengthR,
 			/*leftoffset*/goffsetL,/*rightoffset*/rev_goffsetR,
 			cdna_direction,watsonp,chrnum,chroffset,chrhigh);
@@ -1822,12 +1821,12 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
     *best_introntype = NONINTRON;
 
   } else {
-    left_probabilities = (double *) CALLOC(glengthL+1,sizeof(double));
-    right_probabilities = (double *) CALLOC(glengthR+1,sizeof(double));
+    left_probabilities = (double *) MALLOCA(glengthL * sizeof(double));
+    right_probabilities = (double *) MALLOCA(glengthR * sizeof(double));
 
     if (watsonp == true) {
       if (cdna_direction > 0) {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chroffset + leftoffset + cL;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -1836,7 +1835,7 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chroffset + rightoffset - cR + 1;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -1846,7 +1845,7 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	}
 
       } else {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chroffset + leftoffset + cL;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -1855,7 +1854,7 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chroffset + rightoffset - cR + 1;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -1867,7 +1866,7 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 
     } else {
       if (cdna_direction > 0) {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chrhigh - leftoffset - cL + 1;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -1876,7 +1875,7 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chrhigh - rightoffset + cR;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -1886,7 +1885,7 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	}
 
       } else {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chrhigh - leftoffset - cL + 1;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -1895,7 +1894,7 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chrhigh - rightoffset + cR;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -2381,8 +2380,8 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
       *finalscore = (int) bestscore;
     }
 
-    FREE(left_probabilities);
-    FREE(right_probabilities);
+    FREEA(left_probabilities);
+    FREEA(right_probabilities);
   }
 
 
@@ -2418,11 +2417,10 @@ bridge_intron_gap_16_ud (int *finalscore, int *bestrL, int *bestrR, int *bestcL,
   debug(printf("Returning final score of %d at (%d,%d) left to (%d,%d) right, with probs %f and %f\n",
 	       *finalscore,*bestrL,*bestcL,*bestrR,*bestcR,*left_prob,*right_prob));
 
-  FREE(right_known);
-  FREE(left_known);
-
-  FREE(rightdi);
-  FREE(leftdi);
+  FREEA(right_known);
+  FREEA(left_known);
+  FREEA(rightdi);
+  FREEA(leftdi);
 
   return result;
 }
@@ -2468,8 +2466,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   }
 
   /* Read dinucleotides */
-  leftdi = (int *) CALLOC(glengthL+1,sizeof(int));
-  rightdi = (int *) CALLOC(glengthR+1,sizeof(int));
+  leftdi = (int *) MALLOCA((glengthL+1) * sizeof(int));
+  rightdi = (int *) MALLOCA((glengthR+1) * sizeof(int));
 
   for (cL = 0; cL < glengthL - 1; cL++) {
     left1 = gsequenceL[cL];
@@ -2519,8 +2517,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   }
   rightdi[glengthR-1] = rightdi[glengthR] = 0x00;
 
-  left_known = (int *) CALLOC(glengthL+1,sizeof(int));
-  right_known = (int *) CALLOC(glengthR+1,sizeof(int));
+  left_known = (int *) CALLOCA(glengthL+1,sizeof(int));
+  right_known = (int *) CALLOCA(glengthR+1,sizeof(int));
   get_known_splicesites(left_known,right_known,glengthL,glengthR,
 			/*leftoffset*/goffsetL,/*rightoffset*/rev_goffsetR,
 			cdna_direction,watsonp,chrnum,chroffset,chrhigh);
@@ -2622,12 +2620,12 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
     *best_introntype = NONINTRON;
 
   } else {
-    left_probabilities = (double *) CALLOC(glengthL+1,sizeof(double));
-    right_probabilities = (double *) CALLOC(glengthR+1,sizeof(double));
+    left_probabilities = (double *) MALLOCA(glengthL * sizeof(double));
+    right_probabilities = (double *) MALLOCA(glengthR * sizeof(double));
 
     if (watsonp == true) {
       if (cdna_direction > 0) {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chroffset + leftoffset + cL;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -2636,7 +2634,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chroffset + rightoffset - cR + 1;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -2646,7 +2644,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 	}
 
       } else {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chroffset + leftoffset + cL;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -2655,7 +2653,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chroffset + rightoffset - cR + 1;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -2667,7 +2665,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 
     } else {
       if (cdna_direction > 0) {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chrhigh - leftoffset - cL + 1;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -2676,7 +2674,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chrhigh - rightoffset + cR;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -2686,7 +2684,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 	}
 
       } else {
-	for (cL = 0; cL < glengthL - 1; cL++) {
+	for (cL = 0; cL < glengthL; cL++) {
 	  splicesitepos = chrhigh - leftoffset - cL + 1;
 	  if (left_known[cL]) {
 	    left_probabilities[cL] = 1.0;
@@ -2695,7 +2693,7 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
 	  }
 	}
 
-	for (cR = 0; cR < glengthR - 1; cR++) {
+	for (cR = 0; cR < glengthR; cR++) {
 	  splicesitepos = chrhigh - rightoffset + cR;
 	  if (right_known[cR]) {
 	    right_probabilities[cR] = 1.0;
@@ -3033,8 +3031,8 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
       *finalscore = (int) bestscore;
     }
 
-    FREE(left_probabilities);
-    FREE(right_probabilities);
+    FREEA(left_probabilities);
+    FREEA(right_probabilities);
   }
 
 
@@ -3070,11 +3068,10 @@ bridge_intron_gap (int *finalscore, int *bestrL, int *bestrR, int *bestcL, int *
   debug(printf("Returning final score of %d at (%d,%d) left to (%d,%d) right, with probs %f and %f\n",
 	       *finalscore,*bestrL,*bestcL,*bestrR,*bestcR,*left_prob,*right_prob));
 
-  FREE(right_known);
-  FREE(left_known);
-
-  FREE(rightdi);
-  FREE(leftdi);
+  FREEA(right_known);
+  FREEA(left_known);
+  FREEA(rightdi);
+  FREEA(leftdi);
 
   return result;
 }
@@ -3106,8 +3103,8 @@ genome_gap_simple (int *finalscore, int *best_introntype, int *new_leftgenomepos
   debug(printf("Starting genome_gap_simple with cdna_direction %d and watsonp %d\n",cdna_direction,watsonp));
   pairdistance_array_type = pairdistance_array[mismatchtype];
 
-  left_known = (int *) CALLOC(rlength+1,sizeof(int));
-  right_known = (int *) CALLOC(rlength+1,sizeof(int));
+  left_known = (int *) CALLOCA(rlength+1,sizeof(int));
+  right_known = (int *) CALLOCA(rlength+1,sizeof(int));
   get_known_splicesites(left_known,right_known,/*glengthL*/rlength,/*glengthR*/rlength,
 			leftoffset,rightoffset,
 			cdna_direction,watsonp,chrnum,chroffset,chrhigh);
@@ -3326,8 +3323,8 @@ genome_gap_simple (int *finalscore, int *best_introntype, int *new_leftgenomepos
 
   }
 
-  FREE(right_known);
-  FREE(left_known);
+  FREEA(right_known);
+  FREEA(left_known);
 
   return pairs;
 }
@@ -3502,25 +3499,27 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 
   rev_roffset = roffset+rlength-1;
 
+  gsequenceL = (char *) MALLOCA((glengthL+1) * sizeof(char));
+  gsequenceL_alt = (char *) MALLOCA((glengthL+1) * sizeof(char));
+  rev_gsequenceR = (char *) MALLOCA((glengthR+1) * sizeof(char));
+  rev_gsequenceR_alt = (char *) MALLOCA((glengthR+1) * sizeof(char));
+
   if (watsonp) {
-    gsequenceL = Genome_get_segment_blocks_right(&gsequenceL_alt,/*left*/chroffset+goffsetL,glengthL,chrhigh,/*revcomp*/false);
-    rev_gsequenceR = Genome_get_segment_blocks_left(&rev_gsequenceR_alt,/*left*/chroffset+rev_goffsetR+1,glengthR,chroffset,/*revcomp*/false);
+    Genome_get_segment_blocks_right(gsequenceL,gsequenceL_alt,/*left*/chroffset+goffsetL,
+                                    glengthL,chrhigh,/*revcomp*/false);
+    Genome_get_segment_blocks_left(rev_gsequenceR,rev_gsequenceR_alt,/*right*/chroffset+rev_goffsetR+1,
+                                   glengthR,chroffset,/*revcomp*/false);
   } else {
-    gsequenceL = Genome_get_segment_blocks_left(&gsequenceL_alt,/*left*/chrhigh-goffsetL+1,glengthL,chroffset,/*revcomp*/true);
-    rev_gsequenceR = Genome_get_segment_blocks_right(&rev_gsequenceR_alt,/*left*/chrhigh-rev_goffsetR,glengthR,chrhigh,/*revcomp*/true);
+    Genome_get_segment_blocks_left(gsequenceL,gsequenceL_alt,/*right*/chrhigh-goffsetL+1,
+                                   glengthL,chroffset,/*revcomp*/true);
+    Genome_get_segment_blocks_right(rev_gsequenceR,rev_gsequenceR_alt,/*left*/chrhigh-rev_goffsetR,
+                                    glengthR,chrhigh,/*revcomp*/true);
   }
-  if (gsequenceL == NULL) {
-    if (rev_gsequenceR_alt != rev_gsequenceR) {
-      FREE(rev_gsequenceR_alt);
-    }
-    FREE(rev_gsequenceR);
-    *finalscore = NEG_INFINITY_32;
-    return (List_T) NULL;
-  } else if (rev_gsequenceR == NULL) {
-    if (gsequenceL_alt != gsequenceL) {
-      FREE(gsequenceL_alt);
-    }
-    FREE(gsequenceL);
+  if (gsequenceL[0] == '\0' || rev_gsequenceR[0] == '\0') {
+    FREEA(rev_gsequenceR_alt);
+    FREEA(rev_gsequenceR);
+    FREEA(gsequenceL_alt);
+    FREEA(gsequenceL);
     *finalscore = NEG_INFINITY_32;
     return (List_T) NULL;
   }
@@ -3543,12 +3542,10 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 				 cdna_direction,watsonp,*dynprogindex,halfp)) != NULL) {
     debug(printf("simple procedure worked\n"));
 
-    if (gsequenceL_alt != gsequenceL) {
-      FREE(gsequenceL_alt);
-      FREE(rev_gsequenceR_alt);
-    }
-    FREE(gsequenceL);
-    FREE(rev_gsequenceR);
+    FREEA(rev_gsequenceR_alt);
+    FREEA(rev_gsequenceR);
+    FREEA(gsequenceL_alt);
+    FREEA(gsequenceL);
 
     *dynprogindex += (*dynprogindex > 0 ? +1 : -1);
     return pairs;		/* Already reversed */
@@ -3609,12 +3606,10 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 			       cdna_direction,watsonp,lbandL,ubandL,lbandR,ubandR,defect_rate,
 			       canonical_reward,goffsetL,rev_goffsetR,
 			       chrnum,chroffset,chrhigh,halfp,finalp,jump_late_p) == false) {
-      if (gsequenceL_alt != gsequenceL) {
-	FREE(gsequenceL_alt);
-	FREE(rev_gsequenceR_alt);
-      }
-      FREE(gsequenceL);
-      FREE(rev_gsequenceR);
+      FREEA(rev_gsequenceR_alt);
+      FREEA(rev_gsequenceR);
+      FREEA(gsequenceL_alt);
+      FREEA(gsequenceL);
 
       return (List_T) NULL;
 
@@ -3679,12 +3674,10 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 	pairs = (List_T) NULL;
       }
 
-      if (gsequenceL_alt != gsequenceL) {
-	FREE(gsequenceL_alt);
-	FREE(rev_gsequenceR_alt);
-      }
-      FREE(gsequenceL);
-      FREE(rev_gsequenceR);
+      FREEA(rev_gsequenceR_alt);
+      FREEA(rev_gsequenceR);
+      FREEA(gsequenceL_alt);
+      FREEA(gsequenceL);
 
       debug(printf("End of dynprog genome gap\n"));
 
@@ -3737,12 +3730,10 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 				canonical_reward,goffsetL,rev_goffsetR,
 				chrnum,chroffset,chrhigh,halfp,finalp,jump_late_p) == false) {
 
-      if (gsequenceL_alt != gsequenceL) {
-	FREE(gsequenceL_alt);
-	FREE(rev_gsequenceR_alt);
-      }
-      FREE(gsequenceL);
-      FREE(rev_gsequenceR);
+      FREEA(rev_gsequenceR_alt);
+      FREEA(rev_gsequenceR);
+      FREEA(gsequenceL_alt);
+      FREEA(gsequenceL);
 
       return (List_T) NULL;
 
@@ -3807,12 +3798,10 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 	pairs = (List_T) NULL;
       }
 
-      if (gsequenceL_alt != gsequenceL) {
-	FREE(gsequenceL_alt);
-	FREE(rev_gsequenceR_alt);
-      }
-      FREE(gsequenceL);
-      FREE(rev_gsequenceR);
+      FREEA(rev_gsequenceR_alt);
+      FREEA(rev_gsequenceR);
+      FREEA(gsequenceL_alt);
+      FREEA(gsequenceL);
 
       debug(printf("End of dynprog genome gap\n"));
 
@@ -3846,12 +3835,11 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
 			cdna_direction,watsonp,extraband_paired,defect_rate,
 			canonical_reward,goffsetL,rev_goffsetR,
 			chrnum,chroffset,chrhigh,halfp,finalp,jump_late_p) == false) {
-    if (gsequenceL_alt != gsequenceL) {
-      FREE(gsequenceL_alt);
-      FREE(rev_gsequenceR_alt);
-    }
-    FREE(gsequenceL);
-    FREE(rev_gsequenceR);
+    
+    FREEA(gsequenceL_alt);
+    FREEA(rev_gsequenceR_alt);
+    FREEA(gsequenceL);
+    FREEA(rev_gsequenceR);
 
     return (List_T) NULL;
     
@@ -3899,12 +3887,10 @@ Dynprog_genome_gap (int *dynprogindex, int *finalscore, int *new_leftgenomepos, 
       pairs = (List_T) NULL;
     }
 
-    if (gsequenceL_alt != gsequenceL) {
-      FREE(gsequenceL_alt);
-      FREE(rev_gsequenceR_alt);
-    }
-    FREE(gsequenceL);
-    FREE(rev_gsequenceR);
+    FREEA(gsequenceL_alt);
+    FREEA(rev_gsequenceR_alt);
+    FREEA(gsequenceL);
+    FREEA(rev_gsequenceR);
 
     debug(printf("End of dynprog genome gap\n"));
     

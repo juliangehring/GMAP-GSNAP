@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_simd.c 142097 2014-07-22 03:10:37Z twu $";
+static char rcsid[] = "$Id: dynprog_simd.c 146623 2014-09-02 21:31:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -652,9 +652,9 @@ Directions8_print_ud (Direction8_T **directions_nogap, Direction8_T **directions
     if (upperp == true) {
       for (j = 0; j <= glength; ++j) {
 	if (j < i) {
-	  printf("   ");
+	  printf("     ");
 	} else if (j > i + band) {
-	  printf("   ");
+	  printf("     ");
 	} else {
 	  if (directions_Egap[j][i] == DIAG) {
 	    printf("D");
@@ -667,18 +667,18 @@ Directions8_print_ud (Direction8_T **directions_nogap, Direction8_T **directions
 	  } else {
 	    printf("-");
 	  }
+	  printf("| ");		/* For Fgap */
 	}
-	printf("  ");		/* For Fgap */
 	printf(" ");
       }
     } else {
       for (j = 0; j <= glength; ++j) {
-	printf("  ");		/* For Fgap */
 	if (i < j) {
-	  printf("   ");
+	  printf("     ");
 	} else if (i > j + band) {
-	  printf("   ");
+	  printf("     ");
 	} else {
+	  printf(" |");		/* For Fgap */
 	  if (directions_nogap[i][j] == DIAG) {
 	    printf("D");
 	  } else {
@@ -1571,7 +1571,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
 
   complement_dummy = _mm_set1_epi8(-1);
 
-  FF = (int *) MALLOC((glength + 1) * sizeof(int));
+  FF = (int *) MALLOCA((glength + 1) * sizeof(int));
 
   gap_open = _mm_set1_epi8((Score8_T) open);
   gap_extend = _mm_set1_epi8((Score8_T) extend);
@@ -2016,7 +2016,7 @@ Dynprog_simd_8 (Direction8_T ***directions_nogap, Direction8_T ***directions_Ega
   banded_directions8_compare_Fgap(matrix,*directions_Fgap,directions_Fgap_std,rlength,glength,lband,uband);
 #endif
 
-  FREE(FF);
+  FREEA(FF);
   _mm_free(pairscores_col0);
   _mm_free(pairscores[4]);
   _mm_free(pairscores[3]);
@@ -3148,7 +3148,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
 
   complement_dummy = _mm_set1_epi16(-1);
   
-  FF = (int *) MALLOC((glength + 1) * sizeof(int));
+  FF = (int *) MALLOCA((glength + 1) * sizeof(int));
 
   gap_open = _mm_set1_epi16((Score16_T) open);
   gap_extend = _mm_set1_epi16((Score16_T) extend);
@@ -3551,7 +3551,7 @@ Dynprog_simd_16 (Direction16_T ***directions_nogap, Direction16_T ***directions_
   banded_directions16_compare_Fgap(*directions_Fgap,directions_Fgap_std,rlength,glength,lband,uband);
 #endif
 
-  FREE(FF);
+  FREEA(FF);
   _mm_free(pairscores_col0);
   _mm_free(pairscores[4]);
   _mm_free(pairscores[3]);
@@ -4390,6 +4390,7 @@ Dynprog_traceback_8 (List_T pairs, int *nmatches, int *nmismatches, int *nopens,
 	/* Directions in column 0 can sometimes be DIAG */
 	dir = VERT;
       } else {
+	printf("| ");		/* For Fgap */
 	dir = directions_nogap[c][r];
       }
 #endif
@@ -4427,7 +4428,7 @@ Dynprog_traceback_8 (List_T pairs, int *nmatches, int *nmismatches, int *nopens,
       *nindels += dist;
       debug(printf("\n"));
 
-    } else {
+    } else if (dir == DIAG) {
       querycoord = r-1;
       genomecoord = c-1;
       if (revp == true) {
@@ -4478,6 +4479,10 @@ Dynprog_traceback_8 (List_T pairs, int *nmatches, int *nmismatches, int *nopens,
       }
 
       r--; c--;
+
+    } else {
+      fprintf(stderr,"Bad dir at r %d, c %d\n",r,c);
+      abort();
     }
   }
 
@@ -4809,7 +4814,7 @@ Dynprog_traceback_16 (List_T pairs, int *nmatches, int *nmismatches, int *nopens
       *nindels += dist;
       debug(printf("\n"));
 
-    } else {
+    } else if (dir == DIAG) {
       querycoord = r-1;
       genomecoord = c-1;
       if (revp == true) {
@@ -4860,6 +4865,10 @@ Dynprog_traceback_16 (List_T pairs, int *nmatches, int *nmismatches, int *nopens
       }
 
       r--; c--;
+
+    } else {
+      fprintf(stderr,"Bad dir at r %d, c %d\n",r,c);
+      abort();
     }
   }
 

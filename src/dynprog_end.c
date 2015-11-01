@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog_end.c 140653 2014-07-04 02:01:10Z twu $";
+static char rcsid[] = "$Id: dynprog_end.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1276,14 +1276,21 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 #endif
 
 
+  rev_gsequence = (char *) MALLOCA((glength+1) * sizeof(char));
+  rev_gsequence_alt = (char *) MALLOCA((glength+1) * sizeof(char));
+
   if (watsonp) {
-    rev_gsequence = Genome_get_segment_blocks_left(&rev_gsequence_alt,/*left*/chroffset+rev_goffset+1,glength,chroffset,/*revcomp*/false);
+    Genome_get_segment_blocks_left(rev_gsequence,rev_gsequence_alt,/*right*/chroffset+rev_goffset+1,
+				   glength,chroffset,/*revcomp*/false);
   } else {
-    rev_gsequence = Genome_get_segment_blocks_right(&rev_gsequence_alt,/*left*/chrhigh-rev_goffset,glength,chrhigh,/*revcomp*/true);
+    Genome_get_segment_blocks_right(rev_gsequence,rev_gsequence_alt,/*left*/chrhigh-rev_goffset,
+				    glength,chrhigh,/*revcomp*/true);
   }
-  if (rev_gsequence == NULL) {
+  if (rev_gsequence[0] == '\0') {
     *nmatches = *nmismatches = *nopens = *nindels = 0;
     *finalscore = 0;
+    FREEA(rev_gsequence_alt);
+    FREEA(rev_gsequence);
     return (List_T) NULL;
   }
 
@@ -1508,10 +1515,8 @@ Dynprog_end5_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
     Matrix_free(matrix);
   */
   
-  if (rev_gsequence_alt != rev_gsequence) {
-    FREE(rev_gsequence_alt);
-  }
-  FREE(rev_gsequence);
+  FREEA(rev_gsequence_alt);
+  FREEA(rev_gsequence);
 
   debug6(printf("End of dynprog end5 gap\n\n"));
 
@@ -1862,14 +1867,21 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
 #endif
 
 
+  gsequence = (char *) MALLOCA((glength+1) * sizeof(char));
+  gsequence_alt = (char *) MALLOCA((glength+1) * sizeof(char));
+
   if (watsonp) {
-    gsequence = Genome_get_segment_blocks_right(&gsequence_alt,/*left*/chroffset+goffset,glength,chrhigh,/*revcomp*/false);
+    Genome_get_segment_blocks_right(gsequence,gsequence_alt,/*left*/chroffset+goffset,
+				    glength,chrhigh,/*revcomp*/false);
   } else {
-    gsequence = Genome_get_segment_blocks_left(&gsequence_alt,/*left*/chrhigh-goffset+1,glength,chroffset,/*revcomp*/true);
+    Genome_get_segment_blocks_left(gsequence,gsequence_alt,/*right*/chrhigh-goffset+1,
+				   glength,chroffset,/*revcomp*/true);
   }
-  if (gsequence == NULL) {
+  if (gsequence[0] == '\0') {
     *nmatches = *nmismatches = *nopens = *nindels = 0;
     *finalscore = 0;
+    FREEA(gsequence_alt);
+    FREEA(gsequence);
     return (List_T) NULL;
   }
 
@@ -2071,10 +2083,8 @@ Dynprog_end3_gap (int *dynprogindex, int *finalscore, int *nmatches, int *nmisma
     Matrix_free(matrix);
   */
 
-  if (gsequence_alt != gsequence) {
-    FREE(gsequence_alt);
-  }
-  FREE(gsequence);
+  FREEA(gsequence_alt);
+  FREEA(gsequence);
 
   debug6(printf("End of dynprog end3 gap\n\n"));
 
@@ -2663,10 +2673,10 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 
   if (threshold_miss_score < 0 && glength > 0) {
     /* Try known splicing */
-    splicejunction = (char *) CALLOC(glength+1,sizeof(char));
-    splicejunction_alt = (char *) CALLOC(glength+1,sizeof(char));
+    splicejunction = (char *) MALLOCA((glength+1) * sizeof(char));
+    splicejunction_alt = (char *) MALLOCA((glength+1) * sizeof(char));
 #ifdef EXTRACT_GENOMICSEG
-    splicejunction_test = (char *) CALLOC(glength+1,sizeof(char));
+    splicejunction_test = (char *) MALLOCA((glength+1) * sizeof(char));
 #endif
 
     endlength = rlength;
@@ -2779,10 +2789,10 @@ Dynprog_end5_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
     }
 
 #ifdef EXTRACT_GENOMICSEG
-    FREE(splicejunction_test);
+    FREEA(splicejunction_test);
 #endif
-    FREE(splicejunction_alt);
-    FREE(splicejunction);
+    FREEA(splicejunction_alt);
+    FREEA(splicejunction);
   }
 
 
@@ -2920,10 +2930,10 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
 
   if (threshold_miss_score < 0 && glength > 0) {
     /* Try known splicing */
-    splicejunction = (char *) CALLOC(glength+1,sizeof(char));
-    splicejunction_alt = (char *) CALLOC(glength+1,sizeof(char));
+    splicejunction = (char *) MALLOCA((glength+1) * sizeof(char));
+    splicejunction_alt = (char *) MALLOCA((glength+1) * sizeof(char));
 #ifdef EXTRACT_GENOMICSEG
-    splicejunction_test = (char *) CALLOC(glength+1,sizeof(char));
+    splicejunction_test = (char *) MALLOCA((glength+1) * sizeof(char));
 #endif
 
     endlength = rlength;
@@ -3036,10 +3046,10 @@ Dynprog_end3_known (bool *knownsplicep, int *dynprogindex, int *finalscore,
     }
 
 #ifdef EXTRACT_GENOMICSEG
-    FREE(splicejunction_test);
+    FREEA(splicejunction_test);
 #endif
-    FREE(splicejunction_alt);
-    FREE(splicejunction);
+    FREEA(splicejunction_alt);
+    FREEA(splicejunction);
   }
 
 

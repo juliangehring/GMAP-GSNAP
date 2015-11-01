@@ -22,20 +22,41 @@ AC_MSG_RESULT(PKG_VERSION)
 
 
 ### Read defaults
-AC_MSG_CHECKING(CONFIG_SITE)
-if test -z "$CONFIG_SITE"; then
-  CONFIG_SITE="./config.site"
-else
-  CONFIG_SITE="$CONFIG_SITE"
-fi
-AC_MSG_RESULT($CONFIG_SITE)
 
+# Handle CONFIG_SITE
 for ac_site_file in $CONFIG_SITE; do
-  if test -r "$ac_site_file"; then
-    echo "loading script $ac_site_file"
-    . "$ac_site_file"
+  if { (eval echo $ac_site_file | grep '^\./' >/dev/null 2>&1)
+       ac_status=$?
+       (exit $ac_status); }; then
+    # ac_site_file starts with ./
+    if test -r "$ac_site_file"; then
+      ac_site_file="$ac_site_file"
+      echo "loading site script $ac_site_file"
+      . "$ac_site_file"
+      ax_user_site_file_loaded=yes
+    fi
+  else
+    # ac_site_file does not start with ./
+    if test -r "./$ac_site_file"; then
+      echo "loading site script ./$ac_site_file"
+      . "./$ac_site_file"
+      ax_user_site_file_loaded=yes
+    elif test -r "$ac_site_file"; then
+      echo "loading site script $ac_site_file"
+      . "$ac_site_file"
+      ax_user_site_file_loaded=yes
+    fi
   fi
 done
+
+if test x"$ax_user_site_file_loaded" != x"yes"; then
+   if test -r "./config.site"; then
+     echo "loading default site script ./config.site"
+     . "./config.site"
+   fi
+fi
+
+
 
 
 # Set default CFLAGS if not already set by user
@@ -175,10 +196,31 @@ AC_CHECK_SIZEOF(off_t)
 #AC_FUNC_REALLOC -- Causes use of rpl_realloc
 #AC_FUNC_CLOSEDIR_VOID -- We are checking return value
 
-AC_FUNC_ALLOCA
 AC_FUNC_FSEEKO
 
 #AC_FUNC_MMAP        # Checks only private fixed mapping of already-mapped memory
+
+AC_MSG_CHECKING(whether alloca is enabled)
+AC_ARG_ENABLE([alloca],
+	      AC_HELP_STRING([--enable-alloca],
+                             [Enable alloca (default=yes) for stack-based memory allocation.]),
+              [answer="$enableval"],
+              [answer=""])
+case x"$answer" in
+     xyes)
+     AC_MSG_RESULT(enabled)
+     AC_FUNC_ALLOCA
+     ;;
+
+     xno)
+     AC_MSG_RESULT(disabled)
+     ;;
+
+     x)
+     AC_MSG_RESULT([not specified so enabled by default])
+     AC_FUNC_ALLOCA
+     ;;
+esac	
 
 
 AC_MSG_CHECKING(whether mmap is enabled)
@@ -226,16 +268,16 @@ ACX_FUNC_FOPEN_BINARY
 ACX_FUNC_FOPEN_TEXT
 
 
-AC_MSG_CHECKING(for popcnt feature)
-AC_ARG_ENABLE([popcnt],
-              AC_HELP_STRING([--enable-popcnt],
-                             [Enable -mpopcnt if it compiles and runs (default=yes).  May want to disable if compiling on one machine and running on another.]),
+AC_MSG_CHECKING(for builtin popcount/clz/ctz features)
+AC_ARG_ENABLE([builtin-popcount],
+              AC_HELP_STRING([--enable-builtin-popcount],
+                             [Enable -mpopcnt if it __builtin_popcount compiles and runs (default=yes).  May want to disable if compiling on one machine and running on another.]),
               [answer="$enableval"],
               [answer=""])
 case x"$answer" in
 	xyes)
         AC_MSG_RESULT(enabled)
-	ACX_BUILTIN
+	ACX_BUILTIN_POPCOUNT
 	;;
 	
 	xno)
@@ -244,11 +286,16 @@ case x"$answer" in
 
 	x)
 	AC_MSG_RESULT([not specified so enabled by default])
-	ACX_BUILTIN
+	ACX_BUILTIN_POPCOUNT
 	;;
 esac	
+if test x"$acx_mpopcnt_ok" = x"yes"; then
+  POPCNT_CFLAGS="$POPCNT_CFLAGS -mpopcnt"
+fi
+AC_SUBST(POPCNT_CFLAGS)
 
 ACX_ASM_BSR
+
 
 AC_MSG_CHECKING(whether sse2 is enabled)
 AC_ARG_ENABLE([sse2],
@@ -282,36 +329,41 @@ fi
 AC_MSG_CHECKING(whether ssse3 is enabled)
 AC_ARG_ENABLE([ssse3],
 	      AC_HELP_STRING([--enable-ssse3],
-                             [Enable ssse3 simd commands if they compile and run (default=yes).]),
+                             [Enable ssse3 simd commands if they compile and run (default=yes).  Requires that sse2 be enabled.]),
               [answer="$enableval"],
               [answer=""])
-case x"$answer" in
-     xyes)
-     AC_MSG_RESULT(enabled)
-     ax_cv_want_ssse3_ext=yes
-     ;;
+if test "$ax_cv_want_sse2_ext" = no; then
+   AC_MSG_RESULT([disabled because the user disabled sse2])
+   ax_cv_want_ssse3_ext=no
+else
+    case x"$answer" in
+	 xyes)
+	 AC_MSG_RESULT(enabled)
+	 ax_cv_want_ssse3_ext=yes
+	 ;;
 
-     xno)
-     AC_MSG_RESULT(disabled)
-     ax_cv_want_ssse3_ext=no
-     ;;
+	 xno)
+	 AC_MSG_RESULT(disabled)
+	 ax_cv_want_ssse3_ext=no
+	 ;;
 
-     x)
-     AC_MSG_RESULT([not specified so enabled by default])
-     ax_cv_want_ssse3_ext=yes
-     ;;
-esac	
+	 x)
+	 AC_MSG_RESULT([not specified so enabled by default])
+	 ax_cv_want_ssse3_ext=yes
+	 ;;
+    esac	
+fi
 
 
 
 AC_MSG_CHECKING(whether sse4.1 is enabled)
 AC_ARG_ENABLE([sse4.1],
 	      AC_HELP_STRING([--enable-sse4.1],
-                             [Enable sse4.1 simd commands if they compile and run (default=yes).  Requires that sse2 be enabled.]),
+                             [Enable sse4.1 simd commands if they compile and run (default=yes).  Requires that ssse3 be enabled.]),
               [answer="$enableval"],
               [answer=""])
-if test "$ax_cv_want_sse2_ext" = no; then
-   AC_MSG_RESULT([disabled because the user disabled sse2])
+if test "$ax_cv_want_ssse3_ext" = no; then
+   AC_MSG_RESULT([disabled because the user disabled ssse3])
    ax_cv_want_sse41_ext=no
 else
     case x"$answer" in
@@ -332,6 +384,64 @@ else
     esac	
 fi
 
+AC_MSG_CHECKING(whether avx is enabled)
+AC_ARG_ENABLE([avx],
+	      AC_HELP_STRING([--enable-avx],
+                             [Enable avx simd commands if they compile and run (default=yes).  Requires that sse4.1 be enabled.]),
+              [answer="$enableval"],
+              [answer=""])
+if test "$ax_cv_want_sse4.1_ext" = no; then
+   AC_MSG_RESULT([disabled because the user disabled sse4.1])
+   ax_cv_want_avx_ext=no
+else
+    case x"$answer" in
+	 xyes)
+	 AC_MSG_RESULT(enabled)
+	 ax_cv_want_avx_ext=yes
+	 ;;
+
+	 xno)
+	 AC_MSG_RESULT(disabled)
+	 ax_cv_want_avx_ext=no
+	 ;;
+
+	 x)
+	 AC_MSG_RESULT([not specified so enabled by default])
+	 ax_cv_want_avx_ext=yes
+	 ;;
+    esac	
+fi
+
+
+AC_MSG_CHECKING(whether avx2 is enabled)
+AC_ARG_ENABLE([avx2],
+	      AC_HELP_STRING([--enable-avx2],
+                             [Enable avx2 simd commands if they compile and run (default=yes).  Requires that avx be enabled.]),
+              [answer="$enableval"],
+              [answer=""])
+if test "$ax_cv_want_avx_ext" = no; then
+   AC_MSG_RESULT([disabled because the user disabled avx])
+   ax_cv_want_avx2_ext=no
+else
+    case x"$answer" in
+	 xyes)
+	 AC_MSG_RESULT(enabled)
+	 ax_cv_want_avx2_ext=yes
+	 ;;
+
+	 xno)
+	 AC_MSG_RESULT(disabled)
+	 ax_cv_want_avx2_ext=no
+	 ;;
+
+	 x)
+	 AC_MSG_RESULT([not specified so enabled by default])
+	 ax_cv_want_avx2_ext=yes
+	 ;;
+    esac	
+fi
+
+
 AC_MSG_CHECKING(whether simd is enabled)
 AC_ARG_ENABLE([simd],
 	      AC_HELP_STRING([--enable-simd],
@@ -341,7 +451,7 @@ AC_ARG_ENABLE([simd],
 case x"$answer" in
      xyes)
      AC_MSG_RESULT(enabled)
-     AX_EXT   # Sets SIMD_FLAGS, and HAVE_ALTIVEC,HAVE_MMX,HAVE_SSE,HAVE_SSE2,HAVE_SSE3,HAVE_SSSE3,HAVE_SSE4_1,HAVE_SSE4_2,HAVE_AVX
+     AX_EXT   # Sets SIMD_CFLAGS, and HAVE_ALTIVEC,HAVE_MMX,HAVE_SSE,HAVE_SSE2,HAVE_SSE3,HAVE_SSSE3,HAVE_SSE4_1,HAVE_SSE4_2,HAVE_AVX
      ;;
 
      xno)
@@ -350,7 +460,7 @@ case x"$answer" in
 
      x)
      AC_MSG_RESULT([not specified so enabled by default])
-     AX_EXT   # Sets SIMD_FLAGS, and HAVE_ALTIVEC,HAVE_MMX,HAVE_SSE,HAVE_SSE2,HAVE_SSE3,HAVE_SSSE3,HAVE_SSE4_1,HAVE_SSE4_2,HAVE_AVX
+     AX_EXT   # Sets SIMD_CFLAGS, and HAVE_ALTIVEC,HAVE_MMX,HAVE_SSE,HAVE_SSE2,HAVE_SSE3,HAVE_SSSE3,HAVE_SSE4_1,HAVE_SSE4_2,HAVE_AVX
      ;;
 esac	
 
@@ -574,3 +684,38 @@ optimal performance, you may want to obtain a more recent C compiler
 and build the code with that.
 ])
 fi
+
+if test x"$ax_cv_ext_compiler_problem" = x"yes"; then
+  AC_MSG_WARN([
+
+WARNING: Your C compiler appears not to take advantage of all of the
+SIMD features available on your computer, and must be somewhat old.
+The configure script has therefore substituted alternate C code that
+your compiler can handle.  However, for optimal performance, you may
+want to obtain a more recent C compiler and build the code with that.
+Here are the compiler flags to be used for SIMD:
+])
+fi
+
+if test x"$ax_cv_ext_linker_problem" = x"yes"; then
+  AC_MSG_WARN([
+
+WARNING: Your C linker appears not to work on SIMD header files that
+your C compiler accepts, so there appears to be some incompatibility
+between your compiler and linker.  The configure script has therefore
+substituted alternate C code that your linker can handle.  However,
+for optimal performance, you may need to set your LDFLAGS or
+LD_LIBRARY_PATH environment variable to the correct directory, or
+rebuild your compiler and linker.
+])
+fi
+
+AC_MSG_CHECKING(pthread compiler flags to be used)
+AC_MSG_RESULT($PTHREAD_CFLAGS)
+AC_MSG_CHECKING(popcnt compiler flags to be used)
+AC_MSG_RESULT($POPCNT_CFLAGS)
+AC_MSG_CHECKING(SIMD features available on computer)
+AC_MSG_RESULT($ax_cv_cpu_features)
+AC_MSG_CHECKING(SIMD compiler flags to be used)
+AC_MSG_RESULT($SIMD_CFLAGS)
+

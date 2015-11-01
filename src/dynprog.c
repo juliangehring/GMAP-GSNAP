@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: dynprog.c 140648 2014-07-04 01:14:57Z twu $";
+static char rcsid[] = "$Id: dynprog.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1146,8 +1146,9 @@ Dynprog_standard (Direction32_T ***directions_nogap, Direction32_T ***directions
   (*directions_Fgap)[0][1] = DIAG; /* previously used STOP */
 #endif
 
-  r_gap = (Score32_T *) CALLOC(rlength+1,sizeof(Score32_T));
-  nogap = (Score32_T *) CALLOC(rlength+1,sizeof(Score32_T));
+  r_gap = (Score32_T *) MALLOCA((rlength+1) * sizeof(Score32_T));
+  nogap = (Score32_T *) MALLOCA((rlength+1) * sizeof(Score32_T));
+
   nogap[0] = 0;
   penalty = open;
   for (r = 1; r <= lband && r <= rlength; r++) {
@@ -1543,8 +1544,8 @@ Dynprog_standard (Direction32_T ***directions_nogap, Direction32_T ***directions
   debug12a(Matrix3_print(matrix3,rlength,glength,rsequence,gsequence,gsequence_alt,
 			 goffset,chroffset,chrhigh,watsonp,revp));
 
-  FREE(r_gap);
-  FREE(nogap);
+  FREEA(r_gap);
+  FREEA(nogap);
 
   return matrix;
 }

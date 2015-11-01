@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: uniqscan.c 145607 2014-08-20 18:19:10Z twu $";
+static char rcsid[] = "$Id: uniqscan.c 149319 2014-09-30 02:15:42Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -1195,7 +1195,7 @@ main (int argc, char *argv[]) {
 		   /*snpp*/snps_iit ? true : false,amb_closest_p,/*amb_clip_p*/true,min_shortend);
   spansize = Spanningelt_setup(index1part,index1interval);
   Indel_setup(min_indel_end_matches,indel_penalty_middle);
-  Stage1hr_setup(/*use_sarray_p*/false,index1part,index1interval,
+  Stage1hr_setup(/*use_sarray_p*/false,/*use_only_sarray_p*/false,index1part,index1interval,
 		 spansize,chromosome_iit,nchromosomes,
 		 genomealt,mode,/*maxpaths_search*/10,/*terminal_threshold*/5,/*terminal_output_minlength*/0,
 		 splicesites,splicetypes,splicedists,nsplicesites,
@@ -1212,7 +1212,8 @@ main (int argc, char *argv[]) {
 		  genes_iit,genes_divint_crosstable,
 		  splicing_iit,splicing_divint_crosstable,
 		  donor_typeint,acceptor_typeint,trim_mismatch_score,
-		  novelsplicingp,knownsplicingp,/*output_sam_p*/false,mode);
+		  novelsplicingp,knownsplicingp,/*output_sam_p*/false,mode,
+		  Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
   Dynprog_single_setup(/*homopolymerp*/false);
   Dynprog_genome_setup(novelsplicingp,splicing_iit,splicing_divint_crosstable,
 		       donor_typeint,acceptor_typeint);
@@ -1224,7 +1225,8 @@ main (int argc, char *argv[]) {
 	       mode,/*snps_p*/snps_iit ? true : false);
   Pair_setup(trim_mismatch_score,trim_indel_score,/*sam_insert_0M_p*/false,
 	     /*force_xs_direction_p*/false,/*md_lowercase_variant_p*/false,
-	     /*snps_p*/snps_iit ? true : false);
+	     /*snps_p*/snps_iit ? true : false,
+	     Univ_IIT_genomelength(chromosome_iit,/*with_circular_alias*/false));
   Stage3_setup(/*splicingp*/novelsplicingp == true || knownsplicingp == true,novelsplicingp,
 	       /*require_splicedir_p*/false,splicing_iit,splicing_divint_crosstable,
 	       donor_typeint,acceptor_typeint,
@@ -1237,7 +1239,8 @@ main (int argc, char *argv[]) {
 		 localsplicing_penalty,indel_penalty_middle,antistranded_penalty,
 		 favor_multiexon_p,gmap_min_nconsecutive,index1part,index1interval,
 		 novelsplicingp,/*merge_samechr_p*/false,circularp,
-		 /*fails_as_input_p*/false,/*fastq_format_p*/false);
+		 /*fails_as_input_p*/false,/*fastq_format_p*/false,/*print_m8_p*/false,
+		 /*want_random_p*/true);
 
   uniqueness_scan(from_right_p);
 

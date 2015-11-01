@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: boyer-moore.c 132025 2014-04-01 18:53:48Z twu $";
+static char rcsid[] = "$Id: boyer-moore.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -118,13 +118,10 @@ na_index (char c) {
   }
 }
 
-static int *
-precompute_bad_char_shift (char *query, int querylen) {
-  int *bad_char_shift;
+static void
+precompute_bad_char_shift (int *bad_char_shift, char *query, int querylen) {
   int i;
   char *p;
-
-  bad_char_shift = (int *) CALLOC(ASIZE,sizeof(int));
 
   for (i = 0; i < ASIZE; i++) {
     bad_char_shift[i] = querylen;
@@ -148,7 +145,7 @@ precompute_bad_char_shift (char *query, int querylen) {
 #endif
   }
 
-  return bad_char_shift;
+  return;
 }
 
 
@@ -186,30 +183,25 @@ suffix_jump (char *query, int querylen, int subseqlen) {
   return querylen;
 }
 
-static int *
-precompute_good_suffix_shift (char *query, int querylen) {
-  int *good_suffix_shift;
+static void
+precompute_good_suffix_shift (int *good_suffix_shift, char *query, int querylen) {
   int subseqlen;
 
-  good_suffix_shift = (int *) CALLOC(querylen,sizeof(int));
-  
   for (subseqlen = 0; subseqlen < querylen; subseqlen++) {
     good_suffix_shift[querylen - 1 - subseqlen] = suffix_jump(query,querylen,subseqlen);
     debug2(printf("Assigning %d to position %d\n",good_suffix_shift[querylen - 1 - subseqlen],querylen-1-subseqlen));
   }
 
-  return good_suffix_shift;
+  return;
 }
 
 #else
 
-static int *
-precompute_suffix (char *query, int querylen) {
-  int *suffix;
+static void
+precompute_suffix (int *suffix, char *query, int querylen) {
   /* Note: initialization of f not necessary, since i < g in first iteration */
   int f, g, i;
 
-  suffix = (int *) CALLOC(querylen,sizeof(int));
   suffix[querylen - 1] = querylen;
   g = querylen - 1;
   for (i = querylen - 2; i >= 0; i--) {
@@ -233,16 +225,16 @@ precompute_suffix (char *query, int querylen) {
 	}
 	printf("\n");
 	);
-  return suffix;
+
+  return;
 }
   
-static int *
-precompute_good_suffix_shift (char *query, int querylen) {
-  int *good_suffix_shift;
+static void
+precompute_good_suffix_shift (int *good_suffix_shift, char *query, int querylen) {
   int i, j, *suffix;
 
-  good_suffix_shift = (int *) CALLOC(querylen,sizeof(int));
-  suffix = precompute_suffix(query,querylen);
+  suffix = (int *) MALLOCA(querylen * sizeof(int));
+  precompute_suffix(suffix,query,querylen);
   
   for (i = 0; i < querylen; i++) {
     good_suffix_shift[i] = querylen;
@@ -261,8 +253,9 @@ precompute_good_suffix_shift (char *query, int querylen) {
     good_suffix_shift[querylen - 1 - suffix[i]] = querylen - 1 - i;
   }
 
-  FREE(suffix);
-  return good_suffix_shift;
+  FREEA(suffix);
+
+  return;
 }
 #endif
 
@@ -298,11 +291,13 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
 #ifndef STANDALONE
   Intlist_T hits = NULL;
 #endif
-  int i, j, *good_suffix_shift, *bad_char_shift;
+  int i, j, *good_suffix_shift;
+  int bad_char_shift[ASIZE];
 
   if (query_okay(query,querylen)) {
-    good_suffix_shift = precompute_good_suffix_shift(query,querylen);
-    bad_char_shift = precompute_bad_char_shift(query,querylen);
+    good_suffix_shift = (int *) MALLOCA(querylen * sizeof(int));
+    precompute_good_suffix_shift(good_suffix_shift,query,querylen);
+    precompute_bad_char_shift(bad_char_shift,query,querylen);
 
     debug(
 	  printf("bad_char_shift:\n");
@@ -347,8 +342,8 @@ BoyerMoore (char *query, int querylen, char *text, int textlen) {
 		 bad_char_shift[na_index(text[i+j])] - querylen + 1 + i);
       }
     }
-    FREE(bad_char_shift);
-    FREE(good_suffix_shift);
+
+    FREEA(good_suffix_shift);
   }
 
 #ifndef STANDALONE
@@ -397,18 +392,26 @@ Intlist_T
 BoyerMoore_nt (char *query, int querylen, int textoffset, int textlen,
 	       Univcoord_T chroffset, Univcoord_T chrhigh, bool watsonp) {
   Intlist_T hits = NULL;
-  int i, j, *good_suffix_shift, *bad_char_shift;
+  int i, j, *good_suffix_shift;
+  int bad_char_shift[ASIZE];
   char *text, *text_alt;
 
   if (query_okay(query,querylen)) {
-    good_suffix_shift = precompute_good_suffix_shift(query,querylen);
-    bad_char_shift = precompute_bad_char_shift(query,querylen);
+    good_suffix_shift = (int *) MALLOCA(querylen * sizeof(int));
+    text = (char *) MALLOC((textlen+querylen+1) * sizeof(char)); /* alloca could cause stack overflow */
+    text_alt = (char *) MALLOC((textlen+querylen+1) * sizeof(char)); /* alloca could cause stack overflow */
+
+    precompute_good_suffix_shift(good_suffix_shift,query,querylen);
+    precompute_bad_char_shift(bad_char_shift,query,querylen);
     if (watsonp) {
-      text = Genome_get_segment_blocks_right(&text_alt,/*left*/chroffset+textoffset,textlen+querylen,chrhigh,/*revcomp*/false);
+      Genome_get_segment_blocks_right(text,text_alt,/*left*/chroffset+textoffset,/*length*/textlen+querylen,chrhigh,/*revcomp*/false);
     } else {
-      text = Genome_get_segment_blocks_left(&text_alt,/*left*/chrhigh-textoffset+1,textlen+querylen,chroffset,/*revcomp*/true);
+      Genome_get_segment_blocks_left(text,text_alt,/*right*/chrhigh-textoffset+1,/*length*/textlen+querylen,chroffset,/*revcomp*/true);
     }
-    if (text == NULL) {
+    if (text[0] == '\0') {
+      FREE(text_alt);
+      FREE(text);
+      FREEA(good_suffix_shift);
       return hits;
     }
 
@@ -456,28 +459,23 @@ BoyerMoore_nt (char *query, int querylen, int textoffset, int textlen,
       }
     }
 
-    if (text_alt != text) {
-      FREE(text_alt);
-    }
+    FREE(text_alt);
     FREE(text);
-
-    FREE(bad_char_shift);
-    FREE(good_suffix_shift);
+    FREEA(good_suffix_shift);
   }
 
   return hits;
 }
 
 
-int *
-BoyerMoore_bad_char_shift (char *query, int querylen) {
-  int *bad_char_shift;
+void
+BoyerMoore_bad_char_shift (int *bad_char_shift, char *query, int querylen) {
 #ifdef DEBUG
   int i;
 #endif
 
   if (query_okay(query,querylen)) {
-    bad_char_shift = precompute_bad_char_shift(query,querylen);
+    precompute_bad_char_shift(bad_char_shift,query,querylen);
   } else {
     fprintf(stderr,"Query cannot have bad characters\n");
     abort();
@@ -491,7 +489,7 @@ BoyerMoore_bad_char_shift (char *query, int querylen) {
 	printf("\n");
 	);
 
-  return bad_char_shift;
+  return;
 }
 
 
@@ -554,7 +552,7 @@ main (int argc, char *argv[]) {
   char *query, *text;
   char *query_rev, *text_rev;
   int querylen, textlen;
-  int *bad_char_shift;
+  int bad_char_shift[ASIZE];
 
 #ifdef PMAP
   int i, j;
@@ -581,9 +579,8 @@ main (int argc, char *argv[]) {
 
   printf("Query rev: %s\n",query_rev);
   printf("Text rev: %s\n",text_rev);
-  bad_char_shift = BoyerMoore_bad_char_shift(query_rev,querylen);
+  BoyerMoore_bad_char_shift(bad_char_shift,query_rev,querylen);
   BoyerMoore_maxprefix(query_rev,querylen,text_rev,textlen,bad_char_shift);
-  FREE(bad_char_shift);
 #endif
 
   return 0;

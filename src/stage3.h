@@ -1,4 +1,4 @@
-/* $Id: stage3.h 141665 2014-07-16 01:36:38Z twu $ */
+/* $Id: stage3.h 149319 2014-09-30 02:15:42Z twu $ */
 #ifndef STAGE3_INCLUDED
 #define STAGE3_INCLUDED
 
@@ -166,8 +166,6 @@ Stage3_free (T *old);
 
 extern bool
 Stage3_test_bounds (T this, int minpos, int maxpos);
-extern T
-Stage3_apply_bounds (T this, int minpos, int maxpos, bool revertp);
 
 #ifdef PMAP
 extern void

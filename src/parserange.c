@@ -1,4 +1,4 @@
-static char rcsid[] = "$Id: parserange.c 99737 2013-06-27 19:33:03Z twu $";
+static char rcsid[] = "$Id: parserange.c 145990 2014-08-25 21:47:32Z twu $";
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -78,7 +78,7 @@ Parserange_israngep (Univcoord_T *left, Chrpos_T *length, bool *revcomp, char *s
   char *copy, *startstring, *endstring;
   Univcoord_T start, end;
 
-  copy = (char *) CALLOC(strlen(string)+1,sizeof(char));
+  copy = (char *) MALLOCA((strlen(string)+1) * sizeof(char));
   strcpy(copy,string);
 
   if (index(copy,'.')) {
@@ -159,7 +159,8 @@ Parserange_israngep (Univcoord_T *left, Chrpos_T *length, bool *revcomp, char *s
     result = false;
   }
 
-  FREE(copy);
+  FREEA(copy);
+
   return result;
 }
 
@@ -248,14 +249,14 @@ convert_to_chrpos (Chrpos_T *chrpos, char *genomesubdir, char *fileroot, Univcoo
   char *chromosome, *filename;
   Univ_IIT_T chromosome_iit;
   
-  filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-			     strlen(".chromosome.iit")+1,sizeof(char));
+  filename = (char *) MALLOCA((strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+			       strlen(".chromosome.iit")+1) * sizeof(char));
   sprintf(filename,"%s/%s.chromosome.iit",genomesubdir,fileroot);
   if ((chromosome_iit = Univ_IIT_read(filename,/*readonlyp*/true,/*add_iit_p*/false)) == NULL) {
     fprintf(stderr,"Can't read IIT file %s\n",filename);
     exit(9);
   }
-  FREE(filename);
+  FREEA(filename);
 
   /* Subtract 1 to make 0-based */
   chromosome = Univ_IIT_string_from_position(&(*chrpos),position-1U,chromosome_iit);
@@ -310,7 +311,7 @@ Parserange_query (char **divstring, Univcoord_T *coordstart, Univcoord_T *coorde
 
   if ((coords = find_div(&div_strlen,query,':')) != NULL) {
     /* Query may have a div */
-    *divstring = (char *) CALLOC(div_strlen+1,sizeof(char));
+    *divstring = (char *) MALLOC((div_strlen+1) * sizeof(char)); /* Return value */
     strncpy(*divstring,query,div_strlen);
 
     debug(printf("Parsed query %s into divstring %s and coords %s\n",
@@ -319,7 +320,7 @@ Parserange_query (char **divstring, Univcoord_T *coordstart, Univcoord_T *coorde
     if (IIT_read_divint(filename,*divstring,/*add_iit_p*/true) < 0) {
       fprintf(stderr,"Chromosome %s not found in IIT file\n",*divstring);
       debug(printf("  but divstring not found, so treat as label\n"));
-      FREE(*divstring);		/* free only when returning false */
+      FREE(*divstring);	/* free only when returning false */
       return false;
     } else if (coords == NULL || *coords == '\0') {
       debug(printf("  entire div\n"));
@@ -408,11 +409,11 @@ Parserange_universal (char **div, bool *revcomp,
     debug(printf("segment %s and coords %s\n",*div,coords));
 
     /* Try chromosome first */
-    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-			       strlen(".chromosome.iit")+1,sizeof(char));
+    filename = (char *) MALLOCA((strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				 strlen(".chromosome.iit")+1) * sizeof(char));
     sprintf(filename,"%s/%s.chromosome.iit",genomesubdir,fileroot);
     chromosome_iit = Univ_IIT_read(filename,/*readonlyp*/true,/*add_iit_p*/false);
-    FREE(filename);
+    FREEA(filename);
 
     debug(printf("Interpreting segment %s as a chromosome\n",*div));
     if (coords == NULL) {
@@ -452,12 +453,12 @@ Parserange_universal (char **div, bool *revcomp,
        on current div-based scheme.  Just abandoning for now. */
     if (rc != 0) {
       /* Try contig */
-      filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-				 strlen(".contig.iit")+1,sizeof(char));
+      filename = (char *) MALLOCA((strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".contig.iit")+1) * sizeof(char));
       sprintf(filename,"%s/%s.contig.iit",genomesubdir,fileroot);
       contig_iit = IIT_read(filename,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
 			    /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true);
-      FREE(filename);
+      FREEA(filename);
 
       debug(printf("Interpreting segment %s as a contig\n",*div));
       if (coords == NULL) {
@@ -506,12 +507,12 @@ Parserange_universal (char **div, bool *revcomp,
       debug(printf("contig\n"));
       return false;
 #if 0
-      filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-				 strlen(".contig.iit")+1,sizeof(char));
+      filename = (char *) MALLOCA((strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".contig.iit")+1) * sizeof(char));
       sprintf(filename,"%s/%s.contig.iit",genomesubdir,fileroot);
       contig_iit = IIT_read(filename,/*name*/NULL,/*readonlyp*/true,/*divread*/READ_ALL,
 			    /*divstring*/NULL,/*add_iit_p*/false,/*labels_read_p*/true);
-      FREE(filename);
+      FREEA(filename);
 
       rc = translate_contig(&(*genomicstart),&(*genomiclength),query,left=0,length=0,contig_iit);
       IIT_free(&contig_iit);
@@ -523,11 +524,11 @@ Parserange_universal (char **div, bool *revcomp,
     *chrstart += 1U;		/* Make 1-based */
 
     /* Try chromosome first */
-    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
-			       strlen(".chromosome.iit")+1,sizeof(char));
+    filename = (char *) MALLOCA((strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				 strlen(".chromosome.iit")+1) * sizeof(char));
     sprintf(filename,"%s/%s.chromosome.iit",genomesubdir,fileroot);
     chromosome_iit = Univ_IIT_read(filename,/*readonlyp*/true,/*add_iit_p*/false);
-    FREE(filename);
+    FREEA(filename);
 
     if ((theindex = Univ_IIT_find_one(chromosome_iit,*div)) < 0) {
       fprintf(stderr,"Cannot find chromosome %s in chromosome IIT file\n",*div);
